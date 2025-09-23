@@ -1,0 +1,339 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Entidad base para personas
+model Persona {
+  id_persona        Int       @id @default(autoincrement())
+  nombre           String    @db.VarChar(100)
+  apellido_paterno String    @db.VarChar(100)
+  apellido_materno String?   @db.VarChar(100)
+  tipo_documento   String    @db.VarChar(20)
+  numero_documento String    @unique @db.VarChar(20)
+  sexo             String?   @db.VarChar(10)
+  telefono         String?   @db.VarChar(15)
+  correo           String?   @db.VarChar(100)
+  empresa          String?   @db.VarChar(200)
+  fecha_registro   DateTime  @default(now())
+  estatus          Boolean   @default(true)
+  
+  // Relaciones - Una persona puede ser cliente, proveedor o usuario
+  cliente       Cliente?
+  proveedor     Proveedor?
+  usuario       Usuario?
+  transacciones Transaccion[]
+  
+  @@map("persona")
+}
+
+model Cliente {
+  id_cliente     Int       @id @default(autoincrement())
+  id_persona     Int       @unique
+  fecha_registro DateTime  @default(now())
+  estatus        Boolean   @default(true)
+  
+  persona   Persona    @relation(fields: [id_persona], references: [id_persona], onDelete: Cascade)
+  vehiculos Vehiculo[]
+  
+  @@map("cliente")
+}
+
+model Proveedor {
+  id_proveedor    Int     @id @default(autoincrement())
+  id_persona      Int     @unique
+  razon_social    String  @db.VarChar(200)
+  contacto        String? @db.VarChar(100)
+  numero_contacto String? @db.VarChar(15)
+  estatus         Boolean @default(true)
+  
+  persona                 Persona                 @relation(fields: [id_persona], references: [id_persona], onDelete: Cascade)
+  transaccion_proveedores TransaccionProveedor[]
+  
+  @@map("proveedor")
+}
+
+model Rol {
+  id_rol         Int       @id @default(autoincrement())
+  nombre_rol     String    @unique @db.VarChar(50)
+  estatus        Boolean   @default(true)
+  fecha_registro DateTime  @default(now())
+  
+  usuarios Usuario[]
+  
+  @@map("rol")
+}
+
+model Usuario {
+  id_usuario      Int       @id @default(autoincrement())
+  id_persona      Int       @unique
+  id_rol          Int
+  nombre_usuario  String    @unique @db.VarChar(50)
+  password        String    @db.VarChar(255)
+  imagen_usuario  String?   @db.Text
+  fecha_creacion  DateTime  @default(now())
+  estado          Boolean   @default(true)
+  estatus         Boolean   @default(true)
+  
+  persona                 Persona                 @relation(fields: [id_persona], references: [id_persona], onDelete: Cascade)
+  rol                     Rol                     @relation(fields: [id_rol], references: [id_rol])
+  transacciones           Transaccion[]
+  tareas                  Tarea[]
+  bitacoras               Bitacora[]
+  transaccion_vehiculos   TransaccionVehiculo[]
+  
+  @@map("usuario")
+}
+
+// Gestión de productos
+model Categoria {
+  id_categoria   Int       @id @default(autoincrement())
+  nombre         String    @db.VarChar(100)
+  estatus        Boolean   @default(true)
+  fecha_registro DateTime  @default(now())
+  
+  productos Producto[]
+  
+  @@map("categoria")
+}
+
+model UnidadMedida {
+  id_unidad    Int     @id @default(autoincrement())
+  nombre_unidad String @db.VarChar(50)
+  abreviatura  String  @db.VarChar(10)
+  estatus      Boolean @default(true)
+  
+  productos Producto[]
+  
+  @@map("unidad_medida")
+}
+
+model Fabricante {
+  id_fabricante    Int       @id @default(autoincrement())
+  nombre_fabricante String   @db.VarChar(100)
+  descripcion      String?   @db.Text
+  estado           Boolean   @default(true)
+  fecha_registro   DateTime  @default(now())
+  
+  productos Producto[]
+  
+  @@map("fabricante")
+}
+
+model Producto {
+  id_producto     Int       @id @default(autoincrement())
+  id_categoria    Int
+  id_fabricante   Int
+  id_unidad       Int
+  tipo            String    @db.VarChar(20) // 'producto' o 'servicio'
+  codigo_producto String    @unique @db.VarChar(50)
+  nombre          String    @db.VarChar(200)
+  descripcion     String?   @db.Text
+  stock           Int       @default(0)
+  stock_minimo    Int       @default(0)
+  precio_compra   Decimal   @db.Decimal(10,2)
+  precio_venta    Decimal   @db.Decimal(10,2)
+  descuento       Decimal   @default(0) @db.Decimal(5,2)
+  oferta          Boolean   @default(false)
+  estatus         Boolean   @default(true)
+  foto            String?   @db.Text
+  fecha_registro  DateTime  @default(now())
+  
+  categoria            Categoria            @relation(fields: [id_categoria], references: [id_categoria])
+  fabricante           Fabricante           @relation(fields: [id_fabricante], references: [id_fabricante])
+  unidad_medida        UnidadMedida         @relation(fields: [id_unidad], references: [id_unidad])
+  detalles_transaccion DetalleTransaccion[]
+  
+  @@map("producto")
+}
+
+// Gestión de vehículos
+model Marca {
+  id_marca     Int     @id @default(autoincrement())
+  nombre_marca String  @db.VarChar(50)
+  estado       Boolean @default(true)
+  descripcion  String? @db.Text
+  
+  modelos Modelo[]
+  
+  @@map("marca")
+}
+
+model Modelo {
+  id_modelo     Int     @id @default(autoincrement())
+  id_marca      Int
+  nombre_modelo String  @db.VarChar(50)
+  estado        Boolean @default(true)
+  descripcion   String? @db.Text
+  
+  marca     Marca      @relation(fields: [id_marca], references: [id_marca])
+  vehiculos Vehiculo[]
+  
+  @@map("modelo")
+}
+
+model Vehiculo {
+  id_vehiculo      Int     @id @default(autoincrement())
+  id_cliente       Int
+  id_modelo        Int
+  placa            String  @unique @db.VarChar(10)
+  tipo             String  @db.VarChar(50)
+  año              Int
+  tipo_combustible String  @db.VarChar(30)
+  transmision      String  @db.VarChar(30)
+  numero_chasis    String? @db.VarChar(50)
+  numero_motor     String? @db.VarChar(50)
+  observaciones    String? @db.Text
+  imagen           String? @db.Text
+  estado           Boolean @default(true)
+  
+  cliente                 Cliente                 @relation(fields: [id_cliente], references: [id_cliente])
+  modelo                  Modelo                  @relation(fields: [id_modelo], references: [id_modelo])
+  transaccion_vehiculos   TransaccionVehiculo[]
+  
+  @@map("vehiculo")
+}
+
+// Sistema de transacciones
+model Transaccion {
+  id_transaccion      Int       @id @default(autoincrement())
+  id_persona          Int
+  id_usuario          Int
+  tipo_transaccion    String    @db.VarChar(50) // 'venta', 'compra', 'cotizacion', 'orden'
+  tipo_comprobante    String    @db.VarChar(50)
+  serie_comprobante   String?   @db.VarChar(10)
+  numero_comprobante  String?   @db.VarChar(20)
+  codigo_transaccion  String    @unique @db.VarChar(50)
+  fecha               DateTime  @default(now())
+  descuento           Decimal   @default(0) @db.Decimal(10,2)
+  impuesto            Decimal   @default(0) @db.Decimal(10,2)
+  porcentaje          Decimal   @default(0) @db.Decimal(5,2)
+  total               Decimal   @db.Decimal(10,2)
+  cantidad_pago       Decimal   @default(0) @db.Decimal(10,2)
+  observaciones       String?   @db.Text
+  estatus             String    @default("activo") @db.VarChar(20)
+  
+  // Campos adicionales sugeridos
+  estado_orden        String?   @db.VarChar(30) // 'pendiente', 'en_proceso', 'completado'
+  prioridad          String    @default("media") @db.VarChar(20)
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+  
+  persona                    Persona                    @relation(fields: [id_persona], references: [id_persona])
+  usuario                    Usuario                    @relation(fields: [id_usuario], references: [id_usuario])
+  detalles_transaccion      DetalleTransaccion[]
+  transaccion_proveedores   TransaccionProveedor[]
+  transaccion_vehiculos     TransaccionVehiculo[]
+  
+  @@map("transaccion")
+}
+
+model DetalleTransaccion {
+  id_detalle_transaccion Int     @id @default(autoincrement())
+  id_transaccion         Int
+  id_producto            Int
+  cantidad               Int
+  precio                 Decimal @db.Decimal(10,2)
+  descuento             Decimal @default(0) @db.Decimal(10,2)
+  total                 Decimal @db.Decimal(10,2)
+  estatus               Boolean @default(true)
+  
+  transaccion Transaccion @relation(fields: [id_transaccion], references: [id_transaccion], onDelete: Cascade)
+  producto    Producto    @relation(fields: [id_producto], references: [id_producto])
+  tareas      Tarea[]
+  
+  @@map("detalle_transaccion")
+}
+
+model Tarea {
+  id_tarea               Int       @id @default(autoincrement())
+  id_detalle_transaccion Int
+  id_usuario             Int
+  estado                 String    @db.VarChar(30) // 'pendiente', 'en_proceso', 'completado'
+  fecha_inicio           DateTime?
+  fecha_fin              DateTime?
+  tiempo_estimado        Int?      // en minutos
+  tiempo_real           Int?      // en minutos
+  notas                 String?   @db.Text
+  
+  detalle_transaccion DetalleTransaccion @relation(fields: [id_detalle_transaccion], references: [id_detalle_transaccion])
+  usuario             Usuario            @relation(fields: [id_usuario], references: [id_usuario])
+  
+  @@map("tarea")
+}
+
+// Tablas de relación
+model TransaccionProveedor {
+  id_transaccion Int
+  id_proveedor   Int
+  
+  transaccion Transaccion @relation(fields: [id_transaccion], references: [id_transaccion])
+  proveedor   Proveedor   @relation(fields: [id_proveedor], references: [id_proveedor])
+  
+  @@id([id_transaccion, id_proveedor])
+  @@map("transaccion_proveedor")
+}
+
+model TransaccionVehiculo {
+  id_transaccion       Int
+  id_vehiculo          Int
+  id_usuario           Int
+  nivel_combustible    String? @db.VarChar(20)
+  kilometraje_millas   Int?
+  descripcion         String? @db.Text
+  
+  transaccion Transaccion @relation(fields: [id_transaccion], references: [id_transaccion])
+  vehiculo    Vehiculo    @relation(fields: [id_vehiculo], references: [id_vehiculo])
+  usuario     Usuario     @relation(fields: [id_usuario], references: [id_usuario])
+  
+  @@id([id_transaccion, id_vehiculo])
+  @@map("transaccion_vehiculo")
+}
+
+// Sistema de auditoría
+model Bitacora {
+  id_bitacora Int       @id @default(autoincrement())
+  id_usuario  Int
+  accion      String    @db.VarChar(100)
+  descripcion String?   @db.Text
+  fecha_hora  DateTime  @default(now())
+  tabla       String?   @db.VarChar(50)
+  ip_publica  String?   @db.VarChar(45)
+  
+  usuario Usuario @relation(fields: [id_usuario], references: [id_usuario])
+  
+  @@map("bitacora")
+}
+
+// Configuración del sistema
+model Configuracion {
+  id_conf                Int       @id @default(autoincrement())
+  nombre_empresa         String    @db.VarChar(200)
+  direccion             String?   @db.Text
+  telefono              String?   @db.VarChar(15)
+  celular               String?   @db.VarChar(15)
+  correo                String?   @db.VarChar(100)
+  rtn                   String?   @db.VarChar(20)
+  isv                   String?   @db.VarChar(20)
+  precio_dolar          Decimal?  @db.Decimal(10,4)
+  cai                   String?   @db.VarChar(50)
+  cantidad_facturas     Int?
+  numero_inicial        Int?
+  numero_final          Int?
+  fecha_limite_emision  DateTime?
+  imagen_logo           String?   @db.Text
+  created_at            DateTime  @default(now())
+  updated_at            DateTime  @updatedAt
+  
+  @@map("configuracion")
+}
