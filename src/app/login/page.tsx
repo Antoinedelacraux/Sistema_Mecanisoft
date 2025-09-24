@@ -33,17 +33,16 @@ export default function LoginPage() {
 
       if (result?.error) {
         setError("Usuario o contraseña incorrectos")
-        toast({
-          title: "Error de autenticación",
+        toast("Error de autenticación", {
           description: "Usuario o contraseña incorrectos",
           variant: "destructive",
         })
       } else {
         // Login exitoso
-        toast({
-          title: "¡Bienvenido!",
-          description: "Sesión iniciada correctamente",
-        })
+        toast(
+          "¡Bienvenido!",
+          { description: "Sesión iniciada correctamente" }
+        )
         
         // Redirigir al dashboard
         router.push("/dashboard")
