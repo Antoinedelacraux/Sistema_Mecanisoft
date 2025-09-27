@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { VehiculosTable } from '@/components/vehiculos/vehiculos-table'
 import { VehiculoForm } from '@/components/vehiculos/vehiculo-form'
-import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { VehiculoCompleto } from '@/types'
 
 type ModalState = 'closed' | 'create' | 'edit' | 'view'
@@ -60,6 +60,9 @@ export default function VehiculosPage() {
       {/* Modal para formularios */}
       <Dialog open={modalState !== 'closed'} onOpenChange={() => setModalState('closed')}>
         <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Modal de Vehículos</DialogTitle>
+          </DialogHeader>
           {(modalState === 'create' || modalState === 'edit') && (
             <VehiculoForm
               vehiculo={selectedVehiculo}

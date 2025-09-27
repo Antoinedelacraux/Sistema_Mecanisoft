@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Search, Plus, Edit, Trash2, Eye, Car, User } from 'lucide-react'
+import { Search, Plus, Edit, Trash2, Eye, Car, User, Settings } from 'lucide-react'
 import { VehiculoCompleto } from '@/types'
 import { useToast } from '@/components/ui/use-toast'
 
@@ -34,6 +34,7 @@ export function VehiculosTable({ onEdit, onView, onCreateNew, refreshTrigger }: 
   const fetchVehiculos = useCallback(async () => {
     try {
       setLoading(true)
+      console.log('[vehiculos] fetchVehiculos start', { page, search })
       const params = new URLSearchParams({
         page: page.toString(),
         limit: '10',
@@ -41,20 +42,32 @@ export function VehiculosTable({ onEdit, onView, onCreateNew, refreshTrigger }: 
       })
 
       const response = await fetch(`/api/vehiculos?${params}`)
+      console.log('[vehiculos] response status', response.status)
       if (!response.ok) throw new Error('Error al cargar vehículos')
 
       const data = await response.json()
-      setVehiculos(data.vehiculos)
-      setPagination(data.pagination)
-    } catch (error) {
+      console.log('[vehiculos] response body', data)
+      // Safe defaults if API returns unexpected shape
+      setVehiculos(data?.vehiculos || [])
+      setPagination(
+        data?.pagination || {
+          total: 0,
+          pages: 0,
+          current: 1,
+          limit: 10,
+        }
+      )
+    } catch (error: any) {
       console.error('Error:', error)
+      const message = error?.message || 'Error al cargar los vehículos'
       toast({
         title: "Error",
-        description: "Error al cargar los vehículos",
+        description: message,
         variant: "destructive",
       })
     } finally {
       setLoading(false)
+      console.log('[vehiculos] fetchVehiculos finished, loading=false')
     }
   }, [page, search, toast])
 
@@ -121,10 +134,19 @@ export function VehiculosTable({ onEdit, onView, onCreateNew, refreshTrigger }: 
               Administra los vehículos de tus clientes
             </CardDescription>
           </div>
-          <Button onClick={onCreateNew}>
-            <Plus className="w-4 h-4 mr-2" />
-            Nuevo Vehículo
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => window.open('/dashboard/vehiculos/marcas', '_blank')}
+            >
+              <Settings className="w-4 h-4 mr-2" />
+              Marcas
+            </Button>
+            <Button onClick={onCreateNew}>
+              <Plus className="w-4 h-4 mr-2" />
+              Nuevo Vehículo
+            </Button>
+          </div>
         </div>
       </CardHeader>
       

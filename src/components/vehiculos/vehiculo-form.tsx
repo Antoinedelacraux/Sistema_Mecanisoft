@@ -1,15 +1,18 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { Plus } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
+import { Textarea } from '@/components/ui/textarea' // ✅ Agregar import:
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { VehiculoFormData, VehiculoCompleto, ClienteCompleto, MarcaCompleta, ModeloCompleto } from '@/types'
+import { MarcasModelosManager } from './marcas-modelos-manager' // ✅ Agregar import:
 import { useToast } from '@/components/ui/use-toast'
 
 interface VehiculoFormProps {
@@ -24,6 +27,7 @@ export function VehiculoForm({ vehiculo, onSuccess, onCancel }: VehiculoFormProp
   const [marcas, setMarcas] = useState<MarcaCompleta[]>([])
   const [modelos, setModelos] = useState<ModeloCompleto[]>([])
   const [selectedMarca, setSelectedMarca] = useState<string>('')
+  const [showMarcasManager, setShowMarcasManager] = useState(false) // ✅ Nuevo estado
   
   const { toast } = useToast()
 
@@ -51,39 +55,39 @@ export function VehiculoForm({ vehiculo, onSuccess, onCancel }: VehiculoFormProp
     }
   })
 
+  const fetchData = async () => {
+    try {
+      // Cargar clientes activos
+      const clientesResponse = await fetch('/api/clientes/activos')
+      const clientesData = await clientesResponse.json()
+      setClientes(clientesData.clientes || [])
+
+      // Cargar marcas
+      const marcasResponse = await fetch('/api/marcas')
+      const marcasData = await marcasResponse.json()
+      setMarcas(marcasData.marcas || [])
+
+      // Si estamos editando, cargar modelos de la marca seleccionada
+      if (vehiculo) {
+        setSelectedMarca(vehiculo.modelo.id_marca.toString())
+        const modelosResponse = await fetch(`/api/modelos?marca_id=${vehiculo.modelo.id_marca}`)
+        const modelosData = await modelosResponse.json()
+        setModelos(modelosData.modelos || [])
+      }
+    } catch (error) {
+      console.error('Error cargando datos:', error)
+      toast({
+        title: "Error",
+        description: "Error al cargar los datos del formulario",
+        variant: "destructive",
+      })
+    }
+  }
+
   // Cargar datos iniciales
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        // Cargar clientes activos
-        const clientesResponse = await fetch('/api/clientes/activos')
-        const clientesData = await clientesResponse.json()
-        setClientes(clientesData.clientes || [])
-
-        // Cargar marcas
-        const marcasResponse = await fetch('/api/marcas')
-        const marcasData = await marcasResponse.json()
-        setMarcas(marcasData.marcas || [])
-
-        // Si estamos editando, cargar modelos de la marca seleccionada
-        if (vehiculo) {
-          setSelectedMarca(vehiculo.modelo.id_marca.toString())
-          const modelosResponse = await fetch(`/api/modelos?marca_id=${vehiculo.modelo.id_marca}`)
-          const modelosData = await modelosResponse.json()
-          setModelos(modelosData.modelos || [])
-        }
-      } catch (error) {
-        console.error('Error cargando datos:', error)
-        toast({
-          title: "Error",
-          description: "Error al cargar los datos del formulario",
-          variant: "destructive",
-        })
-      }
-    }
-
     fetchData()
-  }, [vehiculo, toast])
+  }, [vehiculo, toast]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cargar modelos cuando cambia la marca
   useEffect(() => {
@@ -148,6 +152,13 @@ export function VehiculoForm({ vehiculo, onSuccess, onCancel }: VehiculoFormProp
     } finally {
       setLoading(false)
     }
+  }
+
+  // ✅ Función para refrescar datos cuando se cierre el manager
+  const handleMarcasManagerClose = () => {
+    setShowMarcasManager(false)
+    // Recargar marcas y modelos
+    fetchData()
   }
 
   return (
@@ -243,8 +254,20 @@ export function VehiculoForm({ vehiculo, onSuccess, onCancel }: VehiculoFormProp
               </div>
 
               <div>
-                <Label htmlFor="marca">Marca *</Label>
-                <Select onValueChange={setSelectedMarca} defaultValue={vehiculo?.modelo.id_marca.toString() || ''}>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="marca">Marca *</Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowMarcasManager(true)}
+                    className="text-blue-600 hover:text-blue-700"
+                  >
+                    <Plus className="w-4 h-4 mr-1" />
+                    Gestionar
+                  </Button>
+                </div>
+                <Select onValueChange={setSelectedMarca} value={selectedMarca} defaultValue={vehiculo?.modelo.id_marca.toString() || ''}>
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccionar marca" />
                   </SelectTrigger>
@@ -390,6 +413,16 @@ export function VehiculoForm({ vehiculo, onSuccess, onCancel }: VehiculoFormProp
           </div>
         </form>
       </CardContent>
+
+      {/* Modal de gestión de marcas */}
+      <Dialog open={showMarcasManager} onOpenChange={setShowMarcasManager}>
+        <DialogContent className="max-w-7xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Gestión de Marcas y Modelos</DialogTitle>
+          </DialogHeader>
+          <MarcasModelosManager onClose={handleMarcasManagerClose} />
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }

@@ -38,6 +38,11 @@ const menuItems = [
     href: "/dashboard/vehiculos",
   },
   {
+    title: "Marcas y Modelos", // ✅ Nuevo item
+    icon: Settings, // o cualquier icono apropiado
+    href: "/dashboard/vehiculos/marcas",
+  },
+  {
     title: "Productos",
     icon: Package,
     href: "/dashboard/productos",
