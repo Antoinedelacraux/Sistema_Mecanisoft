@@ -133,8 +133,14 @@ export function ClienteForm({ cliente, onSuccess, onCancel }: ClienteFormProps) 
       })
 
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Error al guardar cliente')
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (e) {
+          throw new Error(await response.text() || 'Error al guardar cliente');
+        }
+        console.error("Error de la API:", errorData);
+        throw new Error(errorData.error || 'Error al guardar cliente');
       }
 
       toast(

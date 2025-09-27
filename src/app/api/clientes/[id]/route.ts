@@ -5,17 +5,21 @@ import { prisma } from '@/lib/prisma'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: any }
 ) {
   try {
-    const session = await getServerSession(authOptions)
+    const session = await getServerSession(authOptions);
     if (!session) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
 
-    const id = parseInt(params.id, 10)
+    // `params` can be an awaited value in Next.js runtime. Await it before
+    // accessing its properties to avoid the `sync-dynamic-apis` warning.
+    const params = await context.params;
+    const id = parseInt(params.id, 10);
+
     if (isNaN(id)) {
-      return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
+      return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
     }
 
     const cliente = await prisma.cliente.findUnique({
@@ -26,41 +30,40 @@ export async function GET(
           include: {
             modelo: {
               include: {
-                marca: true
-              }
-            }
-          }
-        }
-      }
-    })
+                marca: true,
+              },
+            },
+          },
+        },
+      },
+    });
 
     if (!cliente) {
-      return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 })
+      return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 });
     }
 
-    return NextResponse.json(cliente)
-
+    return NextResponse.json(cliente);
   } catch (error) {
-    console.error('Error obteniendo cliente:', error)
+    console.error('Error obteniendo cliente:', error);
     return NextResponse.json(
-      { error: 'Error interno del servidor' }, 
+      { error: 'Error interno del servidor' },
       { status: 500 }
-    )
+    );
   }
 }
 
 // ✅ Agregar nuevo endpoint para cambiar estado
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: any }
 ) {
   try {
     const session = await getServerSession(authOptions)
     if (!session) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
-
-    const id = parseInt(params.id)
+    const params = await context.params
+    const id = parseInt(params.id, 10)
     if (isNaN(id)) {
       return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
     }
@@ -78,7 +81,7 @@ export async function PATCH(
       }
 
       // Actualizar estado
-      const clienteActualizado = await prisma.cliente.update({
+      await prisma.cliente.update({
         where: { id_cliente: id },
         data: { estatus: estatus }
       })
@@ -86,14 +89,14 @@ export async function PATCH(
       // Registrar en bitácora
       await prisma.bitacora.create({
         data: {
-          id_usuario: parseInt(session.user.id),
+          id_usuario: parseInt(session.user.id, 10),
           accion: 'TOGGLE_STATUS_CLIENTE',
           descripcion: `Cliente ${estatus ? 'activado' : 'desactivado'}: ${cliente.persona.nombre} ${cliente.persona.apellido_paterno}`,
           tabla: 'cliente'
         }
       })
 
-      return NextResponse.json(clienteActualizado)
+      return NextResponse.json(cliente) // Devolver el cliente con la persona incluida
     }
 
     return NextResponse.json({ error: 'Acción no válida' }, { status: 400 })
@@ -109,82 +112,109 @@ export async function PATCH(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: any }
 ) {
   try {
-    const session = await getServerSession(authOptions)
+    const session = await getServerSession(authOptions);
     if (!session) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
-
-    const id = parseInt(params.id)
+    const params = await context.params;
+    const id = parseInt(params.id, 10);
     if (isNaN(id)) {
-      return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
+      return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
     }
 
-    const data = await request.json()
+    const data = await request.json();
+    console.log('Datos recibidos:', data); // Log para depuración
 
     // Verificar que el cliente existe
     const clienteExistente = await prisma.cliente.findUnique({
       where: { id_cliente: id },
-      include: { persona: true }
-    })
+      include: { persona: true },
+    });
 
     if (!clienteExistente) {
-      return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 })
+      return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 });
     }
 
     // Verificar si el nuevo documento ya existe (si se cambió)
     if (data.numero_documento !== clienteExistente.persona.numero_documento) {
       const existeDocumento = await prisma.persona.findUnique({
-        where: { numero_documento: data.numero_documento }
-      })
+        where: { numero_documento: data.numero_documento },
+      });
 
       if (existeDocumento) {
         return NextResponse.json(
-          { error: 'Ya existe una persona con este número de documento' }, 
+          { error: 'Ya existe una persona con este número de documento' },
           { status: 400 }
-        )
+        );
       }
     }
 
-    // Actualizar persona
-    const clienteActualizado = await prisma.persona.update({
-      where: { id_persona: clienteExistente.id_persona },
-      data: {
-        nombre: data.nombre,
-        apellido_paterno: data.apellido_paterno,
-        apellido_materno: data.apellido_materno,
-        tipo_documento: data.tipo_documento,
-        numero_documento: data.numero_documento,
-        sexo: data.sexo,
-        telefono: data.telefono,
-        correo: data.correo,
-        empresa: data.empresa
-      },
-      include: {
-        cliente: true
+    try {
+      // Actualizar persona
+      await prisma.persona.update({
+        where: { id_persona: clienteExistente.id_persona },
+        data: {
+          nombre: data.nombre,
+          apellido_paterno: data.apellido_paterno,
+          apellido_materno: data.apellido_materno || null,
+          tipo_documento: data.tipo_documento,
+          numero_documento: data.numero_documento,
+          sexo: data.sexo || null,
+          telefono: data.telefono || null,
+          correo: data.correo || null,
+          empresa: data.empresa || null,
+        },
+      });
+    } catch (error) {
+      console.error('Error actualizando persona:', error);
+      return NextResponse.json(
+        { error: 'Error actualizando los datos de la persona' },
+        { status: 500 }
+      );
+    }
+
+    try {
+      // Volver a buscar el cliente con todas las relaciones para la respuesta y la bitácora
+      const clienteActualizado = await prisma.cliente.findUnique({
+        where: { id_cliente: id },
+        include: { persona: true },
+      });
+
+      // Verificar si clienteActualizado es null
+      if (!clienteActualizado) {
+        return NextResponse.json(
+          { error: 'No se pudo encontrar el cliente actualizado' },
+          { status: 404 }
+        );
       }
-    })
 
-    // Registrar en bitácora
-    await prisma.bitacora.create({
-      data: {
-        id_usuario: parseInt(session.user.id),
-        accion: 'UPDATE_CLIENTE',
-        descripcion: `Cliente actualizado: ${data.nombre} ${data.apellido_paterno}`,
-        tabla: 'cliente'
-      }
-    })
+      // Registrar en bitácora
+      await prisma.bitacora.create({
+        data: {
+          id_usuario: parseInt(session.user.id, 10),
+          accion: 'UPDATE_CLIENTE',
+          descripcion: `Cliente actualizado: ${clienteActualizado.persona.nombre} ${clienteActualizado.persona.apellido_paterno}`,
+          tabla: 'cliente',
+        },
+      });
 
-    return NextResponse.json(clienteActualizado)
-
+      return NextResponse.json(clienteActualizado);
+    } catch (error) {
+      console.error('Error registrando en bitácora o buscando cliente actualizado:', error);
+      return NextResponse.json(
+        { error: 'Error interno al finalizar la actualización' },
+        { status: 500 }
+      );
+    }
   } catch (error) {
-    console.error('Error actualizando cliente:', error)
+    console.error('Error general en PUT cliente:', error);
     return NextResponse.json(
-      { error: 'Error interno del servidor' }, 
+      { error: 'Error interno del servidor' },
       { status: 500 }
-    )
+    );
   }
 }
 
@@ -192,15 +222,15 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: any }
 ) {
   try {
     const session = await getServerSession(authOptions)
     if (!session) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
-
-    const id = parseInt(params.id)
+  const params = await context.params;
+    const id = parseInt(params.id, 10);
     if (isNaN(id)) {
       return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
     }
@@ -240,7 +270,7 @@ export async function DELETE(
     // Registrar en bitácora
     await prisma.bitacora.create({
       data: {
-        id_usuario: parseInt(session.user.id),
+        id_usuario: parseInt(session.user.id, 10),
         accion: 'DELETE_CLIENTE_PERMANENT',
         descripcion: `Cliente eliminado permanentemente: ${cliente.persona.nombre} ${cliente.persona.apellido_paterno}`,
         tabla: 'cliente'

@@ -10,11 +10,24 @@ export type ClienteCompleto = Cliente & {
 }
 
 export type VehiculoCompleto = Vehiculo & {
-  cliente: {
+  cliente: Cliente & {
     persona: Persona
   }
   modelo: Modelo & {
     marca: Marca
+  }
+}
+
+export type MarcaCompleta = Marca & {
+  _count: {
+    modelos: number
+  }
+}
+
+export type ModeloCompleto = Modelo & {
+  marca: Marca
+  _count: {
+    vehiculos: number
   }
 }
 
@@ -43,6 +56,17 @@ export type VehiculoFormData = {
   numero_chasis?: string
   numero_motor?: string
   observaciones?: string
+}
+
+export type MarcaFormData = {
+  nombre_marca: string
+  descripcion?: string
+}
+
+export type ModeloFormData = {
+  id_marca: number
+  nombre_modelo: string
+  descripcion?: string
 }
 
 // Opciones para selects
