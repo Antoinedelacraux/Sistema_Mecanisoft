@@ -57,9 +57,9 @@ export function VehiculosTable({ onEdit, onView, onCreateNew, refreshTrigger }: 
           limit: 10,
         }
       )
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error:', error)
-      const message = error?.message || 'Error al cargar los vehículos'
+      const message = error instanceof Error ? error.message : 'Error al cargar los vehículos'
       toast({
         title: "Error",
         description: message,

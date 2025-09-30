@@ -201,10 +201,11 @@ export function CategoriasManager({ onClose }: CategoriasManagerProps) {
 
       setCategoriaForm({ nombre: '' })
       fetchCategorias()
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Error creando categoría'
       toast({
         title: "Error",
-        description: error.message,
+        description: message,
         variant: "destructive",
       })
     } finally {
@@ -243,10 +244,11 @@ export function CategoriasManager({ onClose }: CategoriasManagerProps) {
 
       setFabricanteForm({ nombre_fabricante: '', descripcion: '' })
       fetchFabricantes()
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Error creando fabricante'
       toast({
         title: "Error",
-        description: error.message,
+        description: message,
         variant: "destructive",
       })
     } finally {
@@ -285,10 +287,11 @@ export function CategoriasManager({ onClose }: CategoriasManagerProps) {
 
       setUnidadForm({ nombre_unidad: '', abreviatura: '' })
       fetchUnidades()
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Error creando unidad'
       toast({
         title: "Error",
-        description: error.message,
+        description: message,
         variant: "destructive",
       })
     } finally {

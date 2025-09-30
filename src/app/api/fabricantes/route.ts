@@ -13,13 +13,13 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const includeInactive = searchParams.get('include_inactive') === 'true'
 
-    const whereCondition = includeInactive ? {} : { estatus: true }
+    const whereCondition = includeInactive ? {} : { estado: true }
 
-    const categorias = await prisma.categoria.findMany({
+    const fabricantesDb = await prisma.fabricante.findMany({
       where: whereCondition,
       orderBy: [
-        { estatus: 'desc' }, // Activos primero
-        { nombre: 'asc' }
+        { estado: 'desc' }, // Activos primero
+        { nombre_fabricante: 'asc' }
       ],
       include: {
         _count: {
@@ -28,10 +28,13 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    return NextResponse.json({ categorias })
+    // Mapear para exponer 'estatus' (consistencia con frontend) además de conservar estado interno
+    const fabricantes = fabricantesDb.map(f => ({ ...f, estatus: f.estado }))
+
+    return NextResponse.json({ fabricantes })
 
   } catch (error) {
-    console.error('Error obteniendo categorías:', error)
+    console.error('Error obteniendo fabricantes:', error)
     return NextResponse.json(
       { error: 'Error interno del servidor' }, 
       { status: 500 }
@@ -72,12 +75,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const fabricante = await prisma.fabricante.create({
+    const fabricanteCreado = await prisma.fabricante.create({
       data: {
         nombre_fabricante,
         descripcion
+      },
+      include: {
+        _count: {
+          select: { productos: true }
+        }
       }
     })
+
+    const fabricante = { ...fabricanteCreado, estatus: fabricanteCreado.estado }
 
     // Registrar en bitácora
     await prisma.bitacora.create({
@@ -89,10 +99,10 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    return NextResponse.json(fabricante, { status: 201 })
+  return NextResponse.json(fabricante, { status: 201 })
 
   } catch (error) {
-    console.error('Error creando fabricante:', error)
+  console.error('Error creando fabricante:', error)
     return NextResponse.json(
       { error: 'Error interno del servidor' }, 
       { status: 500 }

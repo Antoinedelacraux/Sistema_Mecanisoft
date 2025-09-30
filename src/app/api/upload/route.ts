@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
+import { prisma } from '@/lib/prisma'
 
 export async function POST(request: NextRequest) {
   try {

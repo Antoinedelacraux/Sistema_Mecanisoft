@@ -15,11 +15,11 @@ export async function GET(request: NextRequest) {
 
     const whereCondition = includeInactive ? {} : { estatus: true }
 
-    const categorias = await prisma.categoria.findMany({
+    const unidadesDb = await prisma.unidadMedida.findMany({
       where: whereCondition,
       orderBy: [
-        { estatus: 'desc' }, // Activos primero
-        { nombre: 'asc' }
+        { estatus: 'desc' },
+        { nombre_unidad: 'asc' }
       ],
       include: {
         _count: {
@@ -28,10 +28,12 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    return NextResponse.json({ categorias })
+    const unidades = unidadesDb.map(u => ({ ...u, estatus: u.estatus }))
+
+    return NextResponse.json({ unidades })
 
   } catch (error) {
-    console.error('Error obteniendo categorías:', error)
+    console.error('Error obteniendo unidades:', error)
     return NextResponse.json(
       { error: 'Error interno del servidor' }, 
       { status: 500 }
@@ -82,12 +84,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const unidad = await prisma.unidadMedida.create({
+    const unidadCreada = await prisma.unidadMedida.create({
       data: {
         nombre_unidad,
         abreviatura
+      },
+      include: {
+        _count: {
+          select: { productos: true }
+        }
       }
     })
+
+    const unidad = { ...unidadCreada }
 
     // Registrar en bitácora
     await prisma.bitacora.create({
@@ -99,7 +108,7 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    return NextResponse.json(unidad, { status: 201 })
+  return NextResponse.json(unidad, { status: 201 })
 
   } catch (error) {
     console.error('Error creando unidad:', error)

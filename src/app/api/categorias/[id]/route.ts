@@ -3,17 +3,26 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
+type ParamsInput = { params: { id: string } } | { params: Promise<{ id: string }> }
+function isPromise<T>(value: T | Promise<T>): value is Promise<T> {
+  return typeof (value as unknown as { then?: unknown })?.then === 'function'
+}
+async function resolveParams(ctx: ParamsInput): Promise<{ id: string }> {
+  const raw = (ctx as { params: { id: string } | Promise<{ id: string }> }).params
+  return isPromise(raw) ? await raw : raw
+}
+
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  ctx: ParamsInput
 ) {
   try {
     const session = await getServerSession(authOptions)
     if (!session) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
-
-    const id = parseInt(params.id)
+    const { id: idRaw } = await resolveParams(ctx)
+    const id = parseInt(idRaw)
     if (isNaN(id)) {
       return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
     }
@@ -58,6 +67,43 @@ export async function PATCH(
     console.error('Error en PATCH categoria:', error)
     return NextResponse.json(
       { error: 'Error interno del servidor' }, 
+      { status: 500 }
+    )
+  }
+}
+
+// Añadido para cumplir con el validador de rutas de Next y evitar incompatibilidades de tipos.
+export async function GET(
+  _request: NextRequest,
+  ctx: ParamsInput
+) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+    }
+    const { id: idRaw } = await resolveParams(ctx)
+    const id = parseInt(idRaw)
+    if (isNaN(id)) {
+      return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
+    }
+
+    const categoria = await prisma.categoria.findUnique({
+      where: { id_categoria: id },
+      include: {
+        _count: { select: { productos: true } }
+      }
+    })
+
+    if (!categoria) {
+      return NextResponse.json({ error: 'Categoría no encontrada' }, { status: 404 })
+    }
+
+    return NextResponse.json(categoria)
+  } catch (error) {
+    console.error('Error obteniendo categoría:', error)
+    return NextResponse.json(
+      { error: 'Error interno del servidor' },
       { status: 500 }
     )
   }

@@ -36,8 +36,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Determinar el tipo de persona que ya tiene este documento
-    let tipo = 'persona'
-    let nombre = `${persona.nombre} ${persona.apellido_paterno}`
+  let tipo = 'persona'
+  const nombre = `${persona.nombre} ${persona.apellido_paterno}`
     
     if (persona.cliente) tipo = 'cliente'
     else if (persona.proveedor) tipo = 'proveedor'  

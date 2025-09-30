@@ -28,6 +28,7 @@ export function ProductosTable({ onEdit, onView, onCreateNew, onManageCategories
   const [categoriaFilter, setCategoriaFilter] = useState('all')
   const [tipoFilter, setTipoFilter] = useState('all')
   const [stockBajo, setStockBajo] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
   const [page, setPage] = useState(1)
   const [pagination, setPagination] = useState({
     total: 0,
@@ -202,7 +203,7 @@ export function ProductosTable({ onEdit, onView, onCreateNew, onManageCategories
       
       <CardContent>
         {/* Filtros */}
-        <div className="flex flex-col md:flex-row items-center gap-4 mb-6">
+  <div className="flex flex-col md:flex-row items-center gap-4 mb-6">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <Input
@@ -239,6 +240,17 @@ export function ProductosTable({ onEdit, onView, onCreateNew, onManageCategories
               </SelectContent>
             </Select>
 
+            <Select value={statusFilter} onValueChange={(v: 'all' | 'active' | 'inactive') => { setStatusFilter(v); setPage(1) }}>
+              <SelectTrigger className="w-36">
+                <SelectValue placeholder="Estado" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="active">Activos</SelectItem>
+                <SelectItem value="inactive">Inactivos</SelectItem>
+              </SelectContent>
+            </Select>
+
             <Button
               variant={stockBajo ? "default" : "outline"}
               onClick={() => setStockBajo(!stockBajo)}
@@ -251,7 +263,7 @@ export function ProductosTable({ onEdit, onView, onCreateNew, onManageCategories
         </div>
 
         {/* Estadísticas rápidas */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-7 gap-4 mb-6">
           <div className="text-center p-3 bg-blue-50 rounded-lg">
             <Package className="w-6 h-6 text-blue-600 mx-auto mb-1" />
             <div className="text-lg font-bold text-blue-600">{productos.length}</div>
@@ -280,6 +292,18 @@ export function ProductosTable({ onEdit, onView, onCreateNew, onManageCategories
               {productos.filter(p => p.stock > 0 && p.stock <= p.stock_minimo).length}
             </div>
             <div className="text-sm text-orange-600">Stock Bajo</div>
+          </div>
+          <div className="text-center p-3 bg-emerald-50 rounded-lg">
+            <div className="text-lg font-bold text-emerald-600">
+              {productos.filter(p => p.estatus).length}
+            </div>
+            <div className="text-sm text-emerald-600">Activos</div>
+          </div>
+          <div className="text-center p-3 bg-gray-100 rounded-lg">
+            <div className="text-lg font-bold text-gray-600">
+              {productos.filter(p => !p.estatus).length}
+            </div>
+            <div className="text-sm text-gray-600">Inactivos</div>
           </div>
         </div>
 
@@ -320,7 +344,19 @@ export function ProductosTable({ onEdit, onView, onCreateNew, onManageCategories
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {productos.map((producto) => (
+                  {(() => {
+                    const filtered = productos.filter(p => {
+                      if (statusFilter === 'active') return p.estatus === true
+                      if (statusFilter === 'inactive') return p.estatus === false
+                      return true
+                    })
+                    const activos: typeof filtered = []
+                    const inactivos: typeof filtered = []
+                    for (const p of filtered) {
+                      (p.estatus ? activos : inactivos).push(p)
+                    }
+                    const ordered = [...activos, ...inactivos]
+                    return ordered.map(producto => (
                     <TableRow key={producto.id_producto} className={!producto.estatus ? "bg-gray-50 opacity-75" : ""}>
                       <TableCell>
                         <div className="flex items-center gap-3">
@@ -369,10 +405,10 @@ export function ProductosTable({ onEdit, onView, onCreateNew, onManageCategories
                       
                       <TableCell>
                         <div className="text-sm">
-                          <div><strong>Venta:</strong> {formatPrice(producto.precio_venta)}</div>
-                          <div className="text-gray-500">Compra: {formatPrice(producto.precio_compra)}</div>
-                          {producto.descuento > 0 && (
-                            <div className="text-green-600">Desc: {producto.descuento}%</div>
+                          <div><strong>Venta:</strong> {formatPrice(Number(producto.precio_venta))}</div>
+                          <div className="text-gray-500">Compra: {formatPrice(Number(producto.precio_compra))}</div>
+                          {Number(producto.descuento) > 0 && (
+                            <div className="text-green-600">Desc: {Number(producto.descuento)}%</div>
                           )}
                         </div>
                       </TableCell>
@@ -427,7 +463,8 @@ export function ProductosTable({ onEdit, onView, onCreateNew, onManageCategories
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    ))
+                  })()}
                 </TableBody>
               </Table>
             </div>

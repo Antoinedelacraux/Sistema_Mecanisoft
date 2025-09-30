@@ -1,16 +1,20 @@
 import { toast as sonnerToast } from "sonner"
+import { ReactNode } from 'react'
 
-type ToastPayload =
-  | string
-  | {
-      title: string
-      description?: string
-      variant?: any
-      [key: string]: any
-    }
+type ToastVariant = 'default' | 'destructive' | 'success' | 'warning' | 'info'
+interface ToastObject {
+  title: string
+  description?: string | ReactNode
+  variant?: ToastVariant
+  // Permitir extensiones sin recurrir a any peligroso
+  actionLabel?: string
+  duration?: number
+}
+type ToastPayload = string | ToastObject
+type ToastOptions = { duration?: number } & Record<string, unknown>
 
 // Module-level toast function: keep stable reference across renders/components
-const toast = (content: ToastPayload, options?: Record<string, any>) => {
+const toast = (content: ToastPayload, options?: ToastOptions) => {
   // If caller passed a simple string or React node, forward as-is
   if (typeof content === 'string') {
     sonnerToast(content, options)
@@ -19,8 +23,8 @@ const toast = (content: ToastPayload, options?: Record<string, any>) => {
 
   // If caller passed an object like { title, description, variant }, map to sonner signature
   if (content && typeof content === 'object' && 'title' in content) {
-    const { title, description, variant, ...rest } = content as any
-    sonnerToast(title, { description, variant, ...rest })
+    const { title, description, variant, ...rest } = content as ToastObject & Record<string, unknown>
+    sonnerToast(title, { description, ...(variant ? { className: variant } : {}), ...rest })
     return
   }
 

@@ -109,6 +109,7 @@ export type ProductoFormData = {
   precio_venta: number
   descuento?: number
   oferta?: boolean
+  foto?: string | null
 }
 export type CategoriaFormData = {
   nombre: string

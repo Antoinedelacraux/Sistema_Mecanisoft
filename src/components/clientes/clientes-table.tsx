@@ -48,10 +48,11 @@ export function ClientesTable({ onEdit, onView, onCreateNew, refreshTrigger }: C
       const data = await response.json()
       setClientes(data.clientes)
       setPagination(data.pagination)
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error:', error)
+      const message = error instanceof Error ? error.message : 'Error al cargar los clientes'
       toast("Error", {
-        description: "Error al cargar los clientes",
+        description: message,
         variant: "destructive",
       })
     } finally {
@@ -124,9 +125,10 @@ export function ClientesTable({ onEdit, onView, onCreateNew, refreshTrigger }: C
       )
 
       fetchClientes()
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Error al eliminar el cliente'
       toast("Error", {
-        description: "Error al eliminar el cliente",
+        description: message,
         variant: "destructive",
       })
     }

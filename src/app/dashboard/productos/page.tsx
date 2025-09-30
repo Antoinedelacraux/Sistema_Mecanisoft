@@ -191,21 +191,21 @@ export default function ProductosPage() {
                       <p className="font-semibold">Precio de Venta</p>
                       <p className="text-xl font-bold text-green-600">S/ {selectedProducto.precio_venta.toFixed(2)}</p>
                     </div>
-                    {selectedProducto.descuento > 0 && (
+                    {Number(selectedProducto.descuento) > 0 && (
                       <div>
                         <p className="font-semibold">Descuento</p>
-                        <p className="text-lg text-blue-600">{selectedProducto.descuento}%</p>
+                        <p className="text-lg text-blue-600">{Number(selectedProducto.descuento)}%</p>
                       </div>
                     )}
                     <div className="bg-blue-50 p-3 rounded-lg">
                       <p className="text-blue-800">
                         <strong>Margen de Ganancia:</strong> {
-                          (((selectedProducto.precio_venta - selectedProducto.precio_compra) / selectedProducto.precio_compra) * 100).toFixed(2)
+                          (((Number(selectedProducto.precio_venta) - Number(selectedProducto.precio_compra)) / Number(selectedProducto.precio_compra)) * 100).toFixed(2)
                         }%
                       </p>
                       <p className="text-blue-800">
                         <strong>Ganancia por unidad:</strong> S/ {
-                          (selectedProducto.precio_venta - selectedProducto.precio_compra).toFixed(2)
+                          (Number(selectedProducto.precio_venta) - Number(selectedProducto.precio_compra)).toFixed(2)
                         }
                       </p>
                     </div>

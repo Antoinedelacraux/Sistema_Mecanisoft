@@ -100,10 +100,11 @@ export function MarcasModelosManager({ onClose }: MarcasModelosManagerProps) {
       setMarcaForm({ nombre_marca: '', descripcion: '' })
       setShowMarcaForm(false)
       fetchMarcas()
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Error creando marca'
       toast({
         title: "Error",
-        description: error.message,
+        description: message,
         variant: "destructive",
       })
     } finally {
@@ -145,10 +146,11 @@ export function MarcasModelosManager({ onClose }: MarcasModelosManagerProps) {
       setSelectedMarca(null)
       setShowMarcaForm(false)
       fetchMarcas()
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Error actualizando marca'
       toast({
         title: "Error",
-        description: error.message,
+        description: message,
         variant: "destructive",
       })
     } finally {
@@ -181,10 +183,11 @@ export function MarcasModelosManager({ onClose }: MarcasModelosManagerProps) {
       setSelectedModelo(null)
       setShowModeloForm(false)
       fetchModelos()
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Error actualizando modelo'
       toast({
         title: "Error",
-        description: error.message,
+        description: message,
         variant: "destructive",
       })
     } finally {
@@ -224,10 +227,11 @@ export function MarcasModelosManager({ onClose }: MarcasModelosManagerProps) {
       setModeloForm({ id_marca: 0, nombre_modelo: '', descripcion: '' })
       setShowModeloForm(false)
       fetchModelos()
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Error creando modelo'
       toast({
         title: "Error",
-        description: error.message,
+        description: message,
         variant: "destructive",
       })
     } finally {

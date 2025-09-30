@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
     const skip = (page - 1) * limit
 
     // Construir filtro de búsqueda
-    let whereCondition: any = {
+    let whereCondition: Prisma.VehiculoWhereInput = {
       estado: true,
       // ✅ Solo vehículos de clientes ACTIVOS
       cliente: {
@@ -29,12 +30,17 @@ export async function GET(request: NextRequest) {
 
     // Filtro por cliente específico
     if (clienteId) {
-      whereCondition.id_cliente = parseInt(clienteId)
+      const idCli = parseInt(clienteId)
+      if (!isNaN(idCli)) {
+        whereCondition = { ...whereCondition, id_cliente: idCli }
+      }
     }
 
     // Filtro de búsqueda
     if (search) {
-      whereCondition.OR = [
+      whereCondition = {
+        ...whereCondition,
+        OR: [
         { placa: { contains: search, mode: 'insensitive' as const } },
         { cliente: { 
           persona: { 
@@ -47,7 +53,8 @@ export async function GET(request: NextRequest) {
         }},
         { modelo: { nombre_modelo: { contains: search, mode: 'insensitive' as const } } },
         { modelo: { marca: { nombre_marca: { contains: search, mode: 'insensitive' as const } } } }
-      ]
+        ]
+      }
     }
 
     // Obtener vehículos con paginación

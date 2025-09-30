@@ -67,7 +67,7 @@ async function main() {
   
   console.log('✅ Usuario administrador creado')
   
-  // Crear categorías básicas
+  // Crear categorías básicas (sin upsert porque nombre no es único)
   const categorias = [
     'Aceites y Lubricantes',
     'Frenos',
@@ -76,13 +76,12 @@ async function main() {
     'Suspensión',
     'Servicios'
   ]
-  
+
   for (const cat of categorias) {
-    await prisma.categoria.upsert({
-      where: { nombre: cat },
-      update: {},
-      create: { nombre: cat }
-    })
+    const existe = await prisma.categoria.findFirst({ where: { nombre: cat } })
+    if (!existe) {
+      await prisma.categoria.create({ data: { nombre: cat } })
+    }
   }
   
   console.log('✅ Categorías creadas')
@@ -96,14 +95,15 @@ async function main() {
   ]
   
   for (const unidad of unidades) {
-    await prisma.unidadMedida.upsert({
-      where: { nombre_unidad: unidad.nombre },
-      update: {},
-      create: {
-        nombre_unidad: unidad.nombre,
-        abreviatura: unidad.abrev
-      }
-    })
+    const existe = await prisma.unidadMedida.findFirst({ where: { nombre_unidad: unidad.nombre } })
+    if (!existe) {
+      await prisma.unidadMedida.create({
+        data: {
+          nombre_unidad: unidad.nombre,
+          abreviatura: unidad.abrev
+        }
+      })
+    }
   }
   
   console.log('✅ Unidades de medida creadas')
@@ -119,14 +119,15 @@ async function main() {
   ]
   
   for (const fab of fabricantes) {
-    await prisma.fabricante.upsert({
-      where: { nombre_fabricante: fab },
-      update: {},
-      create: {
-        nombre_fabricante: fab,
-        descripcion: `Fabricante ${fab}`
-      }
-    })
+    const existe = await prisma.fabricante.findFirst({ where: { nombre_fabricante: fab } })
+    if (!existe) {
+      await prisma.fabricante.create({
+        data: {
+          nombre_fabricante: fab,
+          descripcion: `Fabricante ${fab}`
+        }
+      })
+    }
   }
   
   console.log('✅ Fabricantes creados')
@@ -161,17 +162,18 @@ async function main() {
     { nombre: 'Kia', descripcion: 'Marca surcoreana de vehículos' }
   ]
 
-  const marcasCreadas = []
+  const marcasCreadas = [] as { id_marca: number; nombre_marca: string }[]
   for (const marcaData of marcasVehiculos) {
-    const marca = await prisma.marca.upsert({
-      where: { nombre_marca: marcaData.nombre },
-      update: {},
-      create: {
-        nombre_marca: marcaData.nombre,
-        descripcion: marcaData.descripcion
-      }
-    })
-    marcasCreadas.push(marca)
+    let marca = await prisma.marca.findFirst({ where: { nombre_marca: marcaData.nombre } })
+    if (!marca) {
+      marca = await prisma.marca.create({
+        data: {
+          nombre_marca: marcaData.nombre,
+          descripcion: marcaData.descripcion
+        }
+      })
+    }
+    marcasCreadas.push({ id_marca: marca.id_marca, nombre_marca: marca.nombre_marca })
   }
 
   console.log('✅ Marcas de vehículos creadas')
@@ -192,15 +194,18 @@ async function main() {
     const modelos = modelosPorMarca[marca.nombre_marca as keyof typeof modelosPorMarca] || []
     
     for (const modeloNombre of modelos) {
-      await prisma.modelo.upsert({
-        where: { nombre_modelo_id_marca: { nombre_modelo: modeloNombre, id_marca: marca.id_marca } },
-        update: {},
-        create: {
-          id_marca: marca.id_marca,
-          nombre_modelo: modeloNombre,
-          descripcion: `Modelo ${modeloNombre} de ${marca.nombre_marca}`
-        }
+      const existeModelo = await prisma.modelo.findFirst({
+        where: { id_marca: marca.id_marca, nombre_modelo: modeloNombre }
       })
+      if (!existeModelo) {
+        await prisma.modelo.create({
+          data: {
+            id_marca: marca.id_marca,
+            nombre_modelo: modeloNombre,
+            descripcion: `Modelo ${modeloNombre} de ${marca.nombre_marca}`
+          }
+        })
+      }
     }
   }
 

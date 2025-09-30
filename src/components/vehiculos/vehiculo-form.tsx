@@ -143,10 +143,11 @@ export function VehiculoForm({ vehiculo, onSuccess, onCancel }: VehiculoFormProp
       })
 
       onSuccess()
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Error al guardar vehículo'
       toast({
         title: "Error",
-        description: error.message,
+        description: message,
         variant: "destructive",
       })
     } finally {

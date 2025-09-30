@@ -149,9 +149,10 @@ export function ClienteForm({ cliente, onSuccess, onCancel }: ClienteFormProps) 
       )
 
       onSuccess()
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Error al guardar cliente'
       toast("Error", {
-        description: error.message,
+        description: message,
         variant: "destructive",
       })
     } finally {

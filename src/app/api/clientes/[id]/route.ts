@@ -3,9 +3,19 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
+// Tipado flexible para compatibilidad con el validador de rutas de Next 15
+type ParamsInput = { params: { id: string } } | { params: Promise<{ id: string }> }
+function isPromise<T>(value: T | Promise<T>): value is Promise<T> {
+  return typeof (value as unknown as { then?: unknown })?.then === 'function'
+}
+async function resolveParams(ctx: ParamsInput): Promise<{ id: string }> {
+  const raw = (ctx as { params: { id: string } | Promise<{ id: string }> }).params
+  return isPromise(raw) ? await raw : raw
+}
+
 export async function GET(
   request: NextRequest,
-  context: { params: any }
+  ctx: ParamsInput
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -13,10 +23,8 @@ export async function GET(
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
 
-    // `params` can be an awaited value in Next.js runtime. Await it before
-    // accessing its properties to avoid the `sync-dynamic-apis` warning.
-    const params = await context.params;
-    const id = parseInt(params.id, 10);
+    const { id: rawId } = await resolveParams(ctx)
+    const id = parseInt(rawId, 10);
 
     if (isNaN(id)) {
       return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
@@ -55,15 +63,15 @@ export async function GET(
 // ✅ Agregar nuevo endpoint para cambiar estado
 export async function PATCH(
   request: NextRequest,
-  context: { params: any }
+  ctx: ParamsInput
 ) {
   try {
     const session = await getServerSession(authOptions)
     if (!session) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
-    const params = await context.params
-    const id = parseInt(params.id, 10)
+    const { id: rawId } = await resolveParams(ctx)
+    const id = parseInt(rawId, 10)
     if (isNaN(id)) {
       return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
     }
@@ -112,15 +120,15 @@ export async function PATCH(
 
 export async function PUT(
   request: NextRequest,
-  context: { params: any }
+  ctx: ParamsInput
 ) {
   try {
     const session = await getServerSession(authOptions);
     if (!session) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
-    const params = await context.params;
-    const id = parseInt(params.id, 10);
+    const { id: rawId } = await resolveParams(ctx)
+    const id = parseInt(rawId, 10);
     if (isNaN(id)) {
       return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
     }
@@ -222,15 +230,15 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  context: { params: any }
+  ctx: ParamsInput
 ) {
   try {
     const session = await getServerSession(authOptions)
     if (!session) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
-  const params = await context.params;
-    const id = parseInt(params.id, 10);
+    const { id: rawId } = await resolveParams(ctx)
+    const id = parseInt(rawId, 10);
     if (isNaN(id)) {
       return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
     }

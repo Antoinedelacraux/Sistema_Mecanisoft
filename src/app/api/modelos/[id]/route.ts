@@ -3,9 +3,19 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
+// Compatibilidad con validador de rutas (params puede ser Promise)
+type ParamsInput = { params: { id: string } } | { params: Promise<{ id: string }> }
+function isPromise<T>(v: T | Promise<T>): v is Promise<T> {
+  return typeof (v as unknown as { then?: unknown }).then === 'function'
+}
+async function resolveParams(ctx: ParamsInput): Promise<{ id: string }> {
+  const raw = (ctx as { params: { id: string } | Promise<{ id: string }> }).params
+  return isPromise(raw) ? await raw : raw
+}
+
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  ctx: ParamsInput
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -13,7 +23,8 @@ export async function GET(
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    const id = parseInt(params.id)
+    const { id: rawId } = await resolveParams(ctx)
+    const id = parseInt(rawId)
     if (isNaN(id)) {
       return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
     }
@@ -45,15 +56,15 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  ctx: ParamsInput
 ) {
   try {
     const session = await getServerSession(authOptions)
     if (!session) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
-
-    const id = parseInt(params.id)
+    const { id: rawId } = await resolveParams(ctx)
+    const id = parseInt(rawId)
     if (isNaN(id)) {
       return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
     }
@@ -147,15 +158,15 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  ctx: ParamsInput
 ) {
   try {
     const session = await getServerSession(authOptions)
     if (!session) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
-
-    const id = parseInt(params.id)
+    const { id: rawId } = await resolveParams(ctx)
+    const id = parseInt(rawId)
     if (isNaN(id)) {
       return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
     }

@@ -3,22 +3,31 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
+type ParamsInput = { params: { id: string } } | { params: Promise<{ id: string }> }
+function isPromise<T>(v: T | Promise<T>): v is Promise<T> {
+  return typeof (v as unknown as { then?: unknown }).then === 'function'
+}
+async function resolveParams(ctx: ParamsInput): Promise<{ id: string }> {
+  const raw = (ctx as { params: { id: string } | Promise<{ id: string }> }).params
+  return isPromise(raw) ? await raw : raw
+}
+
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  ctx: ParamsInput
 ) {
   try {
     const session = await getServerSession(authOptions)
     if (!session) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
-
-    const id = parseInt(params.id)
+    const { id: idRaw } = await resolveParams(ctx)
+    const id = parseInt(idRaw)
     if (isNaN(id)) {
       return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
     }
 
-    const { action, estatus } = await request.json()
+  const { action, estatus } = await request.json()
 
     if (action === 'toggle_status') {
       const unidad = await prisma.unidadMedida.findUnique({
@@ -29,7 +38,7 @@ export async function PATCH(
         return NextResponse.json({ error: 'Unidad no encontrada' }, { status: 404 })
       }
 
-      const unidadActualizada = await prisma.unidadMedida.update({
+      const unidadActualizadaDb = await prisma.unidadMedida.update({
         where: { id_unidad: id },
         data: { estatus: estatus },
         include: {
@@ -39,12 +48,14 @@ export async function PATCH(
         }
       })
 
+      const unidadActualizada = { ...unidadActualizadaDb }
+
       // Registrar en bitácora
       await prisma.bitacora.create({
         data: {
           id_usuario: parseInt(session.user.id),
           accion: 'TOGGLE_STATUS_UNIDAD',
-          descripción: `Unidad ${estatus ? 'activada' : 'desactivada'}: ${unidad.nombre_unidad}`,
+          descripcion: `Unidad ${estatus ? 'activada' : 'desactivada'}: ${unidad.nombre_unidad}`,
           tabla: 'unidad_medida'
         }
       })

@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -32,6 +34,24 @@ export function ProductoForm({ producto, onSuccess, onCancel }: ProductoFormProp
 
   const { toast } = useToast()
 
+  // Schema de validación
+  const schema = z.object({
+    id_categoria: z.number().int().positive(),
+    id_fabricante: z.number().int().positive(),
+    id_unidad: z.number().int().positive(),
+    tipo: z.enum(['producto', 'servicio']),
+    codigo_producto: z.string().min(1).max(50),
+    nombre: z.string().min(1).max(120),
+    descripcion: z.string().max(500).optional(),
+    stock: z.number().min(0),
+    stock_minimo: z.number().min(0),
+    precio_compra: z.number().min(0),
+    precio_venta: z.number().min(0),
+    descuento: z.number().min(0).max(100).optional(),
+    oferta: z.boolean().optional()
+  })
+  type SchemaType = z.infer<typeof schema>
+
   const {
     register,
     handleSubmit,
@@ -39,28 +59,29 @@ export function ProductoForm({ producto, onSuccess, onCancel }: ProductoFormProp
     watch,
     formState: { errors },
     reset
-  } = useForm<ProductoFormData>({
+  } = useForm<SchemaType>({
+    resolver: zodResolver(schema),
     defaultValues: producto ? {
       id_categoria: producto.id_categoria,
       id_fabricante: producto.id_fabricante,
       id_unidad: producto.id_unidad,
-      tipo: producto.tipo,
+      tipo: producto.tipo as 'producto' | 'servicio',
       codigo_producto: producto.codigo_producto,
       nombre: producto.nombre,
       descripcion: producto.descripcion || '',
-      stock: producto.stock,
-      stock_minimo: producto.stock_minimo,
-      precio_compra: producto.precio_compra,
-      precio_venta: producto.precio_venta,
-      descuento: producto.descuento,
-      oferta: producto.oferta
+      stock: Number(producto.stock),
+      stock_minimo: Number(producto.stock_minimo),
+      precio_compra: Number(producto.precio_compra),
+      precio_venta: Number(producto.precio_venta),
+      descuento: Number(producto.descuento) || 0,
+      oferta: Boolean(producto.oferta)
     } : {
-      nombre: '',
-      codigo_producto: '',
-      id_categoria: undefined,
-      id_fabricante: undefined,
-      id_unidad: undefined,
+  id_categoria: undefined as unknown as number,
+  id_fabricante: undefined as unknown as number,
+  id_unidad: undefined as unknown as number,
       tipo: 'producto',
+      codigo_producto: '',
+      nombre: '',
       descripcion: '',
       stock: 0,
       stock_minimo: 1,
@@ -158,7 +179,7 @@ export function ProductoForm({ producto, onSuccess, onCancel }: ProductoFormProp
     }
   }
 
-  const onSubmit = async (data: ProductoFormData) => {
+  const onSubmit = async (formData: SchemaType) => {
     setLoading(true)
     try {
       let imageUrl = producto?.foto || imagePreview
@@ -167,7 +188,22 @@ export function ProductoForm({ producto, onSuccess, onCancel }: ProductoFormProp
         imageUrl = await uploadImage(imageFile)
       }
 
-      const finalData = { ...data, foto: imageUrl };
+      const finalData: ProductoFormData = { 
+        id_categoria: formData.id_categoria,
+        id_fabricante: formData.id_fabricante,
+        id_unidad: formData.id_unidad,
+        tipo: formData.tipo,
+        codigo_producto: formData.codigo_producto,
+        nombre: formData.nombre,
+        descripcion: formData.descripcion,
+        stock: formData.tipo === 'producto' ? formData.stock : 0,
+        stock_minimo: formData.tipo === 'producto' ? formData.stock_minimo : 0,
+        precio_compra: formData.precio_compra,
+        precio_venta: formData.precio_venta,
+        descuento: formData.descuento || 0,
+        oferta: formData.oferta || false,
+        foto: imageUrl
+      };
 
       const endpoint = producto ? `/api/productos/${producto.id_producto}` : '/api/productos';
       const method = producto ? 'PUT' : 'POST';
@@ -185,13 +221,14 @@ export function ProductoForm({ producto, onSuccess, onCancel }: ProductoFormProp
 
       toast({
         title: producto ? "Producto actualizado" : "Producto creado",
-        description: `${data.nombre} ha sido ${producto ? 'actualizado' : 'creado'} correctamente`,
+        description: `${formData.nombre} ha sido ${producto ? 'actualizado' : 'creado'} correctamente`,
       })
       onSuccess()
-    } catch (error: any) {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error desconocido'
       toast({
         title: "Error",
-        description: error.message,
+        description: message,
         variant: "destructive",
       })
     } finally {
@@ -217,8 +254,159 @@ export function ProductoForm({ producto, onSuccess, onCancel }: ProductoFormProp
       </CardHeader>
 
       <CardContent>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-          {/* ... (resto del formulario sin cambios) ... */}
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
+          {/* Sección básica */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="flex flex-col gap-2">
+              <Label>Código *</Label>
+              <Input placeholder="COD-001" {...register('codigo_producto')} />
+              {errors.codigo_producto && <p className="text-sm text-red-600">{errors.codigo_producto.message}</p>}
+            </div>
+            <div className="flex flex-col gap-2 md:col-span-2">
+              <Label>Nombre *</Label>
+              <Input placeholder="Nombre del producto / servicio" {...register('nombre')} />
+              {errors.nombre && <p className="text-sm text-red-600">{errors.nombre.message}</p>}
+            </div>
+          </div>
+
+          {/* Clasificación */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="flex flex-col gap-2">
+              <Label>Tipo *</Label>
+              <Select value={tipoProducto} onValueChange={(val) => setValue('tipo', val as 'producto' | 'servicio')}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccione" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="producto">Producto</SelectItem>
+                  <SelectItem value="servicio">Servicio</SelectItem>
+                </SelectContent>
+              </Select>
+              {errors.tipo && <p className="text-sm text-red-600">{errors.tipo.message}</p>}
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label>Categoría *</Label>
+              <Select value={watch('id_categoria')?.toString() || ''} onValueChange={(v) => setValue('id_categoria', parseInt(v))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccione" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categorias.map(cat => (
+                    <SelectItem key={cat.id_categoria} value={cat.id_categoria.toString()}>{cat.nombre}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.id_categoria && <p className="text-sm text-red-600">Seleccione una categoría</p>}
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label>Fabricante *</Label>
+              <Select value={watch('id_fabricante')?.toString() || ''} onValueChange={(v) => setValue('id_fabricante', parseInt(v))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccione" />
+                </SelectTrigger>
+                <SelectContent>
+                  {fabricantes.map(f => (
+                    <SelectItem key={f.id_fabricante} value={f.id_fabricante.toString()}>{f.nombre_fabricante}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.id_fabricante && <p className="text-sm text-red-600">Seleccione un fabricante</p>}
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label>Unidad *</Label>
+              <Select value={watch('id_unidad')?.toString() || ''} onValueChange={(v) => setValue('id_unidad', parseInt(v))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccione" />
+                </SelectTrigger>
+                <SelectContent>
+                  {unidades.map(u => (
+                    <SelectItem key={u.id_unidad} value={u.id_unidad.toString()}>{u.nombre_unidad} ({u.abreviatura})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.id_unidad && <p className="text-sm text-red-600">Seleccione una unidad</p>}
+            </div>
+          </div>
+
+          {/* Descripción */}
+            <div className="flex flex-col gap-2">
+              <Label>Descripción</Label>
+              <Textarea rows={4} placeholder="Descripción breve" {...register('descripcion')} />
+            </div>
+
+          {/* Inventario (solo producto) */}
+          {tipoProducto === 'producto' && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="flex flex-col gap-2">
+                <Label>Stock Inicial</Label>
+                <Input type="number" min={0} {...register('stock', { valueAsNumber: true })} />
+                {errors.stock && <p className="text-sm text-red-600">{errors.stock.message}</p>}
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label>Stock Mínimo</Label>
+                <Input type="number" min={0} {...register('stock_minimo', { valueAsNumber: true })} />
+                {errors.stock_minimo && <p className="text-sm text-red-600">{errors.stock_minimo.message}</p>}
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label>Descuento (%)</Label>
+                <Input type="number" min={0} max={100} {...register('descuento', { valueAsNumber: true })} />
+              </div>
+            </div>
+          )}
+
+          {/* Precios */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="flex flex-col gap-2">
+              <Label>Precio Compra *</Label>
+              <Input type="number" step="0.01" min={0} {...register('precio_compra', { valueAsNumber: true })} />
+              {errors.precio_compra && <p className="text-sm text-red-600">{errors.precio_compra.message}</p>}
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label>Precio Venta *</Label>
+              <Input type="number" step="0.01" min={0} {...register('precio_venta', { valueAsNumber: true })} />
+              {errors.precio_venta && <p className="text-sm text-red-600">{errors.precio_venta.message}</p>}
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label>Margen (%)</Label>
+              <div className="px-3 py-2 rounded border bg-gray-50 text-sm font-mono">{calcularMargen()}%</div>
+            </div>
+            <div className="flex items-center gap-3 mt-6">
+              <Switch checked={watch('oferta')} onCheckedChange={(v) => setValue('oferta', v)} />
+              <span className="text-sm">En Oferta</span>
+            </div>
+          </div>
+
+          {/* Imagen */}
+          <div className="space-y-3">
+            <Label>Imagen (opcional)</Label>
+            <div className="flex flex-col md:flex-row gap-4 items-start">
+              <div className="w-48 h-48 border rounded-lg flex items-center justify-center bg-gray-50 overflow-hidden relative">
+                {imagePreview ? (
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={imagePreview} alt="Previsualización" className="object-cover w-full h-full" />
+                    <button type="button" aria-label="Quitar imagen" title="Quitar imagen" onClick={handleRemoveImage} className="absolute top-1 right-1 bg-white/80 rounded-full p-1 shadow"><X className="w-4 h-4" /></button>
+                  </>
+                ) : (
+                  <div className="text-gray-400 flex flex-col items-center text-sm">
+                    <Image className="w-8 h-8 mb-2" />
+                    Sin imagen
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-col gap-2">
+                <Input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageSelect} />
+                <p className="text-xs text-gray-500">Formatos: JPG, PNG, WEBP. Máx 5MB.</p>
+                {uploadingImage && <p className="text-xs text-blue-600">Subiendo imagen...</p>}
+              </div>
+            </div>
+          </div>
+
+          <Separator />
+
           <div className="flex justify-end gap-3 pt-6">
             <Button
               type="button"
