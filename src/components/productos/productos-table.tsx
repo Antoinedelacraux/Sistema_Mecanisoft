@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Search, Plus, Edit, Trash2, Eye, Package, AlertTriangle, Settings } from 'lucide-react'
 import { ProductoCompleto, CategoriaCompleta } from '@/types'
 import { useToast } from '@/components/ui/use-toast'
+import { ToggleLeft, ToggleRight, Image } from 'lucide-react'
 
 interface ProductosTableProps {
   onEdit: (producto: ProductoCompleto) => void
@@ -87,6 +88,36 @@ export function ProductosTable({ onEdit, onView, onCreateNew, onManageCategories
       fetchProductos()
     }
   }, [refreshTrigger, fetchProductos])
+
+  const handleToggleStatus = async (producto: ProductoCompleto) => {
+  const newStatus = !producto.estatus
+  
+  if (!confirm(`¿${newStatus ? 'Activar' : 'Desactivar'} el producto ${producto.nombre}?`)) {
+    return
+  }
+  try {
+    const response = await fetch(`/api/productos/${producto.id_producto}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'toggle_status',
+        estatus: newStatus
+      })
+    })
+    if (!response.ok) throw new Error('Error al cambiar estado')
+    toast({
+      title: `Producto ${newStatus ? 'activado' : 'desactivado'}`,
+      description: `${producto.nombre} ha sido ${newStatus ? 'activado' : 'desactivado'}`,
+    })
+    fetchProductos()
+  } catch (error) {
+    toast({
+      title: "Error",
+      description: "Error al cambiar el estado del producto",
+      variant: "destructive",
+    })
+  }
+}
 
   const handleDelete = async (producto: ProductoCompleto) => {
     if (!confirm(`¿Estás seguro de eliminar el producto ${producto.nombre}?`)) {
@@ -290,12 +321,29 @@ export function ProductosTable({ onEdit, onView, onCreateNew, onManageCategories
                 </TableHeader>
                 <TableBody>
                   {productos.map((producto) => (
-                    <TableRow key={producto.id_producto}>
+                    <TableRow key={producto.id_producto} className={!producto.estatus ? "bg-gray-50 opacity-75" : ""}>
                       <TableCell>
-                        <div>
-                          <div className="font-medium">{producto.nombre}</div>
-                          <div className="text-sm text-gray-500">{producto.codigo_producto}</div>
-                          <div className="text-sm text-gray-500">{producto.fabricante.nombre_fabricante}</div>
+                        <div className="flex items-center gap-3">
+                          {/* ✅ Imagen del producto */}
+                          <div className="w-12 h-12 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
+                            {producto.foto ? (
+                              <img
+                                src={producto.foto}
+                                alt={producto.nombre}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <Image className="w-6 h-6 text-gray-400" />
+                              </div>
+                            )}
+                          </div>
+                          
+                          <div className={!producto.estatus ? "text-gray-500" : ""}>
+                            <div className="font-medium">{producto.nombre}</div>
+                            <div className="text-sm text-gray-500">{producto.codigo_producto}</div>
+                            <div className="text-sm text-gray-500">{producto.fabricante.nombre_fabricante}</div>
+                          </div>
                         </div>
                       </TableCell>
                       
@@ -351,14 +399,28 @@ export function ProductosTable({ onEdit, onView, onCreateNew, onManageCategories
                             variant="ghost"
                             size="sm"
                             onClick={() => onEdit(producto)}
+                            disabled={!producto.estatus}
+                            className={!producto.estatus ? "opacity-50 cursor-not-allowed" : ""}
                           >
                             <Edit className="w-4 h-4" />
                           </Button>
                           <Button
                             variant="ghost"
                             size="sm"
+                            onClick={() => handleToggleStatus(producto)}
+                            className={producto.estatus ? "text-orange-600 hover:text-orange-700" : "text-green-600 hover:text-green-700"}
+                          >
+                            {producto.estatus ? <ToggleLeft className="w-4 h-4" /> : <ToggleRight className="w-4 h-4" />}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() => handleDelete(producto)}
-                            className="text-red-600 hover:text-red-700"
+                            disabled={producto.estatus}
+                            className={producto.estatus 
+                              ? "opacity-50 cursor-not-allowed" 
+                              : "text-red-600 hover:text-red-700"
+                            }
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>

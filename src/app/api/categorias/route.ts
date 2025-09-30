@@ -10,9 +10,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
+    const { searchParams } = new URL(request.url)
+    const includeInactive = searchParams.get('include_inactive') === 'true'
+
+    const whereCondition = includeInactive ? {} : { estatus: true }
+
     const categorias = await prisma.categoria.findMany({
-      where: { estatus: true },
-      orderBy: { nombre: 'asc' },
+      where: whereCondition,
+      orderBy: [
+        { estatus: 'desc' }, // Activos primero
+        { nombre: 'asc' }
+      ],
       include: {
         _count: {
           select: { productos: true }
@@ -88,3 +96,4 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+

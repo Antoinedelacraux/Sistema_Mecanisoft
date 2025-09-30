@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
-import { Plus, Edit, Package, Factory, Ruler } from 'lucide-react'
+import { Plus, Package, Factory, Ruler, ToggleLeft, ToggleRight } from 'lucide-react'
 import { CategoriaCompleta, FabricanteCompleto, UnidadCompleta } from '@/types'
 import { useToast } from '@/components/ui/use-toast'
 
@@ -34,7 +34,7 @@ export function CategoriasManager({ onClose }: CategoriasManagerProps) {
   // Cargar datos
   const fetchCategorias = async () => {
     try {
-      const response = await fetch('/api/categorias')
+      const response = await fetch('/api/categorias?include_inactive=true')
       const data = await response.json()
       setCategorias(data.categorias || [])
     } catch (error) {
@@ -44,7 +44,7 @@ export function CategoriasManager({ onClose }: CategoriasManagerProps) {
 
   const fetchFabricantes = async () => {
     try {
-      const response = await fetch('/api/fabricantes')
+      const response = await fetch('/api/fabricantes?include_inactive=true')
       const data = await response.json()
       setFabricantes(data.fabricantes || [])
     } catch (error) {
@@ -54,7 +54,7 @@ export function CategoriasManager({ onClose }: CategoriasManagerProps) {
 
   const fetchUnidades = async () => {
     try {
-      const response = await fetch('/api/unidades')
+      const response = await fetch('/api/unidades?include_inactive=true')
       const data = await response.json()
       setUnidades(data.unidades || [])
     } catch (error) {
@@ -67,6 +67,108 @@ export function CategoriasManager({ onClose }: CategoriasManagerProps) {
     fetchFabricantes()
     fetchUnidades()
   }, [])
+
+  const handleToggleCategoria = async (categoria: CategoriaCompleta) => {
+    const newStatus = !categoria.estatus
+    
+    if (!confirm(`¿${newStatus ? 'Activar' : 'Desactivar'} la categoría ${categoria.nombre}?`)) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/categorias/${categoria.id_categoria}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'toggle_status',
+          estatus: newStatus
+        })
+      })
+
+      if (!response.ok) throw new Error('Error al cambiar estado')
+
+      toast({
+        title: `Categoría ${newStatus ? 'activada' : 'desactivada'}`,
+        description: `${categoria.nombre} ha sido ${newStatus ? 'activada' : 'desactivada'}`,
+      })
+
+      fetchCategorias()
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Error al cambiar el estado",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleToggleFabricante = async (fabricante: FabricanteCompleto) => {
+    const newStatus = !fabricante.estatus
+    
+    if (!confirm(`¿${newStatus ? 'Activar' : 'Desactivar'} el fabricante ${fabricante.nombre_fabricante}?`)) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/fabricantes/${fabricante.id_fabricante}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'toggle_status',
+          estatus: newStatus
+        })
+      })
+
+      if (!response.ok) throw new Error('Error al cambiar estado')
+
+      toast({
+        title: `Fabricante ${newStatus ? 'activado' : 'desactivado'}`,
+        description: `${fabricante.nombre_fabricante} ha sido ${newStatus ? 'activado' : 'desactivado'}`,
+      })
+
+      fetchFabricantes()
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Error al cambiar el estado",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleToggleUnidad = async (unidad: UnidadCompleta) => {
+    const newStatus = !unidad.estatus
+    
+    if (!confirm(`¿${newStatus ? 'Activar' : 'Desactivar'} la unidad ${unidad.nombre_unidad}?`)) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/unidades/${unidad.id_unidad}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'toggle_status',
+          estatus: newStatus
+        })
+      })
+
+      if (!response.ok) throw new Error('Error al cambiar estado')
+
+      toast({
+        title: `Unidad ${newStatus ? 'activada' : 'desactivada'}`,
+        description: `${unidad.nombre_unidad} ha sido ${newStatus ? 'activada' : 'desactivada'}`,
+      })
+
+      fetchUnidades()
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Error al cambiar el estado",
+        variant: "destructive",
+      })
+    }
+  }
 
   // Funciones para categorías
   const handleCreateCategoria = async () => {
@@ -266,8 +368,8 @@ export function CategoriasManager({ onClose }: CategoriasManagerProps) {
                       </TableHeader>
                       <TableBody>
                         {categorias.map((categoria) => (
-                          <TableRow key={categoria.id_categoria}>
-                            <TableCell>
+                          <TableRow key={categoria.id_categoria} className={!categoria.estatus ? "bg-gray-50 opacity-75" : ""}>
+                            <TableCell className={!categoria.estatus ? "text-gray-500" : ""}>
                               <div className="font-medium">{categoria.nombre}</div>
                             </TableCell>
                             <TableCell>
@@ -276,9 +378,20 @@ export function CategoriasManager({ onClose }: CategoriasManagerProps) {
                               </Badge>
                             </TableCell>
                             <TableCell>
-                              <Badge className="bg-green-100 text-green-800">
-                                Activa
-                              </Badge>
+                              <div className="flex items-center gap-2">
+                                <Badge variant={categoria.estatus ? "default" : "secondary"} 
+                                      className={categoria.estatus ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}>
+                                  {categoria.estatus ? "Activa" : "Inactiva"}
+                                </Badge>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleToggleCategoria(categoria)}
+                                  className={categoria.estatus ? "text-orange-600 hover:text-orange-700" : "text-green-600 hover:text-green-700"}
+                                >
+                                  {categoria.estatus ? <ToggleLeft className="w-4 h-4" /> : <ToggleRight className="w-4 h-4" />}
+                                </Button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -353,12 +466,12 @@ export function CategoriasManager({ onClose }: CategoriasManagerProps) {
                       </TableHeader>
                       <TableBody>
                         {fabricantes.map((fabricante) => (
-                          <TableRow key={fabricante.id_fabricante}>
-                            <TableCell>
+                          <TableRow key={fabricante.id_fabricante} className={!fabricante.estatus ? "bg-gray-50 opacity-75" : ""}>
+                            <TableCell className={!fabricante.estatus ? "text-gray-500" : ""}>
                               <div>
                                 <div className="font-medium">{fabricante.nombre_fabricante}</div>
                                 {fabricante.descripcion && (
-                                  <div className="text-sm text-gray-500">{fabricante.descripcion}</div>
+                                  <div className="text-sm">{fabricante.descripcion}</div>
                                 )}
                               </div>
                             </TableCell>
@@ -368,9 +481,20 @@ export function CategoriasManager({ onClose }: CategoriasManagerProps) {
                               </Badge>
                             </TableCell>
                             <TableCell>
-                              <Badge className="bg-green-100 text-green-800">
-                                Activo
-                              </Badge>
+                              <div className="flex items-center gap-2">
+                                <Badge variant={fabricante.estatus ? "default" : "secondary"} 
+                                      className={fabricante.estatus ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}>
+                                  {fabricante.estatus ? "Activo" : "Inactivo"}
+                                </Badge>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleToggleFabricante(fabricante)}
+                                  className={fabricante.estatus ? "text-orange-600 hover:text-orange-700" : "text-green-600 hover:text-green-700"}
+                                >
+                                  {fabricante.estatus ? <ToggleLeft className="w-4 h-4" /> : <ToggleRight className="w-4 h-4" />}
+                                </Button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -447,8 +571,8 @@ export function CategoriasManager({ onClose }: CategoriasManagerProps) {
                       </TableHeader>
                       <TableBody>
                         {unidades.map((unidad) => (
-                          <TableRow key={unidad.id_unidad}>
-                            <TableCell>
+                          <TableRow key={unidad.id_unidad} className={!unidad.estatus ? "bg-gray-50 opacity-75" : ""}>
+                            <TableCell className={!unidad.estatus ? "text-gray-500" : ""}>
                               <div className="font-medium">{unidad.nombre_unidad}</div>
                             </TableCell>
                             <TableCell>
@@ -462,9 +586,20 @@ export function CategoriasManager({ onClose }: CategoriasManagerProps) {
                               </Badge>
                             </TableCell>
                             <TableCell>
-                              <Badge className="bg-green-100 text-green-800">
-                                Activa
-                              </Badge>
+                              <div className="flex items-center gap-2">
+                                <Badge variant={unidad.estatus ? "default" : "secondary"} 
+                                      className={unidad.estatus ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}>
+                                  {unidad.estatus ? "Activa" : "Inactiva"}
+                                </Badge>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleToggleUnidad(unidad)}
+                                  className={unidad.estatus ? "text-orange-600 hover:text-orange-700" : "text-green-600 hover:text-green-700"}
+                                >
+                                  {unidad.estatus ? <ToggleLeft className="w-4 h-4" /> : <ToggleRight className="w-4 h-4" />}
+                                </Button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}

@@ -17,12 +17,20 @@ export async function GET(request: NextRequest) {
     const categoria = searchParams.get('categoria')
     const tipo = searchParams.get('tipo') // 'producto' o 'servicio'
     const stockBajo = searchParams.get('stock_bajo') === 'true'
+    const includeInactive = searchParams.get('include_inactive') === 'true'
 
     const skip = (page - 1) * limit
 
     // Construir filtro de búsqueda
-    let whereCondition: any = {
-      estatus: true
+    let whereCondition: any = {}
+
+    if (!includeInactive) {
+      whereCondition = {
+        estatus: true,
+        categoria: { estatus: true },
+        fabricante: { estatus: true },
+        unidad_medida: { estatus: true }
+      };
     }
 
     // Filtro por tipo
@@ -87,7 +95,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Error obteniendo productos:', error)
     return NextResponse.json(
-      { error: 'Error interno del servidor' }, 
+      { error: 'Error interno del servidor' },
       { status: 500 }
     )
   }
@@ -101,7 +109,7 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await request.json()
-    
+
     const {
       id_categoria,
       id_fabricante,
@@ -115,13 +123,14 @@ export async function POST(request: NextRequest) {
       precio_compra,
       precio_venta,
       descuento,
-      oferta
+      oferta,
+      foto
     } = data
 
     // Validar campos requeridos
     if (!id_categoria || !id_fabricante || !id_unidad || !tipo || !codigo_producto || !nombre || precio_compra === undefined || precio_venta === undefined) {
       return NextResponse.json(
-        { error: 'Faltan campos requeridos' }, 
+        { error: 'Faltan campos requeridos' },
         { status: 400 }
       )
     }
@@ -133,7 +142,7 @@ export async function POST(request: NextRequest) {
 
     if (existeCodigo) {
       return NextResponse.json(
-        { error: 'Ya existe un producto con este código' }, 
+        { error: 'Ya existe un producto con este código' },
         { status: 400 }
       )
     }
@@ -147,7 +156,7 @@ export async function POST(request: NextRequest) {
 
     if (!categoria || !fabricante || !unidad) {
       return NextResponse.json(
-        { error: 'Categoría, fabricante o unidad de medida no válidos' }, 
+        { error: 'Categoría, fabricante o unidad de medida no válidos' },
         { status: 400 }
       )
     }
@@ -167,7 +176,8 @@ export async function POST(request: NextRequest) {
         precio_compra: parseFloat(precio_compra),
         precio_venta: parseFloat(precio_venta),
         descuento: parseFloat(descuento) || 0,
-        oferta: Boolean(oferta)
+        oferta: Boolean(oferta),
+        foto
       },
       include: {
         categoria: true,
@@ -191,7 +201,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error creando producto:', error)
     return NextResponse.json(
-      { error: 'Error interno del servidor' }, 
+      { error: 'Error interno del servidor' },
       { status: 500 }
     )
   }

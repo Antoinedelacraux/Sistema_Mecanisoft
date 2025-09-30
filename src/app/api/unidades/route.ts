@@ -10,9 +10,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    const unidades = await prisma.unidadMedida.findMany({
-      where: { estatus: true },
-      orderBy: { nombre_unidad: 'asc' },
+    const { searchParams } = new URL(request.url)
+    const includeInactive = searchParams.get('include_inactive') === 'true'
+
+    const whereCondition = includeInactive ? {} : { estatus: true }
+
+    const categorias = await prisma.categoria.findMany({
+      where: whereCondition,
+      orderBy: [
+        { estatus: 'desc' }, // Activos primero
+        { nombre: 'asc' }
+      ],
       include: {
         _count: {
           select: { productos: true }
@@ -20,10 +28,10 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    return NextResponse.json({ unidades })
+    return NextResponse.json({ categorias })
 
   } catch (error) {
-    console.error('Error obteniendo unidades:', error)
+    console.error('Error obteniendo categorías:', error)
     return NextResponse.json(
       { error: 'Error interno del servidor' }, 
       { status: 500 }

@@ -42,16 +42,19 @@ export type CategoriaCompleta = Categoria & {
   _count: {
     productos: number
   }
+  estatus: boolean
 }
 export type FabricanteCompleto = Fabricante & {
   _count: {
     productos: number
   }
+  estatus: boolean
 }
 export type UnidadCompleta = UnidadMedida & {
   _count: {
     productos: number
   }
+  estatus: boolean
 }
 
 // Tipos para formularios

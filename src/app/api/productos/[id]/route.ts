@@ -36,7 +36,7 @@ export async function GET(
   } catch (error) {
     console.error('Error obteniendo producto:', error)
     return NextResponse.json(
-      { error: 'Error interno del servidor' }, 
+      { error: 'Error interno del servidor' },
       { status: 500 }
     )
   }
@@ -76,7 +76,7 @@ export async function PUT(
 
       if (existeCodigo) {
         return NextResponse.json(
-          { error: 'Ya existe un producto con este código' }, 
+          { error: 'Ya existe un producto con este código' },
           { status: 400 }
         )
       }
@@ -98,7 +98,8 @@ export async function PUT(
         precio_compra: parseFloat(data.precio_compra),
         precio_venta: parseFloat(data.precio_venta),
         descuento: parseFloat(data.descuento) || 0,
-        oferta: Boolean(data.oferta)
+        oferta: Boolean(data.oferta),
+        foto: data.foto // ✅ Actualizar imagen
       },
       include: {
         categoria: true,
@@ -122,7 +123,7 @@ export async function PUT(
   } catch (error) {
     console.error('Error actualizando producto:', error)
     return NextResponse.json(
-      { error: 'Error interno del servidor' }, 
+      { error: 'Error interno del servidor' },
       { status: 500 }
     )
   }
@@ -155,6 +156,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Producto no encontrado' }, { status: 404 })
     }
 
+
     // Soft delete - cambiar estatus a false
     await prisma.producto.update({
       where: { id_producto: id },
@@ -176,7 +178,67 @@ export async function DELETE(
   } catch (error) {
     console.error('Error eliminando producto:', error)
     return NextResponse.json(
-      { error: 'Error interno del servidor' }, 
+      { error: 'Error interno del servidor' },
+      { status: 500 }
+    )
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+    }
+
+    const id = parseInt(params.id)
+    if (isNaN(id)) {
+      return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
+    }
+
+    const { action, estatus } = await request.json()
+
+    if (action === 'toggle_status') {
+      const producto = await prisma.producto.findUnique({
+        where: { id_producto: id }
+      })
+
+      if (!producto) {
+        return NextResponse.json({ error: 'Producto no encontrado' }, { status: 404 })
+      }
+
+      const productoActualizado = await prisma.producto.update({
+        where: { id_producto: id },
+        data: { estatus: estatus },
+        include: {
+          categoria: true,
+          fabricante: true,
+          unidad_medida: true
+        }
+      })
+
+      // Registrar en bitácora
+      await prisma.bitacora.create({
+        data: {
+          id_usuario: parseInt(session.user.id),
+          accion: 'TOGGLE_STATUS_PRODUCTO',
+          descripcion: `Producto ${estatus ? 'activado' : 'desactivado'}: ${producto.nombre}`,
+          tabla: 'producto'
+        }
+      })
+
+      return NextResponse.json(productoActualizado)
+    }
+
+    return NextResponse.json({ error: 'Acción no válida' }, { status: 400 })
+
+  } catch (error) {
+    console.error('Error en PATCH producto:', error)
+    return NextResponse.json(
+      { error: 'Error interno del servidor' },
       { status: 500 }
     )
   }
