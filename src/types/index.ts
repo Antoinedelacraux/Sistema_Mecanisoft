@@ -1,4 +1,5 @@
 import { Persona, Cliente, Vehiculo, Marca, Modelo } from '@prisma/client'
+import { Producto, Categoria, Fabricante, UnidadMedida } from '@prisma/client'
 
 // Tipos extendidos para incluir relaciones
 export type ClienteCompleto = Cliente & {
@@ -28,6 +29,28 @@ export type ModeloCompleto = Modelo & {
   marca: Marca
   _count: {
     vehiculos: number
+  }
+}
+
+export type ProductoCompleto = Producto & {
+  categoria: Categoria
+  fabricante: Fabricante
+  unidad_medida: UnidadMedida
+}
+
+export type CategoriaCompleta = Categoria & {
+  _count: {
+    productos: number
+  }
+}
+export type FabricanteCompleto = Fabricante & {
+  _count: {
+    productos: number
+  }
+}
+export type UnidadCompleta = UnidadMedida & {
+  _count: {
+    productos: number
   }
 }
 
@@ -67,6 +90,33 @@ export type ModeloFormData = {
   id_marca: number
   nombre_modelo: string
   descripcion?: string
+}
+
+export type ProductoFormData = {
+  id_categoria: number
+  id_fabricante: number
+  id_unidad: number
+  tipo: string
+  codigo_producto: string
+  nombre: string
+  descripcion?: string
+  stock: number
+  stock_minimo: number
+  precio_compra: number
+  precio_venta: number
+  descuento?: number
+  oferta?: boolean
+}
+export type CategoriaFormData = {
+  nombre: string
+}
+export type FabricanteFormData = {
+  nombre_fabricante: string
+  descripcion?: string
+}
+export type UnidadFormData = {
+  nombre_unidad: string
+  abreviatura: string
 }
 
 // Opciones para selects
