@@ -8,6 +8,54 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// ✅ Modelo para Cotizaciones:
+model Cotizacion {
+  id_cotizacion         Int       @id @default(autoincrement())
+  codigo_cotizacion     String    @unique @db.VarChar(50)
+  id_cliente            Int
+  id_vehiculo           Int
+  id_usuario            Int       // Usuario que creó la cotización
+  estado                String    @default("borrador") @db.VarChar(30) // borrador, enviada, aprobada, rechazada, vencida
+  vigencia_hasta        DateTime
+  
+  // Aprobación
+  fecha_aprobacion      DateTime?
+  aprobado_por          String?   @db.VarChar(50) // 'cliente_presencial', 'cliente_digital'
+  comentarios_cliente   String?   @db.Text
+  razon_rechazo         String?   @db.Text
+  approval_token        String?   @unique @db.VarChar(255) // Para aprobación digital
+  
+  // Totales
+  subtotal              Decimal   @db.Decimal(10,2)
+  descuento_global      Decimal   @default(0) @db.Decimal(10,2)
+  impuesto              Decimal   @db.Decimal(10,2)
+  total                 Decimal   @db.Decimal(10,2)
+  
+  created_at            DateTime  @default(now())
+  updated_at            DateTime  @updatedAt
+  
+  cliente               Cliente   @relation(fields: [id_cliente], references: [id_cliente])
+  vehiculo              Vehiculo  @relation(fields: [id_vehiculo], references: [id_vehiculo])
+  usuario               Usuario   @relation(fields: [id_usuario], references: [id_usuario])
+  detalle_cotizacion    DetalleCotizacion[]
+  
+  @@map("cotizacion")
+}
+model DetalleCotizacion {
+  id_detalle_cotizacion Int       @id @default(autoincrement())
+  id_cotizacion         Int
+  id_producto           Int
+  cantidad              Int
+  precio_unitario       Decimal   @db.Decimal(10,2)
+  descuento             Decimal   @default(0) @db.Decimal(10,2)
+  total                 Decimal   @db.Decimal(10,2)
+  
+  cotizacion            Cotizacion @relation(fields: [id_cotizacion], references: [id_cotizacion], onDelete: Cascade)
+  producto              Producto   @relation(fields: [id_producto], references: [id_producto])
+  
+  @@map("detalle_cotizacion")
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -45,6 +93,7 @@ model Cliente {
   
   persona   Persona    @relation(fields: [id_persona], references: [id_persona], onDelete: Cascade)
   vehiculos Vehiculo[]
+  cotizaciones Cotizacion[]
   
   @@map("cliente")
 }
@@ -88,14 +137,50 @@ model Usuario {
   persona                 Persona                 @relation(fields: [id_persona], references: [id_persona], onDelete: Cascade)
   rol                     Rol                     @relation(fields: [id_rol], references: [id_rol])
   transacciones           Transaccion[]
-  tareas                  Tarea[]
   bitacoras               Bitacora[]
   transaccion_vehiculos   TransaccionVehiculo[]
+  trabajador              Trabajador?
+  cotizaciones           Cotizacion[]
+  entregas_realizadas    Transaccion[]  @relation("EntregaUsuario")
+  pagos_registrados      Pago[]         @relation("PagoUsuario")
   
   @@map("usuario")
 }
 
+model Trabajador {
+  id_trabajador       Int       @id @default(autoincrement())
+  id_usuario          Int       @unique
+  codigo_empleado     String    @unique
+  especialidad        String    @db.VarChar(100)
+  nivel_experiencia   String    @db.VarChar(20) // 'Junior', 'Senior', 'Especialista'
+  tarifa_hora         Decimal   @default(0) @db.Decimal(8,2)
+  fecha_contrato      DateTime  @default(now())
+  activo              Boolean   @default(true)
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+  
+  usuario             Usuario   @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade)
+  tareas_asignadas    Tarea[]
+  ordenes_principales TransaccionTrabajador[] @relation("Trabajador_Ordenes")
+  ordenes_principales_directas Transaccion[] @relation("TrabajadorPrincipal")
+  
+  @@map("trabajador")
+}
+
 // Gestión de productos
+model TransaccionTrabajador {
+  id_transaccion Int
+  id_trabajador  Int
+  rol            String?   @db.VarChar(50)
+  asignado_en    DateTime? @default(now())
+
+  transaccion Transaccion @relation("Transaccion_Trabajador", fields: [id_transaccion], references: [id_transaccion])
+  trabajador  Trabajador   @relation("Trabajador_Ordenes", fields: [id_trabajador], references: [id_trabajador])
+
+  @@id([id_transaccion, id_trabajador])
+  @@map("transaccion_trabajador")
+}
+
 model Categoria {
   id_categoria   Int       @id @default(autoincrement())
   nombre         String    @db.VarChar(100)
@@ -153,6 +238,7 @@ model Producto {
   fabricante           Fabricante           @relation(fields: [id_fabricante], references: [id_fabricante])
   unidad_medida        UnidadMedida         @relation(fields: [id_unidad], references: [id_unidad])
   detalles_transaccion DetalleTransaccion[]
+  detalle_cotizaciones DetalleCotizacion[]
   
   @@map("producto")
 }
@@ -200,6 +286,7 @@ model Vehiculo {
   cliente                 Cliente                 @relation(fields: [id_cliente], references: [id_cliente])
   modelo                  Modelo                  @relation(fields: [id_modelo], references: [id_modelo])
   transaccion_vehiculos   TransaccionVehiculo[]
+  cotizaciones            Cotizacion[]
   
   @@map("vehiculo")
 }
@@ -209,6 +296,7 @@ model Transaccion {
   id_transaccion      Int       @id @default(autoincrement())
   id_persona          Int
   id_usuario          Int
+  id_trabajador_principal Int?
   tipo_transaccion    String    @db.VarChar(50) // 'venta', 'compra', 'cotizacion', 'orden'
   tipo_comprobante    String    @db.VarChar(50)
   serie_comprobante   String?   @db.VarChar(10)
@@ -223,19 +311,48 @@ model Transaccion {
   observaciones       String?   @db.Text
   estatus             String    @default("activo") @db.VarChar(20)
   
-  // Campos adicionales sugeridos
-  estado_orden        String?   @db.VarChar(30) // 'pendiente', 'en_proceso', 'completado'
-  prioridad          String    @default("media") @db.VarChar(20)
-  created_at         DateTime  @default(now())
-  updated_at         DateTime  @updatedAt
+  // Campos para órdenes de trabajo
+  estado_orden        String    @default("pendiente") @db.VarChar(30) // pendiente, asignado, en_proceso, completado, entregado
+  prioridad           String    @default("media") @db.VarChar(20) // baja, media, alta, urgente
+  fecha_inicio        DateTime?
+  fecha_fin_estimada  DateTime?
+  fecha_fin_real      DateTime?
   
+  // ✅ Campos para pagos
+  estado_pago         String    @default("pendiente") @db.VarChar(20) // pendiente, parcial, pagado
+  fecha_entrega       DateTime?
+  entregado_por       Int?
+
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+
   persona                    Persona                    @relation(fields: [id_persona], references: [id_persona])
   usuario                    Usuario                    @relation(fields: [id_usuario], references: [id_usuario])
-  detalles_transaccion      DetalleTransaccion[]
-  transaccion_proveedores   TransaccionProveedor[]
-  transaccion_vehiculos     TransaccionVehiculo[]
-  
+  trabajador_principal       Trabajador?                @relation("TrabajadorPrincipal", fields: [id_trabajador_principal], references: [id_trabajador])
+  transaccion_trabajadores   TransaccionTrabajador[]   @relation("Transaccion_Trabajador")
+  usuario_entrega            Usuario?                   @relation("EntregaUsuario", fields: [entregado_por], references: [id_usuario])
+  detalles_transaccion       DetalleTransaccion[]
+  transaccion_proveedores    TransaccionProveedor[]
+  transaccion_vehiculos      TransaccionVehiculo[]
+  pagos                      Pago[]
+
   @@map("transaccion")
+}
+
+model Pago {
+  id_pago            Int       @id @default(autoincrement())
+  id_transaccion     Int
+  tipo_pago          String    @db.VarChar(30) // efectivo, tarjeta, transferencia, yape_plin
+  monto              Decimal   @db.Decimal(10,2)
+  numero_operacion   String?   @db.VarChar(50) // Para tarjetas/transferencias
+  fecha_pago         DateTime  @default(now())
+  registrado_por     Int
+  observaciones      String?   @db.Text
+
+  transaccion        Transaccion @relation(fields: [id_transaccion], references: [id_transaccion])
+  usuario_registro   Usuario     @relation("PagoUsuario", fields: [registrado_por], references: [id_usuario])
+
+  @@map("pago")
 }
 
 model DetalleTransaccion {
@@ -258,17 +375,19 @@ model DetalleTransaccion {
 model Tarea {
   id_tarea               Int       @id @default(autoincrement())
   id_detalle_transaccion Int
-  id_usuario             Int
-  estado                 String    @db.VarChar(30) // 'pendiente', 'en_proceso', 'completado'
+  id_trabajador          Int       // referencia al trabajador responsable
+  estado                 String    @default("pendiente") @db.VarChar(30) // pendiente, en_proceso, completado, verificado
   fecha_inicio           DateTime?
   fecha_fin              DateTime?
   tiempo_estimado        Int?      // en minutos
-  tiempo_real           Int?      // en minutos
-  notas                 String?   @db.Text
-  
+  tiempo_real            Int?      // en minutos
+  notas_trabajador       String?   @db.Text
+  created_at             DateTime  @default(now())
+  updated_at             DateTime  @updatedAt
+
   detalle_transaccion DetalleTransaccion @relation(fields: [id_detalle_transaccion], references: [id_detalle_transaccion])
-  usuario             Usuario            @relation(fields: [id_usuario], references: [id_usuario])
-  
+  trabajador          Trabajador         @relation(fields: [id_trabajador], references: [id_trabajador])
+
   @@map("tarea")
 }
 
