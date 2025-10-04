@@ -1,9 +1,8 @@
 import { NextAuthOptions } from "next-auth"
 import CredentialsProvider from "next-auth/providers/credentials"
 import bcrypt from "bcryptjs"
-import { PrismaClient } from "@prisma/client"
-
-const prisma = new PrismaClient()
+// Usar el cliente Prisma compartido para evitar múltiples conexiones en dev
+import { prisma } from '@/lib/prisma'
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -19,32 +18,52 @@ export const authOptions: NextAuthOptions = {
         }
 
         try {
-          // Buscar usuario en la BD
-          const usuario = await prisma.usuario.findUnique({
+          const rawUser = credentials.username
+          const username = rawUser.trim()
+          const password = credentials.password
+          if (username !== rawUser) {
+            console.log('[AUTH] Username normalizado (trim):', JSON.stringify(rawUser), '->', JSON.stringify(username))
+          }
+          if (!process.env.NEXTAUTH_SECRET) {
+            console.warn('[AUTH] NEXTAUTH_SECRET no está definido. Configurar para producción.')
+          }
+          console.log('[AUTH] Intento de login:', username)
+
+          // Buscar usuario en la BD (solo activos)
+          let usuario = await prisma.usuario.findFirst({
             where: {
-              nombre_usuario: credentials.username,
+              nombre_usuario: username,
               estado: true,
               estatus: true
             },
-            include: {
-              persona: true,
-              rol: true
-            }
+            include: { persona: true, rol: true }
           })
 
           if (!usuario) {
-            console.log("❌ Usuario no encontrado")
+            // Intento secundario solo por nombre_usuario para diagnosticar si está inactivo
+            const existeUsuario = await prisma.usuario.findFirst({
+              where: { nombre_usuario: username },
+              include: { persona: true, rol: true }
+            })
+            if (existeUsuario) {
+              console.log("❌ Usuario inactivo o deshabilitado:", username, {
+                estado: existeUsuario.estado,
+                estatus: existeUsuario.estatus
+              })
+            } else {
+              console.log("❌ Usuario no encontrado:", username)
+            }
             return null
           }
 
           // Verificar password
           const isPasswordValid = await bcrypt.compare(
-            credentials.password,
+            password,
             usuario.password
           )
 
           if (!isPasswordValid) {
-            console.log("❌ Contraseña incorrecta")
+            console.log("❌ Contraseña incorrecta para usuario:", username)
             return null
           }
 

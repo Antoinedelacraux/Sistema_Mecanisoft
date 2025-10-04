@@ -1,5 +1,4 @@
-import { Persona, Cliente, Vehiculo, Marca, Modelo } from '@prisma/client'
-import { Producto, Categoria, Fabricante, UnidadMedida } from '@prisma/client'
+import type { Persona, Cliente, Vehiculo, Marca, Modelo, Trabajador, Usuario, Rol, Cotizacion, DetalleCotizacion, Pago, Tarea, Transaccion, DetalleTransaccion, Producto, Categoria, Fabricante, UnidadMedida } from '@prisma/client'
 
 // Tipos extendidos para incluir relaciones
 export type ClienteCompleto = Cliente & {
@@ -123,8 +122,109 @@ export type UnidadFormData = {
   abreviatura: string
 }
 
+export type TrabajadorFormData = {
+  // Datos de persona
+  nombre: string
+  apellido_paterno: string
+  apellido_materno?: string
+  tipo_documento: string
+  numero_documento: string
+  telefono?: string
+  correo?: string
+  // Datos de usuario
+  nombre_usuario: string
+  password: string
+  // Datos de trabajador
+  especialidad: string
+  nivel_experiencia: string
+  tarifa_hora?: number
+}
+export type CotizacionFormData = {
+  id_cliente: number
+  id_vehiculo: number
+  vigencia_dias: number
+  observaciones?: string
+  items: {
+    id_producto: number
+    cantidad: number
+    precio_unitario: number
+    descuento: number
+  }[]
+}
+export type OrdenFormData = {
+  id_cliente: number
+  id_vehiculo: number
+  id_trabajador_principal: number
+  prioridad: string
+  fecha_fin_estimada?: Date
+  observaciones?: string
+  items: {
+    id_producto: number
+    cantidad: number
+    precio_unitario: number
+    descuento: number
+  }[]
+}
+export type PagoFormData = {
+  tipo_pago: string
+  monto: number
+  numero_operacion?: string
+  observaciones?: string
+}
+
 // Opciones para selects
 export type SelectOption = {
   value: string
   label: string
+}
+
+// ✅ Tipos para trabajadores y relacionados
+export type TrabajadorCompleto = Trabajador & {
+  usuario: Usuario & {
+    persona: Persona
+    rol: Rol
+  }
+  _count: {
+    tareas_asignadas: number
+    ordenes_principales: number
+  }
+}
+
+export type CotizacionCompleta = Cotizacion & {
+  cliente: Cliente & {
+    persona: Persona
+  }
+  vehiculo: Vehiculo & {
+    modelo: Modelo & {
+      marca: Marca
+    }
+  }
+  usuario: Usuario & {
+    persona: Persona
+  }
+  detalle_cotizacion: (DetalleCotizacion & {
+    producto: Producto
+  })[]
+}
+
+export type TareaCompleta = Tarea & {
+  detalle_transaccion: DetalleTransaccion & {
+    producto: Producto
+    transaccion: Transaccion & {
+      cliente?: Cliente & {
+        persona: Persona
+      }
+      vehiculo?: Vehiculo & {
+        placa: string
+      }
+    }
+  }
+  trabajador: TrabajadorCompleto
+}
+
+export type PagoCompleto = Pago & {
+  transaccion: Transaccion
+  usuario_registro: Usuario & {
+    persona: Persona
+  }
 }

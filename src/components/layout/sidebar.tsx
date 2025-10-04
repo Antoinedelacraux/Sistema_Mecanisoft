@@ -18,7 +18,8 @@ import {
   X,
   Wrench,
   ShoppingCart,
-  ClipboardList
+  ClipboardList,
+  Clock
 } from "lucide-react"
 
 const menuItems = [
@@ -38,14 +39,29 @@ const menuItems = [
     href: "/dashboard/vehiculos",
   },
   {
-    title: "Marcas y Modelos", // ✅ Nuevo item
-    icon: Settings, // o cualquier icono apropiado
+    title: "Marcas y Modelos", 
+    icon: Settings, 
     href: "/dashboard/vehiculos/marcas",
   },
   {
     title: "Productos",
     icon: Package,
     href: "/dashboard/productos",
+  },
+  {
+    title: "Trabajadores", // ✅ Nuevo
+    icon: Users,
+    href: "/dashboard/trabajadores",
+  },
+  {
+    title: "Tareas", // ✅ Nuevo  
+    icon: ClipboardList,
+    href: "/dashboard/tareas",
+  },
+  {
+    title: "Mis Tareas", // ✅ Nuevo (solo para mecánicos)
+    icon: Clock,
+    href: "/dashboard/mis-tareas",
   },
   {
     title: "Órdenes de Trabajo",
