@@ -106,7 +106,7 @@ export default function CotizacionesPage() {
                   <div className="space-y-2">
                     {selectedCotizacion.detalle_cotizacion.map((detalle, index) => (
                       <div key={index} className="flex justify-between py-1 border-b">
-                        <span className="text-sm">{detalle.producto.nombre}</span>
+                        <span className="text-sm">{detalle.producto?.nombre ?? detalle.servicio?.nombre ?? 'Item'}</span>
                         <span className="text-sm font-semibold">S/ {toNumber(detalle.total).toFixed(2)}</span>
                       </div>
                     ))}

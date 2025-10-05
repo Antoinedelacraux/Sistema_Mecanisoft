@@ -49,6 +49,11 @@ const menuItems = [
     href: "/dashboard/productos",
   },
   {
+    title: "Servicios",
+    icon: Wrench,
+    href: "/dashboard/servicios",
+  },
+  {
     title: "Trabajadores", // ✅ Nuevo
     icon: Users,
     href: "/dashboard/trabajadores",

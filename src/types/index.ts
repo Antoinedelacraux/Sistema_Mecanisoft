@@ -37,6 +37,26 @@ export type ProductoCompleto = Producto & {
   unidad_medida: UnidadMedida
 }
 
+export type ServicioCompleto = {
+  id_servicio: number
+  codigo_servicio: string
+  nombre: string
+  descripcion?: string | null
+  es_general: boolean
+  id_marca?: number | null
+  id_modelo?: number | null
+  precio_base: number
+  descuento: number
+  oferta: boolean
+  tiempo_minimo: number
+  tiempo_maximo: number
+  unidad_tiempo: 'minutos' | 'horas' | 'dias' | 'semanas'
+  estatus: boolean
+  fecha_registro: Date | string
+  marca?: Marca | null
+  modelo?: Modelo | null
+}
+
 export type CategoriaCompleta = Categoria & {
   _count: {
     productos: number
@@ -110,6 +130,21 @@ export type ProductoFormData = {
   oferta?: boolean
   foto?: string | null
 }
+export type ServicioFormData = {
+  codigo_servicio?: string
+  nombre: string
+  descripcion?: string
+  es_general: boolean
+  id_marca?: number | null
+  id_modelo?: number | null
+  precio_base: number
+  descuento?: number
+  oferta?: boolean
+  tiempo_minimo: number
+  tiempo_maximo: number
+  unidad_tiempo: 'minutos' | 'horas' | 'dias' | 'semanas'
+  estatus?: boolean
+}
 export type CategoriaFormData = {
   nombre: string
 }
@@ -149,6 +184,7 @@ export type CotizacionFormData = {
     cantidad: number
     precio_unitario: number
     descuento: number
+    tipo?: 'producto' | 'servicio'
   }[]
 }
 export type OrdenFormData = {
@@ -163,6 +199,7 @@ export type OrdenFormData = {
     cantidad: number
     precio_unitario: number
     descuento: number
+    tipo?: 'producto' | 'servicio'
   }[]
 }
 export type PagoFormData = {
@@ -203,23 +240,27 @@ export type CotizacionCompleta = Cotizacion & {
     persona: Persona
   }
   detalle_cotizacion: (DetalleCotizacion & {
-    producto: Producto
+    producto?: Producto | null
+    servicio?: ServicioCompleto | null
   })[]
 }
 
 export type TareaCompleta = Tarea & {
   detalle_transaccion: DetalleTransaccion & {
-    producto: Producto
+    producto?: Producto | null
+    servicio?: ServicioCompleto | null
     transaccion: Transaccion & {
-      cliente?: Cliente & {
-        persona: Persona
-      }
-      vehiculo?: Vehiculo & {
-        placa: string
-      }
+      persona: Persona
+      transaccion_vehiculos: Array<{
+        vehiculo: Vehiculo & {
+          modelo: Modelo & {
+            marca: Marca
+          }
+        }
+      }>
     }
   }
-  trabajador: TrabajadorCompleto
+  trabajador?: TrabajadorCompleto | null
 }
 
 export type PagoCompleto = Pago & {

@@ -19,21 +19,39 @@ export async function GET(request: NextRequest) {
     type EstadoTarea = typeof allowedEstados[number]
 
     const whereCondition: Prisma.TareaWhereInput = {
-      trabajador: { activo: true },
       detalle_transaccion: {
         transaccion: {
           estado_orden: {
-            in: ['pendiente', 'asignado', 'en_proceso', 'completado']
+            in: ['pendiente', 'asignado', 'en_proceso', 'pausado', 'completado', 'entregado']
           }
         }
       }
     }
 
     // Filtro por trabajador (numérico)
-    if (trabajadorIdRaw) {
-      const trabajadorId = Number(trabajadorIdRaw)
+    {
+      const trabajadorId = trabajadorIdRaw ? Number(trabajadorIdRaw) : NaN
       if (!Number.isNaN(trabajadorId)) {
+        // Filtramos por el campo escalar directamente
         whereCondition.id_trabajador = trabajadorId
+      } else {
+        // Prefetch de IDs de trabajadores activos para evitar filtros de relación problemáticos
+        const activos = await prisma.trabajador.findMany({
+          where: { activo: true },
+          select: { id_trabajador: true }
+        })
+        const activosIds = activos.map(t => t.id_trabajador)
+        // Solo agregamos el filtro 'in' si hay IDs activos
+        if (activosIds.length > 0) {
+          whereCondition.OR = [
+            { id_trabajador: undefined },
+            { id_trabajador: { in: activosIds } }
+          ]
+        } else {
+          whereCondition.OR = [
+            { id_trabajador: undefined }
+          ]
+        }
       }
     }
 
@@ -42,12 +60,68 @@ export async function GET(request: NextRequest) {
       whereCondition.estado = estadoRaw as EstadoTarea
     }
 
-    const tareas = await prisma.tarea.findMany({
-      where: whereCondition,
-      include: {
+    let tareas
+    const baseInclude = {
+      detalle_transaccion: {
+        include: {
+          producto: true,
+          servicio: {
+            include: {
+              marca: true,
+              modelo: {
+                include: {
+                  marca: true
+                }
+              }
+            }
+          },
+          transaccion: {
+            include: {
+              persona: true,
+              transaccion_vehiculos: {
+                include: {
+                  vehiculo: {
+                    include: {
+                      modelo: {
+                        include: {
+                          marca: true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      trabajador: {
+        include: {
+          usuario: {
+            include: {
+              persona: true
+            }
+          }
+        }
+      }
+    } satisfies Prisma.TareaInclude
+
+    try {
+      tareas = await prisma.tarea.findMany({
+        where: whereCondition,
+        include: baseInclude,
+        orderBy: [
+          { estado: 'asc' },
+          { created_at: 'asc' }
+        ]
+      })
+    } catch (innerError) {
+      console.error('Fallo al cargar tareas con incluye extendido. Reintentando con estructura reducida.', innerError)
+      const fallbackInclude: Prisma.TareaInclude = {
         detalle_transaccion: {
           include: {
             producto: true,
+            servicio: true,
             transaccion: {
               include: {
                 persona: true,
@@ -55,11 +129,7 @@ export async function GET(request: NextRequest) {
                   include: {
                     vehiculo: {
                       include: {
-                        modelo: {
-                          include: {
-                            marca: true
-                          }
-                        }
+                        modelo: true
                       }
                     }
                   }
@@ -77,16 +147,21 @@ export async function GET(request: NextRequest) {
             }
           }
         }
-      },
-      orderBy: [
-        { estado: 'asc' }, // pendientes primero
-        { created_at: 'asc' }
-      ]
-    })
+      }
+      tareas = await prisma.tarea.findMany({
+        where: whereCondition,
+        include: fallbackInclude,
+        orderBy: [
+          { estado: 'asc' },
+          { created_at: 'asc' }
+        ]
+      })
+    }
 
     return NextResponse.json({ tareas })
   } catch (error: unknown) {
     console.error('Error obteniendo tareas:', error)
-    return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'Error interno del servidor'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

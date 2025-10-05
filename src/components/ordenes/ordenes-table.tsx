@@ -274,6 +274,7 @@ export function OrdenesTable({ onEdit, onView, onCreateNew, refreshTrigger }: Or
                 <SelectItem value="pendiente">Pendiente</SelectItem>
                 <SelectItem value="asignado">Asignado</SelectItem>
                 <SelectItem value="en_proceso">En Proceso</SelectItem>
+                <SelectItem value="pausado">Pausado</SelectItem>
                 <SelectItem value="completado">Completado</SelectItem>
                 <SelectItem value="entregado">Entregado</SelectItem>
               </SelectContent>

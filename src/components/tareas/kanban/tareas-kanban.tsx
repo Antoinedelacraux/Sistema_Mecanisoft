@@ -3,14 +3,12 @@
 import { useState, useEffect, useCallback } from 'react'
 import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, closestCorners } from '@dnd-kit/core'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { TareaCompleta, TrabajadorCompleto } from '@/types'
 import { useToast } from '@/components/ui/use-toast'
 import { KanbanColumn } from './kanban-column'
 import { TareaCard } from './tarea-card'
-import { Clock, User, Filter } from 'lucide-react'
+import { Clock, Filter } from 'lucide-react'
 
 // Estados válidos actuales (deben coincidir con backend)
 export const ESTADOS_TAREA = ['pendiente', 'en_proceso', 'pausado', 'completado'] as const
@@ -73,8 +71,13 @@ export function TareasKanban({ trabajadorId, vistaPersonal = false }: TareasKanb
           : {}
       )
 
-      const response = await fetch(`/api/tareas?${params.toString()}`)
-      if (!response.ok) throw new Error('Error al cargar tareas')
+      const queryString = params.toString()
+      const response = await fetch(queryString ? `/api/tareas?${queryString}` : '/api/tareas')
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => null)
+        const message = (errorBody && (errorBody.error || errorBody.message)) || 'Error al cargar tareas'
+        throw new Error(message)
+      }
 
       const data = await response.json()
       setTareas(data.tareas || [])
@@ -82,7 +85,7 @@ export function TareasKanban({ trabajadorId, vistaPersonal = false }: TareasKanb
       console.error('Error:', error)
       toast({
         title: "Error",
-        description: "Error al cargar las tareas",
+        description: error instanceof Error ? error.message : "Error al cargar las tareas",
         variant: "destructive",
       })
     } finally {
@@ -157,6 +160,7 @@ export function TareasKanban({ trabajadorId, vistaPersonal = false }: TareasKanb
     } catch (e) {
       // revert
       setTareas(previo)
+      console.error('Error cambiando estado de tarea:', e)
       toast({ title: 'Error', description: 'No se pudo cambiar el estado', variant: 'destructive' })
     }
   }
@@ -165,8 +169,9 @@ export function TareasKanban({ trabajadorId, vistaPersonal = false }: TareasKanb
     const lista = tareas.filter(t => t.estado === estado)
     if (estado === 'completado') {
       return [...lista].sort((a,b) => {
-        const fa = a.fecha_fin ? new Date(a.fecha_fin as any).getTime() : 0
-        const fb = b.fecha_fin ? new Date(b.fecha_fin as any).getTime() : 0
+        const toTimestamp = (value: Date | string | null | undefined) => value ? new Date(value).getTime() : 0
+        const fa = toTimestamp(a.fecha_fin as Date | string | null | undefined)
+        const fb = toTimestamp(b.fecha_fin as Date | string | null | undefined)
         if (fb !== fa) return fb - fa
         return b.id_tarea - a.id_tarea
       })

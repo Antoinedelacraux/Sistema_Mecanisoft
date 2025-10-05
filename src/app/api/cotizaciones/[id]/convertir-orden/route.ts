@@ -29,7 +29,7 @@ export async function POST(
         cliente: { include: { persona: true } },
         vehiculo: true,
         detalle_cotizacion: {
-          include: { producto: true }
+          include: { producto: true, servicio: true }
         }
       }
     })
@@ -44,7 +44,7 @@ export async function POST(
 
     // Verificar stock disponible para productos físicos
     for (const detalle of cotizacion.detalle_cotizacion) {
-      if (detalle.producto.tipo === 'producto') {
+      if (detalle.producto && detalle.producto.tipo === 'producto') {
         if (detalle.producto.stock < detalle.cantidad) {
           return NextResponse.json({
             error: `Stock insuficiente para ${detalle.producto.nombre}. Disponible: ${detalle.producto.stock}, Requerido: ${detalle.cantidad}`
@@ -107,7 +107,8 @@ export async function POST(
         const detalle = await tx.detalleTransaccion.create({
           data: {
             id_transaccion: transaccion.id_transaccion,
-            id_producto: detalleCot.id_producto,
+            id_producto: detalleCot.id_producto ?? null,
+            id_servicio: detalleCot.id_servicio ?? null,
             cantidad: detalleCot.cantidad,
             precio: detalleCot.precio_unitario,
             descuento: detalleCot.descuento,
@@ -116,21 +117,33 @@ export async function POST(
         })
 
         // Crear tarea automáticamente para servicios
-        if (detalleCot.producto.tipo === 'servicio') {
+        if (detalleCot.servicio) {
+          // Convertir tiempo estimado a minutos según unidad
+          const unidad = detalleCot.servicio.unidad_tiempo || 'minutos'
+          const valorMin = detalleCot.servicio.tiempo_minimo || 60
+          const unidadFactor: Record<string, number> = {
+            minutos: 1,
+            horas: 60,
+            dias: 60 * 24,
+            semanas: 60 * 24 * 7
+          }
+          const tiempoEstimadoMin = (unidadFactor[unidad] || 1) * valorMin
+
           await tx.tarea.create({
             data: {
               id_detalle_transaccion: detalle.id_detalle_transaccion,
               id_trabajador: id_trabajador_principal ? parseInt(id_trabajador_principal) : 1, // Fallback temporal
               estado: 'pendiente',
-              tiempo_estimado: 60 // Default 1 hora
+              tiempo_estimado: tiempoEstimadoMin
             }
           })
         }
 
         // Reducir stock para productos físicos
-        if (detalleCot.producto.tipo === 'producto') {
+        if (detalleCot.producto && detalleCot.producto.tipo === 'producto') {
           await tx.producto.update({
-            where: { id_producto: detalleCot.id_producto },
+            // En este branch, id_producto existe; afirmamos non-null
+            where: { id_producto: detalleCot.id_producto! },
             data: {
               stock: {
                 decrement: detalleCot.cantidad

@@ -44,14 +44,16 @@ model Cotizacion {
 model DetalleCotizacion {
   id_detalle_cotizacion Int       @id @default(autoincrement())
   id_cotizacion         Int
-  id_producto           Int
+  id_producto           Int?
+  id_servicio           Int?
   cantidad              Int
   precio_unitario       Decimal   @db.Decimal(10,2)
   descuento             Decimal   @default(0) @db.Decimal(10,2)
   total                 Decimal   @db.Decimal(10,2)
   
   cotizacion            Cotizacion @relation(fields: [id_cotizacion], references: [id_cotizacion], onDelete: Cascade)
-  producto              Producto   @relation(fields: [id_producto], references: [id_producto])
+  producto              Producto?   @relation(fields: [id_producto], references: [id_producto])
+  servicio              Servicio?   @relation(fields: [id_servicio], references: [id_servicio])
   
   @@map("detalle_cotizacion")
 }
@@ -243,6 +245,32 @@ model Producto {
   @@map("producto")
 }
 
+// Gestión de servicios
+model Servicio {
+  id_servicio       Int       @id @default(autoincrement())
+  codigo_servicio   String    @unique @db.VarChar(50)
+  nombre            String    @db.VarChar(200)
+  descripcion       String?   @db.Text
+  es_general        Boolean   @default(false)
+  id_marca          Int?
+  id_modelo         Int?
+  precio_base       Decimal   @db.Decimal(10,2)
+  descuento         Decimal   @default(0) @db.Decimal(5,2)
+  oferta            Boolean   @default(false)
+  tiempo_minimo     Int       @default(1)
+  tiempo_maximo     Int       @default(1)
+  unidad_tiempo     String    @default("minutos") @db.VarChar(10)
+  estatus           Boolean   @default(true)
+  fecha_registro    DateTime  @default(now())
+
+  marca             Marca?    @relation(fields: [id_marca], references: [id_marca])
+  modelo            Modelo?   @relation(fields: [id_modelo], references: [id_modelo])
+  detalle_cotizacion DetalleCotizacion[]
+  detalles_transaccion DetalleTransaccion[]
+
+  @@map("servicio")
+}
+
 // Gestión de vehículos
 model Marca {
   id_marca     Int     @id @default(autoincrement())
@@ -251,6 +279,7 @@ model Marca {
   descripcion  String? @db.Text
   
   modelos Modelo[]
+  servicios Servicio[]
   
   @@map("marca")
 }
@@ -264,6 +293,7 @@ model Modelo {
   
   marca     Marca      @relation(fields: [id_marca], references: [id_marca])
   vehiculos Vehiculo[]
+  servicios Servicio[]
   
   @@map("modelo")
 }
@@ -358,7 +388,8 @@ model Pago {
 model DetalleTransaccion {
   id_detalle_transaccion Int     @id @default(autoincrement())
   id_transaccion         Int
-  id_producto            Int
+  id_producto            Int?
+  id_servicio            Int?
   cantidad               Int
   precio                 Decimal @db.Decimal(10,2)
   descuento             Decimal @default(0) @db.Decimal(10,2)
@@ -366,7 +397,8 @@ model DetalleTransaccion {
   estatus               Boolean @default(true)
   
   transaccion Transaccion @relation(fields: [id_transaccion], references: [id_transaccion], onDelete: Cascade)
-  producto    Producto    @relation(fields: [id_producto], references: [id_producto])
+  producto    Producto?    @relation(fields: [id_producto], references: [id_producto])
+  servicio    Servicio?    @relation(fields: [id_servicio], references: [id_servicio])
   tareas      Tarea[]
   
   @@map("detalle_transaccion")
@@ -375,8 +407,8 @@ model DetalleTransaccion {
 model Tarea {
   id_tarea               Int       @id @default(autoincrement())
   id_detalle_transaccion Int
-  id_trabajador          Int       // referencia al trabajador responsable
-  estado                 String    @default("pendiente") @db.VarChar(30) // pendiente, en_proceso, completado, verificado
+  id_trabajador          Int?      // referencia al trabajador responsable (puede quedar sin asignar)
+  estado                 String    @default("pendiente") @db.VarChar(30) // pendiente, en_proceso, pausado, completado, verificado
   fecha_inicio           DateTime?
   fecha_fin              DateTime?
   tiempo_estimado        Int?      // en minutos
@@ -386,7 +418,7 @@ model Tarea {
   updated_at             DateTime  @updatedAt
 
   detalle_transaccion DetalleTransaccion @relation(fields: [id_detalle_transaccion], references: [id_detalle_transaccion])
-  trabajador          Trabajador         @relation(fields: [id_trabajador], references: [id_trabajador])
+  trabajador          Trabajador?        @relation(fields: [id_trabajador], references: [id_trabajador])
 
   @@map("tarea")
 }

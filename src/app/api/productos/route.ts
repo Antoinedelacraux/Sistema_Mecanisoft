@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '10')
     const search = searchParams.get('search') || ''
     const categoria = searchParams.get('categoria')
-    const tipo = searchParams.get('tipo') // 'producto' o 'servicio'
+  const tipo = searchParams.get('tipo') // 'producto'
     const stockBajo = searchParams.get('stock_bajo') === 'true'
   const includeInactive = searchParams.get('include_inactive') === 'true' // conservado por compatibilidad (ya no necesario)
 
@@ -27,10 +27,8 @@ export async function GET(request: NextRequest) {
     // De momento ignoramos includeInactive y no filtramos por estatus.
     let whereCondition: Prisma.ProductoWhereInput = {}
 
-    // Filtro por tipo
-    if (tipo) {
-      whereCondition = { ...whereCondition, tipo }
-    }
+    // Siempre devolver solo productos en este módulo
+    whereCondition = { ...whereCondition, tipo: 'producto' }
 
     // Filtro por categoría
     if (categoria) {

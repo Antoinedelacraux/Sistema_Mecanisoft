@@ -26,13 +26,13 @@ export async function PATCH(
     }
     const { action, estado, notas_trabajador } = await request.json()
 
-    const tarea: any = await prisma.tarea.findUnique({ where: { id_tarea: id } })
+    const tarea = await prisma.tarea.findUnique({ where: { id_tarea: id } })
 
     if (!tarea) {
       return NextResponse.json({ error: 'Tarea no encontrada' }, { status: 404 })
     }
 
-  let updateData: any = {}
+    const updateData: Record<string, unknown> = {}
   let bitacoraDescripcion = ''
 
     switch (action) {
@@ -81,9 +81,11 @@ export async function PATCH(
         return NextResponse.json({ error: 'Acción no válida' }, { status: 400 })
     }
 
-    // Ejecutar todo en una transacción para coherencia (actualizar tarea + posible orden + bitácora)
+
+    // Actualizar tarea
     await prisma.tarea.update({ where: { id_tarea: id }, data: updateData })
 
+    // Obtener la transacción (orden) asociada a la tarea
     const tareaActualizada = await prisma.tarea.findUnique({
       where: { id_tarea: id },
       include: {
@@ -108,6 +110,37 @@ export async function PATCH(
         }
       }
     })
+
+    // Si hay transacción asociada, sincronizar estado_orden
+    const transaccion = tareaActualizada?.detalle_transaccion?.transaccion
+    if (transaccion) {
+      // Buscar todas las tareas asociadas a la orden
+      const tareasOrden = await prisma.tarea.findMany({
+        where: {
+          detalle_transaccion: {
+            transaccion: {
+              id_transaccion: transaccion.id_transaccion
+            }
+          }
+        }
+      })
+      // Determinar el estado global de la orden
+      let nuevoEstadoOrden = 'pendiente'
+      if (tareasOrden.every(t => t.estado === 'completado')) {
+        nuevoEstadoOrden = 'completado'
+      } else if (tareasOrden.some(t => t.estado === 'en_proceso')) {
+        nuevoEstadoOrden = 'en_proceso'
+      } else if (tareasOrden.some(t => t.estado === 'pausado')) {
+        nuevoEstadoOrden = 'pausado'
+      } else if (tareasOrden.some(t => t.estado === 'pendiente')) {
+        nuevoEstadoOrden = 'pendiente'
+      }
+      // Actualizar el estado de la orden
+      await prisma.transaccion.update({
+        where: { id_transaccion: transaccion.id_transaccion },
+        data: { estado_orden: nuevoEstadoOrden }
+      })
+    }
 
     // Bitácora
     await prisma.bitacora.create({

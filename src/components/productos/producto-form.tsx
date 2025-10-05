@@ -39,7 +39,7 @@ export function ProductoForm({ producto, onSuccess, onCancel }: ProductoFormProp
     id_categoria: z.number().int().positive(),
     id_fabricante: z.number().int().positive(),
     id_unidad: z.number().int().positive(),
-    tipo: z.enum(['producto', 'servicio']),
+  tipo: z.enum(['producto']),
     codigo_producto: z.string().min(1).max(50),
     nombre: z.string().min(1).max(120),
     descripcion: z.string().max(500).optional(),
@@ -65,7 +65,7 @@ export function ProductoForm({ producto, onSuccess, onCancel }: ProductoFormProp
       id_categoria: producto.id_categoria,
       id_fabricante: producto.id_fabricante,
       id_unidad: producto.id_unidad,
-      tipo: producto.tipo as 'producto' | 'servicio',
+  tipo: 'producto',
       codigo_producto: producto.codigo_producto,
       nombre: producto.nombre,
       descripcion: producto.descripcion || '',
@@ -79,7 +79,7 @@ export function ProductoForm({ producto, onSuccess, onCancel }: ProductoFormProp
   id_categoria: undefined as unknown as number,
   id_fabricante: undefined as unknown as number,
   id_unidad: undefined as unknown as number,
-      tipo: 'producto',
+  tipo: 'producto',
       codigo_producto: '',
       nombre: '',
       descripcion: '',
@@ -273,13 +273,12 @@ export function ProductoForm({ producto, onSuccess, onCancel }: ProductoFormProp
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <div className="flex flex-col gap-2">
               <Label>Tipo *</Label>
-              <Select value={tipoProducto} onValueChange={(val) => setValue('tipo', val as 'producto' | 'servicio')}>
+              <Select value={tipoProducto} onValueChange={(val) => setValue('tipo', val as 'producto')}>
                 <SelectTrigger>
                   <SelectValue placeholder="Seleccione" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="producto">Producto</SelectItem>
-                  <SelectItem value="servicio">Servicio</SelectItem>
                 </SelectContent>
               </Select>
               {errors.tipo && <p className="text-sm text-red-600">{errors.tipo.message}</p>}

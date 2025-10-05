@@ -12,7 +12,6 @@ import { Label } from '@/components/ui/label'
 import { TareaCompleta } from '@/types'
 import { useToast } from '@/components/ui/use-toast'
 import {
-  Clock,
   User,
   Car,
   Play,
@@ -54,9 +53,21 @@ export function TareaCard({ tarea, isDragging = false, onUpdateTarea }: TareaCar
     opacity: isDragging || isSortableDragging ? 0.5 : 1
   } as React.CSSProperties
 
-  // Extraer información del vehículo
-  const vehiculo = (tarea as any)?.detalle_transaccion?.transaccion?.transaccion_vehiculos?.[0]?.vehiculo
-  const cliente = (tarea as any)?.detalle_transaccion?.transaccion?.persona
+  const detalle = tarea.detalle_transaccion
+  const transaccion = detalle?.transaccion
+  const itemServicio = detalle?.servicio ?? undefined
+  const itemProducto = detalle?.producto ?? undefined
+  const esServicio = Boolean(itemServicio)
+  const itemNombre = itemServicio?.nombre ?? itemProducto?.nombre ?? 'Servicio programado'
+  const itemCantidad = detalle?.cantidad ?? 1
+  const itemCodigo = itemServicio?.codigo_servicio ?? itemProducto?.codigo_producto ?? '—'
+  const vehiculo = transaccion?.transaccion_vehiculos?.[0]?.vehiculo
+  const cliente = transaccion?.persona
+  const trabajadorNombre = tarea.trabajador
+    ? `${tarea.trabajador.usuario.persona.nombre} ${tarea.trabajador.usuario.persona.apellido_paterno ?? ''}`.trim()
+    : null
+  const codigoOrden = transaccion?.codigo_transaccion ?? '—'
+  const prioridad = transaccion?.prioridad ?? 'media'
 
   const updateTareaEstado = async (nuevoEstado: string, notasAdicionales?: string) => {
     // Optimista
@@ -87,15 +98,16 @@ export function TareaCard({ tarea, isDragging = false, onUpdateTarea }: TareaCar
       }[nuevoEstado] || 'actualizada'
       toast({
         title: `Tarea ${accion}`,
-        description: `${tarea.detalle_transaccion.producto.nombre} ha sido ${accion}`
+        description: `${itemNombre} ha sido ${accion}`
       })
-      const now = new Date().toISOString() as any
+      const now = new Date()
       const partial: Partial<TareaCompleta> = {}
       if (nuevoEstado === 'en_proceso' && !tarea.fecha_inicio) partial.fecha_inicio = now
       if (nuevoEstado === 'completado' && !tarea.fecha_fin) partial.fecha_fin = now
       if (notasAdicionales) partial.notas_trabajador = notasAdicionales
       if (Object.keys(partial).length) onUpdateTarea(partial)
     } catch (error) {
+      console.error('Error actualizando tarea:', error)
       toast({ title: 'Error', description: 'No se pudo actualizar la tarea', variant: 'destructive' })
       // revertir visual si hicimos cambios locales (por ahora no mutamos tarea local directamente)
       onUpdateTarea({ estado: prevEstado })
@@ -114,9 +126,10 @@ export function TareaCard({ tarea, isDragging = false, onUpdateTarea }: TareaCar
         body: JSON.stringify({ action: 'pausar' })
       })
       if (!response.ok) throw new Error('Error al pausar tarea')
-      toast({ title: 'Tarea pausada', description: `${tarea.detalle_transaccion.producto.nombre} pausada` })
-  onUpdateTarea({ estado: 'pausado' })
+      toast({ title: 'Tarea pausada', description: `${itemNombre} pausada` })
+      onUpdateTarea({ estado: 'pausado' })
     } catch (e) {
+      console.error('Error pausando tarea:', e)
       toast({ title: 'Error', description: 'No se pudo pausar la tarea', variant: 'destructive' })
     } finally {
       setLoading(false)
@@ -152,8 +165,9 @@ export function TareaCard({ tarea, isDragging = false, onUpdateTarea }: TareaCar
       })
 
       setShowNotes(false)
-  onUpdateTarea({ estado: 'completado', notas_trabajador: notas })
+      onUpdateTarea({ estado: 'completado', notas_trabajador: notas })
     } catch (error) {
+      console.error('Error completando tarea:', error)
       toast({
         title: "Error",
         description: "Error al completar la tarea",
@@ -165,8 +179,9 @@ export function TareaCard({ tarea, isDragging = false, onUpdateTarea }: TareaCar
   }
 
   const calculateProgress = () => {
-    if (!tarea.tiempo_estimado) return 0
-    return Math.min((tarea.tiempo_real || 0) / tarea.tiempo_estimado * 100, 100)
+    const estimado = tarea.tiempo_estimado ?? 0
+    if (!estimado) return 0
+    return Math.min(((tarea.tiempo_real ?? 0) / estimado) * 100, 100)
   }
 
   return (
@@ -193,13 +208,13 @@ export function TareaCard({ tarea, isDragging = false, onUpdateTarea }: TareaCar
             <div className="flex-1 pr-2">
               <div className="flex items-center gap-2 mb-1">
                 <Badge variant="outline" className="text-xs">
-                  #{tarea.detalle_transaccion.transaccion.codigo_transaccion}
+                  #{codigoOrden}
                 </Badge>
                 <Badge 
-                  className={`text-xs ${getPriorityColor(tarea.detalle_transaccion.transaccion.prioridad)}`}
+                  className={`text-xs ${getPriorityColor(prioridad)}`}
                   variant="secondary"
                 >
-                  {tarea.detalle_transaccion.transaccion.prioridad.toUpperCase()}
+                  {prioridad.toUpperCase()}
                 </Badge>
               </div>
             </div>
@@ -222,7 +237,9 @@ export function TareaCard({ tarea, isDragging = false, onUpdateTarea }: TareaCar
             <div className="flex items-center gap-2 text-sm">
               <User className="w-4 h-4 text-gray-500" />
               <span className="font-medium">
-                {cliente.nombre} {cliente.apellido_paterno}
+                {cliente
+                  ? `${cliente.nombre} ${cliente.apellido_paterno ?? ''}`.trim()
+                  : 'Cliente no disponible'}
               </span>
             </div>
             {vehiculo && (
@@ -235,9 +252,18 @@ export function TareaCard({ tarea, isDragging = false, onUpdateTarea }: TareaCar
 
           {/* Servicio/Producto */}
           <div className="bg-white/50 p-2 rounded border">
-            <p className="font-medium text-sm">{tarea.detalle_transaccion.producto.nombre}</p>
-            <p className="text-xs text-gray-600">
-              Cantidad: {tarea.detalle_transaccion.cantidad}
+            <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+              <span>{esServicio ? 'Servicio' : 'Producto'}</span>
+              <span className="font-mono text-gray-400">{itemCodigo}</span>
+            </div>
+            <p className="font-medium text-sm text-gray-900">{itemNombre}</p>
+            <p className="text-xs text-gray-600 flex justify-between">
+              <span>Cantidad: {itemCantidad}</span>
+              {itemServicio && itemServicio.unidad_tiempo && (
+                <span>
+                  Duración: {itemServicio.tiempo_minimo} - {itemServicio.tiempo_maximo} {itemServicio.unidad_tiempo}
+                </span>
+              )}
             </p>
           </div>
 
@@ -360,10 +386,10 @@ export function TareaCard({ tarea, isDragging = false, onUpdateTarea }: TareaCar
             <div className="mt-3 space-y-2 text-xs border-t pt-3">
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <span className="font-semibold">Orden:</span> #{tarea.detalle_transaccion.transaccion.codigo_transaccion}
+                  <span className="font-semibold">Orden:</span> #{codigoOrden}
                 </div>
                 <div>
-                  <span className="font-semibold">Prioridad:</span> {tarea.detalle_transaccion.transaccion.prioridad.toUpperCase()}
+                  <span className="font-semibold">Prioridad:</span> {prioridad.toUpperCase()}
                 </div>
                 {tarea.fecha_inicio && (
                   <div>
@@ -382,13 +408,14 @@ export function TareaCard({ tarea, isDragging = false, onUpdateTarea }: TareaCar
                 </div>
               )}
               <div>
-                <span className="font-semibold">Servicio:</span> {tarea.detalle_transaccion.producto.nombre}
+                <span className="font-semibold">{esServicio ? 'Servicio' : 'Producto'}:</span> {itemNombre}
               </div>
               <div>
-                <span className="font-semibold">Tiempo:</span> {formatTime(tarea.tiempo_real || 0)} / {formatTime(tarea.tiempo_estimado || 0)}
+                <span className="font-semibold">Tiempo:</span> {formatTime(tarea.tiempo_real ?? 0)} / {formatTime(tarea.tiempo_estimado ?? 0)}
               </div>
               <div>
-                <span className="font-semibold">Asignado:</span> {tarea.trabajador.usuario.persona.nombre} {tarea.trabajador.usuario.persona.apellido_paterno}
+                <span className="font-semibold">Asignado:</span>{' '}
+                {trabajadorNombre ?? 'Sin asignar'}
               </div>
               {tarea.notas_trabajador && (
                 <div className="bg-blue-50 p-2 rounded">
@@ -410,7 +437,7 @@ export function TareaCard({ tarea, isDragging = false, onUpdateTarea }: TareaCar
           <div className="space-y-4">
             <div>
               <p className="mb-2">
-                <strong>Servicio:</strong> {tarea.detalle_transaccion.producto.nombre}
+                <strong>{esServicio ? 'Servicio' : 'Producto'}:</strong> {itemNombre}
               </p>
               <p className="text-sm text-gray-600 mb-4">
                 Agrega notas sobre el trabajo realizado (opcional):

@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
       cliente: { include: { persona: true } },
       vehiculo: { include: { modelo: { include: { marca: true } } } },
       usuario: { include: { persona: true } },
-      detalle_cotizacion: { include: { producto: true } },
+      detalle_cotizacion: { include: { producto: true, servicio: true } },
       _count: { select: { detalle_cotizacion: true } }
     }
 
@@ -155,28 +155,37 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'El vehículo no pertenece al cliente seleccionado' }, { status: 400 })
     }
 
-    // Batch fetch productos
+    // Batch fetch catálogo (productos/servicios) usando id como clave
     const productoIds = [...new Set(items.map(i => i.id_producto))]
-  const productos = await prisma.producto.findMany({ where: { id_producto: { in: productoIds } } })
+    const productos = await prisma.producto.findMany({ where: { id_producto: { in: productoIds } } })
+    const servicios = await prisma.servicio.findMany({ where: { id_servicio: { in: productoIds } } })
     const productosMap = new Map(productos.map(p => [p.id_producto, p]))
+    const serviciosMap = new Map(servicios.map(s => [s.id_servicio, s]))
 
     // Validar cada item contra producto
     let subtotal = 0
     const itemsValidados: Array<{
-      id_producto: number; cantidad: number; precio_unitario: number; descuento: number; total: number;
+      id_producto?: number | null
+      id_servicio?: number | null
+      cantidad: number
+      precio_unitario: number
+      descuento: number
+      total: number
     }> = []
 
     for (const item of items) {
-      const producto = productosMap.get(item.id_producto)
-      if (!producto || !producto.estatus) {
-        return NextResponse.json({ error: `Producto con ID ${item.id_producto} no está disponible` }, { status: 400 })
+      const prod = productosMap.get(item.id_producto)
+      const serv = serviciosMap.get(item.id_producto)
+      const entry = prod || serv
+      if (!entry || entry.estatus === false) {
+        return NextResponse.json({ error: `Item con ID ${item.id_producto} no está disponible` }, { status: 400 })
       }
-      // Para servicios ignoramos stock; para productos podría validarse stock (pendiente)
       const descuentoAplicado = typeof item.descuento === 'number' ? item.descuento : 0
       const totalItem = item.cantidad * item.precio_unitario * (1 - descuentoAplicado / 100)
       subtotal += totalItem
       itemsValidados.push({
-        id_producto: item.id_producto,
+        id_producto: prod ? item.id_producto : null,
+        id_servicio: serv ? item.id_producto : null,
         cantidad: item.cantidad,
         precio_unitario: item.precio_unitario,
         descuento: descuentoAplicado,
@@ -221,7 +230,8 @@ export async function POST(request: NextRequest) {
             await tx.detalleCotizacion.create({
               data: {
                 id_cotizacion: cot.id_cotizacion,
-                id_producto: it.id_producto,
+                id_producto: it.id_producto ?? null,
+                id_servicio: it.id_servicio ?? null,
                 cantidad: it.cantidad,
                 precio_unitario: it.precio_unitario,
                 descuento: it.descuento,

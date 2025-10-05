@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useForm } from 'react-hook-form'
+import { useState, useEffect, useMemo } from 'react'
+import type { ChangeEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -10,9 +10,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Calendar } from '@/components/ui/calendar'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Progress } from '@/components/ui/progress'
 import { 
   ChevronLeft, 
@@ -20,16 +17,15 @@ import {
   User, 
   Car, 
   Package, 
-  CalendarIcon, 
   Plus, 
   Minus,
   X,
   Calculator
 } from 'lucide-react'
-import { ClienteCompleto, VehiculoCompleto, ProductoCompleto, TrabajadorCompleto } from '@/types'
+import { ClienteCompleto, VehiculoCompleto, ProductoCompleto, TrabajadorCompleto, ServicioCompleto } from '@/types'
 // Eliminamos import de Prisma Decimal para evitar incluir runtime en el bundle del cliente
 import { useToast } from '@/components/ui/use-toast'
-import { format } from 'date-fns'
+import { format, addMinutes } from 'date-fns'
 import { es } from 'date-fns/locale'
 
 interface OrdenWizardProps {
@@ -37,13 +33,21 @@ interface OrdenWizardProps {
   onCancel: () => void
 }
 
+type CatalogoItem =
+  | { tipo: 'producto'; producto: ProductoCompleto }
+  | { tipo: 'servicio'; servicio: ServicioCompleto }
+
 interface ItemOrden {
-  id_producto: number
-  producto: ProductoCompleto
+  id_referencia: number
+  tipo: 'producto' | 'servicio'
+  nombre: string
+  codigo: string
   cantidad: number
   precio_unitario: number
   descuento: number
   total: number
+  oferta: boolean
+  permiteEditarDescuento: boolean
 }
 
 type Step = 'cliente' | 'vehiculo' | 'servicios' | 'asignacion' | 'resumen'
@@ -58,13 +62,12 @@ export function OrdenWizard({ onSuccess, onCancel }: OrdenWizardProps) {
   const [trabajadorSeleccionado, setTrabajadorSeleccionado] = useState<TrabajadorCompleto | null>(null)
   const [items, setItems] = useState<ItemOrden[]>([])
   const [prioridad, setPrioridad] = useState('media')
-  const [fechaEstimada, setFechaEstimada] = useState<Date>()
   const [observaciones, setObservaciones] = useState('')
   
   // Datos para selects
   const [clientes, setClientes] = useState<ClienteCompleto[]>([])
   const [vehiculos, setVehiculos] = useState<VehiculoCompleto[]>([])
-  const [productos, setProductos] = useState<ProductoCompleto[]>([])
+  const [servicios, setServicios] = useState<ServicioCompleto[]>([])
   const [trabajadores, setTrabajadores] = useState<TrabajadorCompleto[]>([])
   
   const { toast } = useToast()
@@ -84,20 +87,20 @@ export function OrdenWizard({ onSuccess, onCancel }: OrdenWizardProps) {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [clientesRes, productosRes, trabajadoresRes] = await Promise.all([
+        const [clientesRes, serviciosRes, trabajadoresRes] = await Promise.all([
           fetch('/api/clientes/activos'),
-          fetch('/api/productos?tipo=servicio'), // Solo servicios para órdenes
+          fetch('/api/servicios'), // Solo servicios para órdenes
           fetch('/api/trabajadores?solo_activos=true')
         ])
 
-        const [clientesData, productosData, trabajadoresData] = await Promise.all([
+        const [clientesData, serviciosData, trabajadoresData] = await Promise.all([
           clientesRes.json(),
-          productosRes.json(),
+          serviciosRes.json(),
           trabajadoresRes.json()
         ])
 
         setClientes(clientesData.clientes || [])
-        setProductos(productosData.productos || [])
+        setServicios(serviciosData.servicios || [])
         setTrabajadores(trabajadoresData.trabajadores || [])
       } catch (error) {
         console.error('Error cargando datos:', error)
@@ -151,52 +154,177 @@ export function OrdenWizard({ onSuccess, onCancel }: OrdenWizardProps) {
     }
   }
 
-  const toNumber = (v: any): number => {
+  const toNumber = (v: unknown): number => {
     if (v == null) return 0
-    if (typeof v === 'object' && typeof (v as any).toString === 'function') {
-      const s = (v as any).toString(); const n = Number(s); if (!isNaN(n)) return n
+    if (typeof v === 'number') return Number.isFinite(v) ? v : 0
+    if (typeof v === 'string') {
+      const n = parseFloat(v)
+      return Number.isNaN(n) ? 0 : n
     }
-    if (typeof v === 'string') { const n = parseFloat(v); return isNaN(n) ? 0 : n }
-    const n = Number(v); return isNaN(n) ? 0 : n
-  }
-
-  const formatMoney = (v: any) => {
-    const n = toNumber(v)
-    return new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(n)
-  }
-
-  const agregarItem = (producto: ProductoCompleto) => {
-    const existingIndex = items.findIndex(item => item.id_producto === producto.id_producto)
-    
-    if (existingIndex >= 0) {
-      // Incrementar cantidad
-      const newItems = [...items]
-      newItems[existingIndex].cantidad += 1
-      newItems[existingIndex].total = newItems[existingIndex].cantidad * newItems[existingIndex].precio_unitario * (1 - newItems[existingIndex].descuento / 100)
-      setItems(newItems)
-    } else {
-      // Agregar nuevo item
-      const precio = toNumber(producto.precio_venta)
-      const desc = toNumber(producto.descuento)
-      const newItem: ItemOrden = {
-        id_producto: producto.id_producto,
-        producto,
-        cantidad: 1,
-        precio_unitario: precio,
-        descuento: desc,
-        total: precio * (1 - desc / 100)
+    if (typeof v === 'boolean') return v ? 1 : 0
+    if (typeof v === 'bigint') return Number(v)
+    if (typeof v === 'object') {
+      const candidate = v as { toString?: () => string }
+      if (candidate.toString) {
+        const n = Number(candidate.toString())
+        return Number.isNaN(n) ? 0 : n
       }
-      setItems([...items, newItem])
+    }
+    const fallback = Number(v)
+    return Number.isNaN(fallback) ? 0 : fallback
+  }
+
+  const formatMoney = (v: unknown) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(toNumber(v))
+
+  const calcularTotalLinea = (cantidad: number, precioUnitario: number, descuento: number) => {
+    const cantidadValida = Number.isFinite(cantidad) && cantidad > 0 ? cantidad : 1
+    const precioValido = Number.isFinite(precioUnitario) && precioUnitario >= 0 ? precioUnitario : 0
+    const descuentoValido = Number.isFinite(descuento) && descuento >= 0 ? descuento : 0
+    return cantidadValida * precioValido * (1 - descuentoValido / 100)
+  }
+
+  const unidadTiempoEnMinutos = (unidad: ServicioCompleto['unidad_tiempo']) => {
+    switch (unidad) {
+      case 'minutos':
+        return 1
+      case 'horas':
+        return 60
+      case 'dias':
+        return 60 * 24
+      case 'semanas':
+        return 60 * 24 * 7
+      default:
+        return 1
     }
   }
 
-  const actualizarItem = (index: number, campo: keyof ItemOrden, valor: any) => {
+  const formatearDuracion = (minutos: number) => {
+    if (!Number.isFinite(minutos) || minutos <= 0) return '0 min'
+    const total = Math.round(minutos)
+    const dias = Math.floor(total / (60 * 24))
+    const horas = Math.floor((total % (60 * 24)) / 60)
+    const mins = total % 60
+    const partes: string[] = []
+    if (dias) partes.push(`${dias} d`)
+    if (horas) partes.push(`${horas} h`)
+    if (mins || partes.length === 0) partes.push(`${mins} min`)
+    return partes.join(' ')
+  }
+
+  const resumenTiempoServicios = useMemo(() => {
+    let totalMin = 0
+    let totalMax = 0
+    const detalles: Array<{
+      id: number
+      nombre: string
+      cantidad: number
+      min: number
+      max: number
+      unidad: ServicioCompleto['unidad_tiempo']
+    }> = []
+
+    items.forEach(item => {
+      if (item.tipo !== 'servicio') return
+      const servicio = servicios.find(s => s.id_servicio === item.id_referencia)
+      if (!servicio) return
+      const factor = unidadTiempoEnMinutos(servicio.unidad_tiempo)
+      const minCalculado = servicio.tiempo_minimo * factor * item.cantidad
+      const maxCalculado = servicio.tiempo_maximo * factor * item.cantidad
+      totalMin += minCalculado
+      totalMax += maxCalculado
+      detalles.push({
+        id: servicio.id_servicio,
+        nombre: servicio.nombre,
+        cantidad: item.cantidad,
+        min: minCalculado,
+        max: maxCalculado,
+        unidad: servicio.unidad_tiempo
+      })
+    })
+
+    return {
+      cantidadServicios: detalles.length,
+      totalMin,
+      totalMax,
+      detalles
+    }
+  }, [items, servicios])
+
+  const estimacionFechas = useMemo(() => {
+    if (resumenTiempoServicios.totalMax === 0) {
+      return null
+    }
+    const inicio = new Date()
+    return {
+      inicio,
+      finMin: addMinutes(inicio, resumenTiempoServicios.totalMin),
+      finMax: addMinutes(inicio, resumenTiempoServicios.totalMax)
+    }
+  }, [resumenTiempoServicios.totalMin, resumenTiempoServicios.totalMax])
+
+  const agregarItem = (elemento: CatalogoItem) => {
+    const esProducto = elemento.tipo === 'producto'
+    const base = esProducto ? elemento.producto : elemento.servicio
+    const idReferencia = esProducto ? elemento.producto.id_producto : elemento.servicio.id_servicio
+    const nombre = base.nombre
+    const codigo = esProducto ? elemento.producto.codigo_producto : elemento.servicio.codigo_servicio
+    const precioBase = esProducto ? toNumber(elemento.producto.precio_venta) : toNumber(elemento.servicio.precio_base)
+    const descuentoBase = esProducto
+      ? toNumber(elemento.producto.descuento)
+      : elemento.servicio.oferta ? toNumber(elemento.servicio.descuento) : 0
+    const ofertaActiva = esProducto ? Boolean(elemento.producto.oferta) : Boolean(elemento.servicio.oferta)
+    const permiteEditarDescuento = esProducto ? true : ofertaActiva
+
+    const existingIndex = items.findIndex(item => item.id_referencia === idReferencia && item.tipo === (esProducto ? 'producto' : 'servicio'))
+
+    if (existingIndex >= 0) {
+      const newItems = [...items]
+      const actual = { ...newItems[existingIndex] }
+      actual.cantidad += 1
+      actual.total = calcularTotalLinea(actual.cantidad, actual.precio_unitario, actual.descuento)
+      newItems[existingIndex] = actual
+      setItems(newItems)
+      return
+    }
+
+    const nuevoItem: ItemOrden = {
+      id_referencia: idReferencia,
+      tipo: esProducto ? 'producto' : 'servicio',
+      nombre,
+      codigo,
+      cantidad: 1,
+      precio_unitario: precioBase,
+      descuento: permiteEditarDescuento ? descuentoBase : 0,
+      total: calcularTotalLinea(1, precioBase, permiteEditarDescuento ? descuentoBase : 0),
+      oferta: ofertaActiva,
+      permiteEditarDescuento
+    }
+
+    setItems(prev => [...prev, nuevoItem])
+  }
+
+  const actualizarItem = (index: number, campo: keyof ItemOrden, valor: unknown) => {
     const newItems = [...items]
-    newItems[index] = { ...newItems[index], [campo]: valor }
-    
-    // Recalcular total
-    newItems[index].total = newItems[index].cantidad * newItems[index].precio_unitario * (1 - newItems[index].descuento / 100)
-    
+    const item = { ...newItems[index] }
+
+    if (campo === 'descuento' && !item.permiteEditarDescuento) {
+      return
+    }
+
+    if (campo === 'cantidad') {
+      const nuevaCantidad = parseInt(String(valor), 10)
+      item.cantidad = Number.isFinite(nuevaCantidad) && nuevaCantidad > 0 ? nuevaCantidad : 1
+    } else if (campo === 'precio_unitario') {
+      const nuevoPrecio = parseFloat(String(valor))
+      item.precio_unitario = Number.isFinite(nuevoPrecio) && nuevoPrecio >= 0 ? nuevoPrecio : 0
+    } else if (campo === 'descuento') {
+      const nuevoDescuento = parseFloat(String(valor))
+      const descuentoNormalizado = Number.isFinite(nuevoDescuento) ? Math.min(Math.max(nuevoDescuento, 0), 100) : 0
+      item.descuento = descuentoNormalizado
+    }
+
+    item.total = calcularTotalLinea(item.cantidad, item.precio_unitario, item.descuento)
+    newItems[index] = item
     setItems(newItems)
   }
 
@@ -204,13 +332,12 @@ export function OrdenWizard({ onSuccess, onCancel }: OrdenWizardProps) {
     setItems(items.filter((_, i) => i !== index))
   }
 
-  const calcularTotales = () => {
+  const totales = useMemo(() => {
     const subtotal = items.reduce((sum, item) => sum + item.total, 0)
     const impuesto = subtotal * 0.18
     const total = subtotal + impuesto
-    
     return { subtotal, impuesto, total }
-  }
+  }, [items])
 
   const submitOrden = async () => {
     if (!clienteSeleccionado || !vehiculoSeleccionado || items.length === 0) {
@@ -229,13 +356,14 @@ export function OrdenWizard({ onSuccess, onCancel }: OrdenWizardProps) {
         id_vehiculo: vehiculoSeleccionado.id_vehiculo,
         id_trabajador_principal: trabajadorSeleccionado?.id_trabajador,
         prioridad,
-        fecha_fin_estimada: fechaEstimada?.toISOString(),
+        fecha_fin_estimada: estimacionFechas?.finMax?.toISOString(),
         observaciones,
         items: items.map(item => ({
-          id_producto: item.id_producto,
-          cantidad: item.cantidad,
-          precio_unitario: item.precio_unitario,
-          descuento: item.descuento
+          id_producto: item.id_referencia,
+          cantidad: Number.isFinite(item.cantidad) && item.cantidad > 0 ? item.cantidad : 1,
+          precio_unitario: Number.isFinite(item.precio_unitario) && item.precio_unitario >= 0 ? item.precio_unitario : 0,
+          descuento: Number.isFinite(item.descuento) && item.descuento >= 0 ? item.descuento : 0,
+          tipo: item.tipo
         }))
       }
 
@@ -258,10 +386,10 @@ export function OrdenWizard({ onSuccess, onCancel }: OrdenWizardProps) {
       })
 
       onSuccess()
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Ocurrió un error al crear la orden',
         variant: "destructive",
       })
     } finally {
@@ -432,40 +560,43 @@ export function OrdenWizard({ onSuccess, onCancel }: OrdenWizardProps) {
             <div>
               <h4 className="font-medium mb-3">Servicios Disponibles</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-60 overflow-y-auto">
-                {productos.map((producto) => {
-                  const descuento = toNumber((producto as any).descuento)
-                  const precioBase = toNumber((producto as any).precio_venta)
+                {servicios.map((servicio) => {
+                  const descuento = toNumber(servicio.descuento)
+                  const precioBase = toNumber(servicio.precio_base)
                   const precioFinal = descuento > 0 ? precioBase * (1 - descuento / 100) : precioBase
                   return (
-                  <Card 
-                    key={producto.id_producto}
-                    className="cursor-pointer hover:bg-gray-50 transition-colors"
-                    onClick={() => agregarItem(producto)}
-                  >
-                    <CardContent className="p-3">
-                      <div className="font-medium text-sm">{producto.nombre}</div>
-                      <div className="text-xs text-gray-600">{producto.codigo_producto}</div>
-                      <div className="text-sm mt-1 flex items-center gap-2">
-                        {descuento > 0 && (
-                          <span className="text-xs line-through text-gray-400">
-                            {formatMoney(precioBase)}
+                    <Card 
+                      key={servicio.id_servicio}
+                      className="cursor-pointer hover:bg-gray-50 transition-colors"
+                      onClick={() => agregarItem({ tipo: 'servicio', servicio })}
+                    >
+                      <CardContent className="p-3">
+                        <div className="font-medium text-sm">{servicio.nombre}</div>
+                        <div className="text-xs text-gray-600">{servicio.codigo_servicio}</div>
+                        <div className="text-sm mt-1 flex items-center gap-2">
+                          {descuento > 0 && (
+                            <span className="text-xs line-through text-gray-400">
+                              {formatMoney(precioBase)}
+                            </span>
+                          )}
+                          <span className="font-semibold text-green-600">
+                            {formatMoney(precioFinal)}
                           </span>
+                        </div>
+                        {descuento > 0 && (
+                          <Badge variant="outline" className="mt-1 text-[10px] bg-green-50 text-green-700 border-green-200">
+                            -{descuento}%
+                          </Badge>
                         )}
-                        <span className="font-semibold text-green-600">
-                          {formatMoney(precioFinal)}
-                        </span>
-                      </div>
-                      {descuento > 0 && (
-                        <Badge variant="outline" className="mt-1 text-[10px] bg-green-50 text-green-700 border-green-200">
-                          -{descuento}%
-                        </Badge>
-                      )}
-                      <Button size="sm" className="w-full mt-2">
-                        <Plus className="w-3 h-3 mr-1" />
-                        Agregar
-                      </Button>
-                    </CardContent>
-                  </Card>
+                        <div className="text-xs text-gray-600 mt-1">
+                          Duración: {servicio.tiempo_minimo} - {servicio.tiempo_maximo} {servicio.unidad_tiempo}
+                        </div>
+                        <Button size="sm" className="w-full mt-2">
+                          <Plus className="w-3 h-3 mr-1" />
+                          Agregar
+                        </Button>
+                      </CardContent>
+                    </Card>
                   )})}
               </div>
             </div>
@@ -482,73 +613,103 @@ export function OrdenWizard({ onSuccess, onCancel }: OrdenWizardProps) {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {items.map((item, index) => (
-                    <Card key={index} className="p-4">
-                      <div className="flex items-center gap-4">
-                        <div className="flex-1">
-                          <div className="font-medium">{item.producto.nombre}</div>
-                          <div className="text-sm text-gray-600">{item.producto.codigo_producto}</div>
-                        </div>
-                        
-                        <div className="flex items-center gap-2">
-                          <Label className="text-sm">Cant:</Label>
-                          <div className="flex items-center gap-1">
+                  {items.map((item, index) => {
+                    const servicio = item.tipo === 'servicio' ? servicios.find(s => s.id_servicio === item.id_referencia) : null
+                    const factor = servicio ? unidadTiempoEnMinutos(servicio.unidad_tiempo) : 0
+                    const minCalculado = servicio ? servicio.tiempo_minimo * factor * item.cantidad : 0
+                    const maxCalculado = servicio ? servicio.tiempo_maximo * factor * item.cantidad : 0
+
+                    return (
+                      <Card key={`${item.tipo}-${item.id_referencia}-${index}`} className="p-4">
+                        <div className="flex flex-col gap-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="font-medium">{item.nombre}</div>
+                              <div className="text-sm text-gray-600">{item.codigo}</div>
+                              <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
+                                <Badge variant="outline" className="text-[10px]">
+                                  {item.tipo === 'servicio' ? 'Servicio' : 'Producto'}
+                                </Badge>
+                                {item.oferta && (
+                                  <Badge variant="outline" className="text-[10px] bg-green-50 text-green-700 border-green-200">
+                                    Oferta
+                                  </Badge>
+                                )}
+                              </div>
+                              {servicio && (
+                                <div className="text-xs text-blue-600 mt-2">
+                                  Duración estimada: {formatearDuracion(minCalculado)} – {formatearDuracion(maxCalculado)}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <Label className="text-sm">Cant:</Label>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => actualizarItem(index, 'cantidad', Math.max(1, item.cantidad - 1))}
+                                >
+                                  <Minus className="w-3 h-3" />
+                                </Button>
+                                <span className="w-10 text-center">{item.cantidad}</span>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => actualizarItem(index, 'cantidad', item.cantidad + 1)}
+                                >
+                                  <Plus className="w-3 h-3" />
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-4">
+                            <div className="flex items-center gap-2">
+                              <Label className="text-sm">Precio:</Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={item.precio_unitario}
+                                onChange={(e: ChangeEvent<HTMLInputElement>) => actualizarItem(index, 'precio_unitario', e.target.value)}
+                                className="w-28"
+                                min={0}
+                              />
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <Label className="text-sm">Desc:</Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={item.descuento}
+                                onChange={(e: ChangeEvent<HTMLInputElement>) => actualizarItem(index, 'descuento', e.target.value)}
+                                className="w-24"
+                                min={0}
+                                max={100}
+                                disabled={!item.permiteEditarDescuento}
+                              />
+                              <span className="text-sm">%</span>
+                            </div>
+
+                            <div className="ml-auto font-semibold text-green-600">
+                              {formatMoney(item.total)}
+                            </div>
+
                             <Button
                               size="sm"
-                              variant="outline"
-                              onClick={() => actualizarItem(index, 'cantidad', Math.max(1, item.cantidad - 1))}
+                              variant="ghost"
+                              onClick={() => eliminarItem(index)}
+                              className="text-red-600"
                             >
-                              <Minus className="w-3 h-3" />
-                            </Button>
-                            <span className="w-8 text-center">{item.cantidad}</span>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => actualizarItem(index, 'cantidad', item.cantidad + 1)}
-                            >
-                              <Plus className="w-3 h-3" />
+                              <X className="w-4 h-4" />
                             </Button>
                           </div>
                         </div>
-                        
-                        <div className="flex items-center gap-2">
-                          <Label className="text-sm">Precio:</Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={item.precio_unitario}
-                            onChange={(e) => actualizarItem(index, 'precio_unitario', parseFloat(e.target.value))}
-                            className="w-24"
-                          />
-                        </div>
-                        
-                        <div className="flex items-center gap-2">
-                          <Label className="text-sm">Desc:</Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={item.descuento}
-                            onChange={(e) => actualizarItem(index, 'descuento', parseFloat(e.target.value))}
-                            className="w-20"
-                          />
-                          <span className="text-sm">%</span>
-                        </div>
-                        
-                        <div className="font-semibold text-green-600">
-                          S/ {item.total.toFixed(2)}
-                        </div>
-                        
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => eliminarItem(index)}
-                          className="text-red-600"
-                        >
-                          <X className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </Card>
-                  ))}
+                      </Card>
+                    )
+                  })}
                   
                   {/* Totales */}
                   <Card className="bg-gray-50">
@@ -556,18 +717,44 @@ export function OrdenWizard({ onSuccess, onCancel }: OrdenWizardProps) {
                       <div className="space-y-2">
                         <div className="flex justify-between">
                           <span>Subtotal:</span>
-                          <span>S/ {calcularTotales().subtotal.toFixed(2)}</span>
+                          <span>{formatMoney(totales.subtotal)}</span>
                         </div>
                         <div className="flex justify-between">
                           <span>IGV (18%):</span>
-                          <span>S/ {calcularTotales().impuesto.toFixed(2)}</span>
+                          <span>{formatMoney(totales.impuesto)}</span>
                         </div>
                         <Separator />
                         <div className="flex justify-between font-bold text-lg">
                           <span>Total:</span>
-                          <span className="text-green-600">S/ {calcularTotales().total.toFixed(2)}</span>
+                          <span className="text-green-600">{formatMoney(totales.total)}</span>
                         </div>
                       </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-blue-50 border-blue-200">
+                    <CardContent className="p-4 space-y-2 text-sm text-blue-900">
+                      <div className="font-semibold">Tiempo estimado del trabajo</div>
+                      {resumenTiempoServicios.totalMax > 0 ? (
+                        <>
+                          <div className="flex justify-between">
+                            <span>Duración mínima:</span>
+                            <span>{formatearDuracion(resumenTiempoServicios.totalMin)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Duración máxima:</span>
+                            <span>{formatearDuracion(resumenTiempoServicios.totalMax)}</span>
+                          </div>
+                          {estimacionFechas && (
+                            <div className="flex justify-between">
+                              <span>Fin estimado (máx):</span>
+                              <span>{format(estimacionFechas.finMax, 'PPP p', { locale: es })}</span>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <p>Agrega servicios para calcular la duración estimada.</p>
+                      )}
                     </CardContent>
                   </Card>
                 </div>
@@ -648,31 +835,43 @@ export function OrdenWizard({ onSuccess, onCancel }: OrdenWizardProps) {
                 </div>
 
                 <div>
-                  <Label>Fecha Estimada de Finalización</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className="w-full justify-start text-left font-normal"
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {fechaEstimada ? (
-                          format(fechaEstimada, "PPP", { locale: es })
-                        ) : (
-                          <span>Seleccionar fecha</span>
-                        )}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        selected={fechaEstimada}
-                        onSelect={setFechaEstimada}
-                        initialFocus
-                        disabled={(date) => date < new Date()}
-                      />
-                    </PopoverContent>
-                  </Popover>
+                  <Label>Tiempo estimado de trabajo</Label>
+                  <Card className="mt-2 bg-slate-50 border-slate-200">
+                    <CardContent className="p-4 space-y-2">
+                      {resumenTiempoServicios.totalMax > 0 ? (
+                        <>
+                          <div className="flex items-center justify-between text-sm">
+                            <span>Duración mínima:</span>
+                            <span className="font-medium">{formatearDuracion(resumenTiempoServicios.totalMin)}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-sm">
+                            <span>Duración máxima:</span>
+                            <span className="font-medium">{formatearDuracion(resumenTiempoServicios.totalMax)}</span>
+                          </div>
+                          {estimacionFechas && (
+                            <div className="pt-2 border-t border-slate-200 text-sm space-y-1">
+                              <div className="flex items-center justify-between">
+                                <span>Inicio estimado:</span>
+                                <span>{format(estimacionFechas.inicio, "PPP p", { locale: es })}</span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span>Fin estimado (mín):</span>
+                                <span>{format(estimacionFechas.finMin, "PPP p", { locale: es })}</span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span>Fin estimado (máx):</span>
+                                <span>{format(estimacionFechas.finMax, "PPP p", { locale: es })}</span>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-sm text-gray-500">
+                          Agrega servicios para calcular una duración estimada automática.
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
                 </div>
 
                 <div>
@@ -766,20 +965,45 @@ export function OrdenWizard({ onSuccess, onCancel }: OrdenWizardProps) {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2">
-                      {items.map((item, index) => (
-                        <div key={index} className="flex justify-between items-center py-2 border-b border-gray-100 last:border-b-0">
-                          <div>
-                            <div className="font-medium text-sm">{item.producto.nombre}</div>
-                            <div className="text-xs text-gray-600">
-                              {item.cantidad} x S/ {item.precio_unitario.toFixed(2)}
-                              {item.descuento > 0 && ` (-${item.descuento}%)`}
+                      {items.map((item, index) => {
+                        const servicio = item.tipo === 'servicio' ? servicios.find(s => s.id_servicio === item.id_referencia) : null
+                        const factor = servicio ? unidadTiempoEnMinutos(servicio.unidad_tiempo) : 0
+                        const minCalculado = servicio ? servicio.tiempo_minimo * factor * item.cantidad : 0
+                        const maxCalculado = servicio ? servicio.tiempo_maximo * factor * item.cantidad : 0
+
+                        return (
+                          <div key={`${item.tipo}-${item.id_referencia}-${index}`} className="space-y-1 py-2 border-b border-gray-100 last:border-b-0">
+                            <div className="flex justify-between items-center">
+                              <div>
+                                <div className="font-medium text-sm">{item.nombre}</div>
+                                <div className="text-xs text-gray-500">{item.codigo}</div>
+                              </div>
+                              <div className="font-semibold text-green-700">{formatMoney(item.total)}</div>
                             </div>
+                            <div className="flex flex-wrap items-center justify-between text-xs text-gray-600 gap-2">
+                              <div>
+                                {item.cantidad} x {formatMoney(item.precio_unitario)}
+                                {item.descuento > 0 && ` (-${item.descuento}%)`}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="text-[10px]">
+                                  {item.tipo === 'servicio' ? 'Servicio' : 'Producto'}
+                                </Badge>
+                                {item.oferta && (
+                                  <Badge variant="outline" className="text-[10px] bg-green-50 text-green-700 border-green-200">
+                                    Oferta
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                            {servicio && (
+                              <div className="text-xs text-blue-600">
+                                Duración estimada: {formatearDuracion(minCalculado)} – {formatearDuracion(maxCalculado)}
+                              </div>
+                            )}
                           </div>
-                          <div className="font-semibold">
-                            S/ {item.total.toFixed(2)}
-                          </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </CardContent>
                 </Card>
@@ -792,16 +1016,16 @@ export function OrdenWizard({ onSuccess, onCancel }: OrdenWizardProps) {
                     <div className="space-y-2">
                       <div className="flex justify-between">
                         <span>Subtotal:</span>
-                        <span>S/ {calcularTotales().subtotal.toFixed(2)}</span>
+                        <span>{formatMoney(totales.subtotal)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span>IGV (18%):</span>
-                        <span>S/ {calcularTotales().impuesto.toFixed(2)}</span>
+                        <span>{formatMoney(totales.impuesto)}</span>
                       </div>
                       <Separator />
                       <div className="flex justify-between font-bold text-lg">
                         <span>Total:</span>
-                        <span className="text-green-600">S/ {calcularTotales().total.toFixed(2)}</span>
+                        <span className="text-green-600">{formatMoney(totales.total)}</span>
                       </div>
                     </div>
                   </CardContent>
@@ -817,9 +1041,20 @@ export function OrdenWizard({ onSuccess, onCancel }: OrdenWizardProps) {
                       <div>
                         <span className="font-medium">Prioridad:</span> {prioridad.toUpperCase()}
                       </div>
-                      {fechaEstimada && (
-                        <div>
-                          <span className="font-medium">Fecha estimada:</span> {format(fechaEstimada, "PPP", { locale: es })}
+                      {resumenTiempoServicios.totalMax > 0 && estimacionFechas && (
+                        <div className="space-y-1 text-sm">
+                          <div>
+                            <span className="font-medium">Duración mínima:</span> {formatearDuracion(resumenTiempoServicios.totalMin)}
+                          </div>
+                          <div>
+                            <span className="font-medium">Duración máxima:</span> {formatearDuracion(resumenTiempoServicios.totalMax)}
+                          </div>
+                          <div>
+                            <span className="font-medium">Inicio estimado:</span> {format(estimacionFechas.inicio, "PPP p", { locale: es })}
+                          </div>
+                          <div>
+                            <span className="font-medium">Fin estimado:</span> {format(estimacionFechas.finMax, "PPP p", { locale: es })}
+                          </div>
                         </div>
                       )}
                       {observaciones && (

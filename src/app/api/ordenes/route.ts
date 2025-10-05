@@ -7,6 +7,18 @@ export const dynamic = 'force-dynamic'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 
+const unidadFactor: Record<string, number> = {
+  minutos: 1,
+  horas: 60,
+  dias: 60 * 24,
+  semanas: 60 * 24 * 7
+}
+
+function convertirATotalMinutos(valor: number, unidad: string) {
+  const factor = unidadFactor[unidad as keyof typeof unidadFactor] ?? 1
+  return Math.round(valor * factor)
+}
+
 // Helper para progreso de tareas
 async function calcularProgresoOrden(id_transaccion: number) {
   try {
@@ -55,7 +67,8 @@ const itemSchema = z.object({
   id_producto: z.union([z.number().int().positive(), z.string().regex(/^\d+$/)]),
   cantidad: z.union([z.number().int().positive(), z.string().regex(/^\d+$/)]),
   precio_unitario: z.union([z.number().positive(), z.string().regex(/^\d+(\.\d+)?$/)]),
-  descuento: z.union([z.number(), z.string().regex(/^\d+(\.\d+)?$/)]).optional()
+  descuento: z.union([z.number(), z.string().regex(/^\d+(\.\d+)?$/)]).optional(),
+  tipo: z.enum(['producto', 'servicio']).optional()
 })
 
 const bodySchema = z.object({
@@ -170,7 +183,7 @@ export async function GET(request: NextRequest) {
       usuario: { include: { persona: true } },
       trabajador_principal: { include: { usuario: { include: { persona: true } } } },
       transaccion_vehiculos: { include: { vehiculo: { include: { modelo: { include: { marca: true } }, cliente: { include: { persona: true } } } } } },
-      detalles_transaccion: { include: { producto: true, ...(includeTareas ? { tareas: true } : {}) } },
+  detalles_transaccion: { include: { producto: true, servicio: true, ...(includeTareas ? { tareas: true } : {}) } },
       _count: { select: { detalles_transaccion: true } }
     }
     const includeLight: any = {
@@ -286,41 +299,109 @@ export async function POST(request: NextRequest) {
       trabajador = t
     }
 
-    // Batch fetch productos
-    const productoIds = [...new Set(items.map(i => toInt(i.id_producto as any)!))]
-    const productos = await prisma.producto.findMany({ where: { id_producto: { in: productoIds } } })
-    const productosMap = new Map(productos.map(p => [p.id_producto, p]))
+  // Batch fetch catalog entries (productos y servicios). Por compatibilidad actual usamos id_producto y su tipo.
+  const productoIds = [...new Set(items.map(i => toInt(i.id_producto as any)!))]
+  const productos = await prisma.producto.findMany({ where: { id_producto: { in: productoIds } } })
+  const servicios = await prisma.servicio.findMany({ where: { id_servicio: { in: productoIds } } })
+  const productosMap = new Map(productos.map(p => [p.id_producto, p]))
+  const serviciosMap = new Map(servicios.map(s => [s.id_servicio, s]))
 
-    // Validar existencia / estado
-    for (const id of productoIds) {
-      const p = productosMap.get(id)
-      if (!p || !p.estatus) {
-        return NextResponse.json({ error: `Producto con ID ${id} no está disponible` }, { status: 400 })
-      }
-    }
+    // Validar existencia / estado con preferencia por el tipo solicitado
 
     let subtotal = 0
-    const itemsValidados: Array<{ id_producto: number; cantidad: number; precio: number; descuento: number; total: number; tipo: string }> = []
+    let totalMinutosMin = 0
+    let totalMinutosMax = 0
+
+    const itemsValidados: Array<{
+    id_producto?: number
+    id_servicio?: number
+    cantidad: number
+    precio: number
+    descuento: number
+    total: number
+    tipo: 'producto' | 'servicio'
+    tiempo_servicio?: {
+      minimo: number
+      maximo: number
+      unidad: string
+      minimoMinutos: number
+      maximoMinutos: number
+    }
+  }> = []
 
     for (const raw of items) {
       const id_producto = toInt(raw.id_producto as any)!
-      const producto = productosMap.get(id_producto)!
+      const tipoSolicitado = raw.tipo
+      const producto = productosMap.get(id_producto)
+      const servicio = serviciosMap.get(id_producto)
+
+      let tipo: 'producto' | 'servicio'
+      if (tipoSolicitado === 'producto') {
+        if (!producto || producto.estatus === false) {
+          return NextResponse.json({ error: `Producto con ID ${id_producto} no está disponible` }, { status: 400 })
+        }
+        tipo = 'producto'
+      } else if (tipoSolicitado === 'servicio') {
+        if (!servicio || servicio.estatus === false) {
+          return NextResponse.json({ error: `Servicio con ID ${id_producto} no está disponible` }, { status: 400 })
+        }
+        tipo = 'servicio'
+      } else if (servicio && servicio.estatus !== false) {
+        tipo = 'servicio'
+      } else if (producto && producto.estatus !== false) {
+        tipo = 'producto'
+      } else {
+        return NextResponse.json({ error: `Item con ID ${id_producto} no está disponible` }, { status: 400 })
+      }
+
+      const entry = tipo === 'producto' ? producto! : servicio!
       const cantidad = toInt(raw.cantidad as any)!
       const precio = typeof raw.precio_unitario === 'string' ? parseFloat(raw.precio_unitario) : raw.precio_unitario as number
       const descuento = raw.descuento ? (typeof raw.descuento === 'string' ? parseFloat(raw.descuento) : raw.descuento) : 0
       if (descuento < 0 || descuento > 100) {
-        return NextResponse.json({ error: `Descuento inválido para producto ${producto.nombre}` }, { status: 400 })
+        return NextResponse.json({ error: `Descuento inválido para item ${entry.nombre}` }, { status: 400 })
       }
-      if (producto.tipo === 'producto' && producto.stock < cantidad) {
-        return NextResponse.json({ error: `Stock insuficiente para ${producto.nombre}. Disponible: ${producto.stock}` }, { status: 400 })
+      if (tipo === 'producto' && (producto!.stock < cantidad)) {
+        return NextResponse.json({ error: `Stock insuficiente para ${producto!.nombre}. Disponible: ${producto!.stock}` }, { status: 400 })
       }
       const totalItem = cantidad * precio * (1 - descuento / 100)
       subtotal += totalItem
-      itemsValidados.push({ id_producto, cantidad, precio, descuento, total: totalItem, tipo: producto.tipo })
+      const servicioInfo = serviciosMap.get(id_producto)
+      const tiempoServicio = tipo === 'servicio' && servicioInfo
+        ? {
+            minimo: servicioInfo.tiempo_minimo,
+            maximo: servicioInfo.tiempo_maximo,
+            unidad: servicioInfo.unidad_tiempo,
+            minimoMinutos: convertirATotalMinutos(servicioInfo.tiempo_minimo, servicioInfo.unidad_tiempo) * cantidad,
+            maximoMinutos: convertirATotalMinutos(servicioInfo.tiempo_maximo, servicioInfo.unidad_tiempo) * cantidad
+          }
+        : undefined
+
+      if (tiempoServicio) {
+        totalMinutosMin += tiempoServicio.minimoMinutos
+        totalMinutosMax += tiempoServicio.maximoMinutos
+      }
+
+      itemsValidados.push({
+        ...(tipo === 'producto' ? { id_producto } : { id_servicio: id_producto }),
+        cantidad,
+        precio,
+        descuento,
+        total: totalItem,
+        tipo,
+        ...(tiempoServicio ? { tiempo_servicio: tiempoServicio } : {})
+      })
     }
 
     const impuesto = subtotal * 0.18
     const total = subtotal + impuesto
+
+    const fechaReferencia = new Date()
+    const fechaFinCalculada = fecha_fin_estimada
+      ? (fecha_fin_estimada instanceof Date ? fecha_fin_estimada : new Date(fecha_fin_estimada))
+      : totalMinutosMax > 0
+        ? new Date(fechaReferencia.getTime() + totalMinutosMax * 60_000)
+        : null
 
     // Retry para crear con código único (hasta 3 intentos)
     let transaccionCreada: any = null
@@ -345,7 +426,7 @@ export async function POST(request: NextRequest) {
               observaciones: observaciones,
               estado_orden: id_trabajador_principal ? 'asignado' : 'pendiente',
               prioridad: prioridad || 'media',
-              ...(fecha_fin_estimada && { fecha_fin_estimada: fecha_fin_estimada instanceof Date ? fecha_fin_estimada : new Date(fecha_fin_estimada) })
+              ...(fechaFinCalculada ? { fecha_fin_estimada: fechaFinCalculada } : {})
             }
           })
 
@@ -374,7 +455,8 @@ export async function POST(request: NextRequest) {
             const detalle = await tx.detalleTransaccion.create({
               data: {
                 id_transaccion: transaccion.id_transaccion,
-                id_producto: item.id_producto,
+                id_producto: item.id_producto ?? null,
+                id_servicio: item.id_servicio ?? null,
                 cantidad: item.cantidad,
                 precio: item.precio,
                 descuento: item.descuento,
@@ -382,15 +464,16 @@ export async function POST(request: NextRequest) {
               }
             })
             // Crear tarea si es servicio y existe trabajador asignado
-            // Crear tarea automática para servicios con trabajador asignado
-            if (item.tipo === 'servicio' && id_trabajador_principal) {
+            // Crear tarea automatica para servicios con trabajador asignado
+            if (item.tipo === 'servicio') {
+              const estimado = item.tiempo_servicio ? item.tiempo_servicio.maximoMinutos : 60
               try {
                 await tx.tarea.create({
                   data: {
                     id_detalle_transaccion: detalle.id_detalle_transaccion,
-                    id_trabajador: id_trabajador_principal,
+                    id_trabajador: id_trabajador_principal ?? trabajadoresSecundarios[0] ?? null,
                     estado: 'pendiente',
-                    tiempo_estimado: 60
+                    tiempo_estimado: estimado
                   }
                 })
               } catch (e) {
@@ -400,7 +483,7 @@ export async function POST(request: NextRequest) {
 
             if (item.tipo === 'producto') {
               await tx.producto.update({
-                where: { id_producto: item.id_producto },
+                where: { id_producto: item.id_producto! },
                 data: { stock: { decrement: item.cantidad } }
               })
             }
@@ -437,7 +520,7 @@ export async function POST(request: NextRequest) {
         persona: true,
         trabajador_principal: { include: { usuario: { include: { persona: true } } } },
         transaccion_vehiculos: { include: { vehiculo: { include: { modelo: { include: { marca: true } } } } } },
-        detalles_transaccion: { include: { producto: true, tareas: true } },
+  detalles_transaccion: { include: { producto: true, servicio: true, tareas: true } },
         _count: { select: { detalles_transaccion: true } }
       }
     })
@@ -449,7 +532,10 @@ export async function POST(request: NextRequest) {
         subtotal: Number(subtotal.toFixed(2)),
         impuesto: Number(impuesto.toFixed(2)),
         total: Number(total.toFixed(2)),
-        tareas_pendientes_generar: itemsValidados.filter(i => i.tipo === 'servicio' && !id_trabajador_principal).length,
+        tareas_pendientes_generar: itemsValidados.filter(i => i.tipo === 'servicio' && !(id_trabajador_principal ?? trabajadoresSecundarios[0])).length,
+        tiempo_estimado_min: totalMinutosMin,
+        tiempo_estimado_max: totalMinutosMax,
+        fecha_fin_estimada: transaccionCreada?.fecha_fin_estimada ?? fechaFinCalculada ?? null,
         progreso
       }
     }, { status: 201 })
@@ -551,17 +637,21 @@ export async function PATCH(request: NextRequest) {
       try {
         const detallesServicios = await prisma.detalleTransaccion.findMany({
           where: { id_transaccion: Number(id_transaccion) },
-          include: { producto: true, tareas: true }
+          include: { producto: true, servicio: true, tareas: true }
         })
         for (const d of detallesServicios) {
-          if (d.producto?.tipo === 'servicio' && d.tareas.length === 0 && (asignar_trabajador || updated.id_trabajador_principal)) {
+          const esServicio = d.servicio != null || (d.producto && d.producto.tipo === 'servicio')
+          if (esServicio && d.tareas.length === 0 && (asignar_trabajador || updated.id_trabajador_principal)) {
+            const unidad = d.servicio?.unidad_tiempo || 'minutos'
+            const minutosMaximos = d.servicio ? convertirATotalMinutos(d.servicio.tiempo_maximo, unidad) : 60
+            const tiempoEstimado = minutosMaximos * d.cantidad
             try {
               await prisma.tarea.create({
                 data: {
                   id_detalle_transaccion: d.id_detalle_transaccion,
                   id_trabajador: asignar_trabajador ? Number(asignar_trabajador) : updated.id_trabajador_principal,
                   estado: 'pendiente',
-                  tiempo_estimado: 60
+                  tiempo_estimado: tiempoEstimado
                 }
               })
             } catch (e) { console.warn('Error creando tarea faltante', e) }
