@@ -11,12 +11,12 @@ import { TareaCard } from './tarea-card'
 import { Clock, Filter } from 'lucide-react'
 
 // Estados válidos actuales (deben coincidir con backend)
-export const ESTADOS_TAREA = ['pendiente', 'en_proceso', 'pausado', 'completado'] as const
+export const ESTADOS_TAREA = ['por_hacer', 'en_proceso', 'pausado', 'completado'] as const
 type EstadoTarea = typeof ESTADOS_TAREA[number]
 
 const COLUMNAS_KANBAN: { id: EstadoTarea; title: string; color: string; textColor: string; icon: string }[] = [
   {
-    id: 'pendiente',
+    id: 'por_hacer',
     title: 'Por Hacer',
     color: 'bg-gray-50 border-gray-200',
     textColor: 'text-gray-700',
@@ -128,7 +128,7 @@ export function TareasKanban({ trabajadorId, vistaPersonal = false }: TareasKanb
     if (!tarea || tarea.estado === nuevoEstado) return
     // Validar transición permitida (evita mostrar error genérico desde backend)
     const transicionesPermitidas: Record<string, EstadoTarea[]> = {
-      pendiente: ['en_proceso','pausado'],
+      por_hacer: ['en_proceso','pausado'],
       en_proceso: ['pausado','completado'],
       pausado: ['en_proceso','completado'],
       completado: []

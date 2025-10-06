@@ -143,6 +143,7 @@ export function OrdenesTable({ onEdit, onView, onCreateNew, refreshTrigger }: Or
 
   const getEstadoBadge = (estado: string) => {
     const badges = {
+      'por_hacer': { label: 'Por Hacer', className: 'bg-gray-100 text-gray-800' },
       'pendiente': { label: 'Pendiente', className: 'bg-gray-100 text-gray-800' },
       'asignado': { label: 'Asignado', className: 'bg-blue-100 text-blue-800' },
       'en_proceso': { label: 'En Proceso', className: 'bg-yellow-100 text-yellow-800' },
@@ -180,9 +181,41 @@ export function OrdenesTable({ onEdit, onView, onCreateNew, refreshTrigger }: Or
     }).format(price)
   }
 
+  const formatDurationRange = (minMin: number, maxMin: number) => {
+    if (!Number.isFinite(minMin) || !Number.isFinite(maxMin) || minMin <= 0 || maxMin <= 0) return '—'
+    const units = [
+      { label: 'min', factor: 1 },
+      { label: 'h', factor: 60 },
+      { label: 'd', factor: 60 * 24 },
+      { label: 'sem', factor: 60 * 24 * 7 }
+    ]
+    // escoger unidad que deje números legibles
+    const pick = (val: number) => {
+      if (val >= units[3].factor) return units[3]
+      if (val >= units[2].factor) return units[2]
+      if (val >= units[1].factor) return units[1]
+      return units[0]
+    }
+    const unit = pick(maxMin)
+    const f = unit.factor
+    const minVal = Math.round((minMin / f) * 10) / 10
+    const maxVal = Math.round((maxMin / f) * 10) / 10
+    return `${minVal}–${maxVal} ${unit.label}`
+  }
+
   // Enviar orden al Kanban: genera tareas faltantes para servicios si hay trabajador principal
   const enviarAlKanban = async (orden: OrdenCompleta) => {
-    // Verificar trabajador principal
+    // Validar que tenga al menos un servicio
+    const tieneServicio = orden.detalles_transaccion.some((d:any) => d.producto?.tipo === 'servicio' || d.tareas?.length > 0)
+    if (!tieneServicio) {
+      toast({
+        title: 'Servicios requeridos',
+        description: 'La orden debe tener al menos un servicio registrado.',
+        variant: 'destructive'
+      })
+      return
+    }
+    // Validar que tenga mecánico principal
     if (!orden.trabajador_principal) {
       toast({
         title: 'Asignar mecánico',
@@ -191,9 +224,17 @@ export function OrdenesTable({ onEdit, onView, onCreateNew, refreshTrigger }: Or
       })
       return
     }
+    // Solo si está pendiente
+    if (orden.estado_orden !== 'pendiente') {
+      toast({
+        title: 'Estado inválido',
+        description: 'Solo puedes enviar órdenes pendientes al Kanban.',
+        variant: 'destructive'
+      })
+      return
+    }
     try {
-      const body: any = { id_transaccion: orden.id_transaccion, generar_tareas_faltantes: true }
-      if (orden.estado_orden === 'pendiente') body.nuevo_estado = 'asignado'
+      const body: any = { id_transaccion: orden.id_transaccion, nuevo_estado: 'por_hacer', generar_tareas_faltantes: true }
       const resp = await fetch('/api/ordenes', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -201,9 +242,9 @@ export function OrdenesTable({ onEdit, onView, onCreateNew, refreshTrigger }: Or
       })
       if (!resp.ok) {
         const err = await resp.json().catch(()=>({}))
-        throw new Error(err.error || 'No se pudo generar tareas')
+        throw new Error(err.error || 'No se pudo enviar al Kanban')
       }
-      toast({ title: 'Orden enviada al Kanban', description: `${orden.codigo_transaccion} ahora tiene tareas visibles.` })
+      toast({ title: 'Orden enviada al Kanban', description: `${orden.codigo_transaccion} ahora está en Por hacer.` })
       fetchOrdenes()
     } catch (e:any) {
       toast({ title: 'Error', description: e.message, variant: 'destructive' })
@@ -271,6 +312,7 @@ export function OrdenesTable({ onEdit, onView, onCreateNew, refreshTrigger }: Or
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL_ESTADOS}>Todos</SelectItem>
+                <SelectItem value="por_hacer">Por Hacer</SelectItem>
                 <SelectItem value="pendiente">Pendiente</SelectItem>
                 <SelectItem value="asignado">Asignado</SelectItem>
                 <SelectItem value="en_proceso">En Proceso</SelectItem>
@@ -303,9 +345,9 @@ export function OrdenesTable({ onEdit, onView, onCreateNew, refreshTrigger }: Or
           </div>
           <div className="text-center p-3 bg-yellow-50 rounded-lg">
             <div className="text-lg font-bold text-yellow-600">
-              {ordenes.filter(o => o.estado_orden === 'pendiente' || o.estado_orden === 'asignado').length}
+              {ordenes.filter(o => o.estado_orden === 'pendiente' || o.estado_orden === 'asignado' || o.estado_orden === 'por_hacer').length}
             </div>
-            <div className="text-sm text-yellow-600">Pendientes</div>
+            <div className="text-sm text-yellow-600">Pendientes / Por Hacer</div>
           </div>
           <div className="text-center p-3 bg-orange-50 rounded-lg">
             <div className="text-lg font-bold text-orange-600">
@@ -350,6 +392,7 @@ export function OrdenesTable({ onEdit, onView, onCreateNew, refreshTrigger }: Or
                     <TableHead>Cliente / Vehículo</TableHead>
                     <TableHead>Mecánico</TableHead>
                     <TableHead>Progreso</TableHead>
+                    <TableHead>Duración</TableHead>
                     <TableHead>Total</TableHead>
                     <TableHead>Estado</TableHead>
                     <TableHead>Acciones</TableHead>
@@ -436,6 +479,15 @@ export function OrdenesTable({ onEdit, onView, onCreateNew, refreshTrigger }: Or
                             </div>
                           </div>
                         </TableCell>
+                        <TableCell>
+                          {typeof (orden as any).duracion_min === 'number' && typeof (orden as any).duracion_max === 'number' ? (
+                            <div className="text-sm text-gray-700">
+                              {formatDurationRange((orden as any).duracion_min, (orden as any).duracion_max)}
+                            </div>
+                          ) : (
+                            <div className="text-xs text-gray-400">—</div>
+                          )}
+                        </TableCell>
                         
                         <TableCell>
                           <div className="text-right">
@@ -468,25 +520,21 @@ export function OrdenesTable({ onEdit, onView, onCreateNew, refreshTrigger }: Or
                               variant="ghost"
                               size="sm"
                               onClick={() => onEdit(orden)}
-                              disabled={orden.estado_orden === 'entregado'}
+                              disabled={orden.estado_orden !== 'pendiente'}
                             >
                               <Edit className="w-4 h-4" />
                             </Button>
-                            {/* Botón enviar al Kanban si hay servicios sin tareas */}
-                            {(() => {
-                              const tieneServicioSinTarea = orden.detalles_transaccion.some((d:any) => d.producto?.tipo === 'servicio' && (!d.tareas || d.tareas.length === 0))
-                              return tieneServicioSinTarea ? (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => enviarAlKanban(orden)}
-                                  disabled={orden.estado_orden === 'entregado'}
-                                  className="text-blue-600 hover:text-blue-700"
-                                >
-                                  <LayoutGrid className="w-4 h-4" />
-                                </Button>
-                              ) : null
-                            })()}
+                            {/* Botón enviar al Kanban si está pendiente */}
+                            {orden.estado_orden === 'pendiente' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => enviarAlKanban(orden)}
+                                className="text-blue-600 hover:text-blue-700"
+                              >
+                                <LayoutGrid className="w-4 h-4" />
+                              </Button>
+                            )}
                             <Button
                               variant="ghost"
                               size="sm"

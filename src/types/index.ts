@@ -194,12 +194,14 @@ export type OrdenFormData = {
   prioridad: string
   fecha_fin_estimada?: Date
   observaciones?: string
+  trabajadores_secundarios?: number[]
   items: {
     id_producto: number
     cantidad: number
     precio_unitario: number
     descuento: number
     tipo?: 'producto' | 'servicio'
+    servicio_ref?: number
   }[]
 }
 export type PagoFormData = {

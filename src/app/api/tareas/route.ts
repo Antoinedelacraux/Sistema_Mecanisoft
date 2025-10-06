@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     const trabajadorIdRaw = searchParams.get('trabajador_id')
     const estadoRaw = searchParams.get('estado')
 
-    const allowedEstados = ['pendiente', 'en_proceso', 'pausado', 'completado'] as const
+  const allowedEstados = ['por_hacer', 'pendiente', 'en_proceso', 'pausado', 'completado'] as const
     type EstadoTarea = typeof allowedEstados[number]
 
     const whereCondition: Prisma.TareaWhereInput = {

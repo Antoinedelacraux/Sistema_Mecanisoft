@@ -342,11 +342,15 @@ model Transaccion {
   estatus             String    @default("activo") @db.VarChar(20)
   
   // Campos para órdenes de trabajo
-  estado_orden        String    @default("pendiente") @db.VarChar(30) // pendiente, asignado, en_proceso, completado, entregado
+  estado_orden        String    @default("pendiente") @db.VarChar(30) // pendiente, por_hacer, en_proceso, pausado, completado
   prioridad           String    @default("media") @db.VarChar(20) // baja, media, alta, urgente
   fecha_inicio        DateTime?
   fecha_fin_estimada  DateTime?
   fecha_fin_real      DateTime?
+  // Duración total estimada de la orden
+  duracion_min        Int?
+  duracion_max        Int?
+  unidad_tiempo       String?   @db.VarChar(10) // minutos, horas, días, semanas
   
   // ✅ Campos para pagos
   estado_pago         String    @default("pendiente") @db.VarChar(20) // pendiente, parcial, pagado
@@ -395,13 +399,20 @@ model DetalleTransaccion {
   descuento             Decimal @default(0) @db.Decimal(10,2)
   total                 Decimal @db.Decimal(10,2)
   estatus               Boolean @default(true)
+  // Asociación opcional: vincula un producto a un detalle de servicio específico
+  id_detalle_servicio_asociado Int?
   
   transaccion Transaccion @relation(fields: [id_transaccion], references: [id_transaccion], onDelete: Cascade)
   producto    Producto?    @relation(fields: [id_producto], references: [id_producto])
   servicio    Servicio?    @relation(fields: [id_servicio], references: [id_servicio])
+  // Relación auto-referenciada para asociar producto->servicio
+  servicio_asociado DetalleTransaccion? @relation("ProductoAsociadoServicio", fields: [id_detalle_servicio_asociado], references: [id_detalle_transaccion])
+  productos_asociados DetalleTransaccion[] @relation("ProductoAsociadoServicio")
   tareas      Tarea[]
   
   @@map("detalle_transaccion")
+  // Garantiza como máximo un producto asociado por cada detalle de servicio
+  @@unique([id_detalle_servicio_asociado])
 }
 
 model Tarea {

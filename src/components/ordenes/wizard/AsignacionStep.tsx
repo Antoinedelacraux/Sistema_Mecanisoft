@@ -1,0 +1,73 @@
+import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Badge } from '@/components/ui/badge'
+import { TrabajadorCompleto } from '@/types'
+// imports deduplicados
+
+interface Props {
+  trabajadores: TrabajadorCompleto[]
+  trabajadorSeleccionado: TrabajadorCompleto | null
+  setTrabajadorSeleccionado: (t: TrabajadorCompleto | null) => void
+  prioridad: string
+  setPrioridad: (p: string) => void
+  observaciones: string
+  setObservaciones: (o: string) => void
+  modoOrden: 'solo_servicios' | 'servicios_y_productos'
+  setModoOrden: (m: 'solo_servicios' | 'servicios_y_productos') => void
+}
+
+export function AsignacionStep({ trabajadores, trabajadorSeleccionado, setTrabajadorSeleccionado, prioridad, setPrioridad, observaciones, setObservaciones, modoOrden, setModoOrden }: Props) {
+  return (
+    <div className="space-y-6">
+      <h3 className="text-lg font-semibold">Asignación y Programación</h3>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="space-y-4">
+          <h4 className="font-medium">Mecánico Responsable</h4>
+          <div className="space-y-3">
+            <div>
+              <Button variant="outline" onClick={() => setTrabajadorSeleccionado(null)} className={!trabajadorSeleccionado ? 'ring-2 ring-blue-500' : ''}>Sin asignar (asignar después)</Button>
+            </div>
+            {trabajadores.map((trabajador) => (
+              <Card key={trabajador.id_trabajador} className={`cursor-pointer transition-colors ${trabajadorSeleccionado?.id_trabajador === trabajador.id_trabajador ? 'ring-2 ring-blue-500 bg-blue-50' : 'hover:bg-gray-50'}`} onClick={() => setTrabajadorSeleccionado(trabajador)}>
+                <CardContent className="p-4">
+                  <div className="font-medium">{trabajador.usuario.persona.nombre} {trabajador.usuario.persona.apellido_paterno}</div>
+                  <p className="text-sm text-gray-600">{trabajador.codigo_empleado}</p>
+                  <Badge variant="outline">{trabajador.especialidad}</Badge>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+        <div className="space-y-4">
+          <h4 className="font-medium">Configuración de la Orden</h4>
+          <div>
+            <Label>Necesidad del cliente</Label>
+            <div className="mt-2 flex items-center gap-3">
+              <Button type="button" variant={modoOrden==='solo_servicios'?'default':'outline'} onClick={()=>setModoOrden('solo_servicios')}>Solo servicios</Button>
+              <Button type="button" variant={modoOrden==='servicios_y_productos'?'default':'outline'} onClick={()=>setModoOrden('servicios_y_productos')}>Servicios + productos</Button>
+            </div>
+          </div>
+          <div>
+            <Label htmlFor="prioridad">Prioridad</Label>
+            <Select value={prioridad} onValueChange={setPrioridad}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="baja">Baja</SelectItem>
+                <SelectItem value="media">Media</SelectItem>
+                <SelectItem value="alta">Alta</SelectItem>
+                <SelectItem value="urgente">Urgente</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="observaciones">Observaciones</Label>
+            <Textarea id="observaciones" placeholder="Observaciones adicionales sobre el trabajo..." value={observaciones} onChange={(e) => setObservaciones(e.target.value)} rows={4} />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

@@ -68,7 +68,9 @@ const itemSchema = z.object({
   cantidad: z.union([z.number().int().positive(), z.string().regex(/^\d+$/)]),
   precio_unitario: z.union([z.number().positive(), z.string().regex(/^\d+(\.\d+)?$/)]),
   descuento: z.union([z.number(), z.string().regex(/^\d+(\.\d+)?$/)]).optional(),
-  tipo: z.enum(['producto', 'servicio']).optional()
+  tipo: z.enum(['producto', 'servicio']).optional(),
+  // Si el item es un producto, puede asociarse opcionalmente a un servicio específico de la misma orden
+  servicio_ref: z.union([z.number().int().positive(), z.string().regex(/^\d+$/)]).optional()
 })
 
 const bodySchema = z.object({
@@ -78,6 +80,7 @@ const bodySchema = z.object({
   prioridad: z.enum(['baja','media','alta','urgente']).optional(),
   fecha_fin_estimada: z.union([z.coerce.date(), z.string().regex(/^[0-9T:.-]+Z?$/)]).optional(),
   observaciones: z.string().max(1000).optional(),
+  modo_orden: z.enum(['solo_servicios','servicios_y_productos']).optional(),
   items: z.array(itemSchema).min(1),
   trabajadores_secundarios: z.array(z.union([z.number().int().positive(), z.string().regex(/^\d+$/)])).optional()
 })
@@ -183,7 +186,7 @@ export async function GET(request: NextRequest) {
       usuario: { include: { persona: true } },
       trabajador_principal: { include: { usuario: { include: { persona: true } } } },
       transaccion_vehiculos: { include: { vehiculo: { include: { modelo: { include: { marca: true } }, cliente: { include: { persona: true } } } } } },
-  detalles_transaccion: { include: { producto: true, servicio: true, ...(includeTareas ? { tareas: true } : {}) } },
+      detalles_transaccion: { include: { producto: true, servicio: true, ...(includeTareas ? { tareas: true } : {}), servicio_asociado: { include: { servicio: true, producto: true } }, productos_asociados: { include: { producto: true } } } },
       _count: { select: { detalles_transaccion: true } }
     }
     const includeLight: any = {
@@ -259,6 +262,7 @@ export async function POST(request: NextRequest) {
       prioridad,
       fecha_fin_estimada,
       observaciones,
+      modo_orden,
       items,
       trabajadores_secundarios
     } = parsed.data
@@ -313,23 +317,29 @@ export async function POST(request: NextRequest) {
     let totalMinutosMax = 0
 
     const itemsValidados: Array<{
-    id_producto?: number
-    id_servicio?: number
-    cantidad: number
-    precio: number
-    descuento: number
-    total: number
-    tipo: 'producto' | 'servicio'
-    tiempo_servicio?: {
-      minimo: number
-      maximo: number
-      unidad: string
-      minimoMinutos: number
-      maximoMinutos: number
-    }
-  }> = []
+      id_producto?: number
+      id_servicio?: number
+      cantidad: number
+      precio: number
+      descuento: number
+      total: number
+      tipo: 'producto' | 'servicio'
+      servicio_ref?: number
+      tiempo_servicio?: {
+        minimo: number
+        maximo: number
+        unidad: string
+        minimoMinutos: number
+        maximoMinutos: number
+      }
+    }> = []
 
+    // Enforce modo_orden: si es 'solo_servicios', rechazar cualquier item de tipo producto
+    const modoSoloServicios = (modo_orden || 'servicios_y_productos') === 'solo_servicios'
     for (const raw of items) {
+      if (modoSoloServicios && raw.tipo === 'producto') {
+        return NextResponse.json({ error: 'Modo Solo servicios activo: no se permiten productos en la orden.' }, { status: 400 })
+      }
       const id_producto = toInt(raw.id_producto as any)!
       const tipoSolicitado = raw.tipo
       const producto = productosMap.get(id_producto)
@@ -389,6 +399,7 @@ export async function POST(request: NextRequest) {
         descuento,
         total: totalItem,
         tipo,
+        ...(tipo === 'producto' && raw.servicio_ref ? { servicio_ref: toInt(raw.servicio_ref as any) } : {}),
         ...(tiempoServicio ? { tiempo_servicio: tiempoServicio } : {})
       })
     }
@@ -410,7 +421,7 @@ export async function POST(request: NextRequest) {
       const codigoOrden = await generateCodigoOrden()
       try {
         transaccionCreada = await prisma.$transaction(async (tx) => {
-          const transaccion = await tx.transaccion.create({
+              const transaccion = await tx.transaccion.create({
             data: {
               persona: { connect: { id_persona: cliente.id_persona } },
               usuario: { connect: { id_usuario: parseInt(session.user.id) } },
@@ -424,9 +435,14 @@ export async function POST(request: NextRequest) {
               porcentaje: 18,
               total: total,
               observaciones: observaciones,
-              estado_orden: id_trabajador_principal ? 'asignado' : 'pendiente',
+                  // Estado inicial siempre 'pendiente' (no enviada al Kanban)
+                  estado_orden: 'pendiente',
               prioridad: prioridad || 'media',
-              ...(fechaFinCalculada ? { fecha_fin_estimada: fechaFinCalculada } : {})
+                  ...(fechaFinCalculada ? { fecha_fin_estimada: fechaFinCalculada } : {}),
+                  // Persistir duración total estimada en minutos
+                  duracion_min: totalMinutosMin > 0 ? totalMinutosMin : null,
+                  duracion_max: totalMinutosMax > 0 ? totalMinutosMax : null,
+                  unidad_tiempo: (totalMinutosMin > 0 || totalMinutosMax > 0) ? 'minutos' : null
             }
           })
 
@@ -451,11 +467,12 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          for (const item of itemsValidados) {
+          // Primero crear detalles para servicios y mapear id_servicio -> id_detalle_transaccion
+          const mapaDetalleServicio = new Map<number, number>()
+          for (const item of itemsValidados.filter(i => i.tipo === 'servicio')) {
             const detalle = await tx.detalleTransaccion.create({
               data: {
                 id_transaccion: transaccion.id_transaccion,
-                id_producto: item.id_producto ?? null,
                 id_servicio: item.id_servicio ?? null,
                 cantidad: item.cantidad,
                 precio: item.precio,
@@ -463,30 +480,50 @@ export async function POST(request: NextRequest) {
                 total: item.total
               }
             })
-            // Crear tarea si es servicio y existe trabajador asignado
-            // Crear tarea automatica para servicios con trabajador asignado
-            if (item.tipo === 'servicio') {
-              const estimado = item.tiempo_servicio ? item.tiempo_servicio.maximoMinutos : 60
-              try {
-                await tx.tarea.create({
-                  data: {
-                    id_detalle_transaccion: detalle.id_detalle_transaccion,
-                    id_trabajador: id_trabajador_principal ?? trabajadoresSecundarios[0] ?? null,
-                    estado: 'pendiente',
-                    tiempo_estimado: estimado
-                  }
-                })
-              } catch (e) {
-                console.warn('Fallo creación de tarea automática', e)
-              }
-            }
-
-            if (item.tipo === 'producto') {
-              await tx.producto.update({
-                where: { id_producto: item.id_producto! },
-                data: { stock: { decrement: item.cantidad } }
+            mapaDetalleServicio.set(item.id_servicio!, detalle.id_detalle_transaccion)
+            const estimado = item.tiempo_servicio ? item.tiempo_servicio.maximoMinutos : 60
+            try {
+              await tx.tarea.create({
+                data: {
+                  id_detalle_transaccion: detalle.id_detalle_transaccion,
+                  id_trabajador: id_trabajador_principal ?? trabajadoresSecundarios[0] ?? null,
+                  estado: 'pendiente',
+                  tiempo_estimado: estimado
+                }
               })
+            } catch (e) {
+              console.warn('Fallo creación de tarea automática', e)
             }
+          }
+
+          // Validación: 0 o 1 producto por servicio
+          const cuentaProductosPorServicio = new Map<number, number>()
+          for (const item of itemsValidados.filter(i => i.tipo === 'producto' && i.servicio_ref)) {
+            const srvId = item.servicio_ref!
+            const count = cuentaProductosPorServicio.get(srvId) || 0
+            if (count >= 1) {
+              throw new Error(`Cada servicio solo puede tener 0 o 1 producto asociado (servicio ${srvId})`)
+            }
+            cuentaProductosPorServicio.set(srvId, count + 1)
+          }
+
+          // Luego crear detalles para productos, vinculando opcionalmente al detalle de servicio
+          for (const item of itemsValidados.filter(i => i.tipo === 'producto')) {
+            const detalleProducto = await tx.detalleTransaccion.create({
+              data: {
+                id_transaccion: transaccion.id_transaccion,
+                id_producto: item.id_producto ?? null,
+                cantidad: item.cantidad,
+                precio: item.precio,
+                descuento: item.descuento,
+                total: item.total,
+                id_detalle_servicio_asociado: item.servicio_ref ? mapaDetalleServicio.get(item.servicio_ref) ?? null : null
+              }
+            })
+            await tx.producto.update({
+              where: { id_producto: item.id_producto! },
+              data: { stock: { decrement: item.cantidad } }
+            })
           }
 
           return transaccion
@@ -520,7 +557,7 @@ export async function POST(request: NextRequest) {
         persona: true,
         trabajador_principal: { include: { usuario: { include: { persona: true } } } },
         transaccion_vehiculos: { include: { vehiculo: { include: { modelo: { include: { marca: true } } } } } },
-  detalles_transaccion: { include: { producto: true, servicio: true, tareas: true } },
+        detalles_transaccion: { include: { producto: true, servicio: true, tareas: true, servicio_asociado: { include: { servicio: true, producto: true } }, productos_asociados: { include: { producto: true } } } },
         _count: { select: { detalles_transaccion: true } }
       }
     })
@@ -556,7 +593,7 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json().catch(() => null)
     if (!body) return NextResponse.json({ error: 'JSON inválido' }, { status: 400 })
 
-  const { id_transaccion, nuevo_estado, prioridad, asignar_trabajador, fecha_fin_estimada, agregar_trabajadores, remover_trabajadores, generar_tareas_faltantes, registrar_pago } = body || {}
+  const { id_transaccion, nuevo_estado, prioridad, asignar_trabajador, fecha_fin_estimada, agregar_trabajadores, remover_trabajadores, generar_tareas_faltantes, registrar_pago, observaciones, id_vehiculo: idVehiculoNuevo, items: itemsPatch } = body || {}
     if (!id_transaccion) return NextResponse.json({ error: 'id_transaccion requerido' }, { status: 400 })
 
   const orden: any = await prisma.transaccion.findUnique({ where: { id_transaccion: Number(id_transaccion) } })
@@ -564,16 +601,17 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Orden no encontrada' }, { status: 404 })
     }
 
-    const validEstados = ['pendiente','asignado','en_proceso','completado','entregado'] as const
+    const validEstados = ['pendiente','por_hacer','en_proceso','pausado','completado','entregado'] as const
     if (nuevo_estado && !validEstados.includes(nuevo_estado)) {
       return NextResponse.json({ error: 'Estado inválido' }, { status: 400 })
     }
 
     // Validar transición
     const transiciones: Record<string,string[]> = {
-      pendiente: ['asignado','en_proceso'],
-      asignado: ['en_proceso'],
-      en_proceso: ['completado'],
+      pendiente: ['por_hacer'],
+      por_hacer: ['en_proceso','pausado'],
+      en_proceso: ['pausado','completado'],
+      pausado: ['en_proceso','completado'],
       completado: ['entregado'],
       entregado: []
     }
@@ -581,10 +619,29 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: `Transición no permitida (${orden.estado_orden} -> ${nuevo_estado})` }, { status: 400 })
     }
 
+    // Solo permitir edición si está pendiente (excepto transición a 'por_hacer')
+    if (orden.estado_orden !== 'pendiente' && (!nuevo_estado || nuevo_estado !== 'por_hacer')) {
+      return NextResponse.json({ error: 'Solo se puede editar órdenes en estado pendiente.' }, { status: 403 })
+    }
+
+    // Validar transición a 'por_hacer'
+    if (nuevo_estado === 'por_hacer') {
+      // Debe tener al menos un servicio y un mecánico
+      const detalles = await prisma.detalleTransaccion.findMany({ where: { id_transaccion: orden.id_transaccion }, include: { producto: true, servicio: true } })
+      const tieneServicio = detalles.some(d => d.servicio != null)
+      if (!tieneServicio) {
+        return NextResponse.json({ error: 'La orden debe tener al menos un servicio registrado.' }, { status: 400 })
+      }
+      if (!orden.id_trabajador_principal) {
+        return NextResponse.json({ error: 'La orden debe tener un mecánico principal asignado.' }, { status: 400 })
+      }
+    }
+
     // Preparar data de actualización
   const dataUpdate: any = {}
     if (prioridad) dataUpdate.prioridad = prioridad
     if (fecha_fin_estimada) dataUpdate.fecha_fin_estimada = new Date(fecha_fin_estimada)
+    if (typeof observaciones === 'string') dataUpdate.observaciones = observaciones
     if (nuevo_estado) {
       dataUpdate.estado_orden = nuevo_estado
       if (nuevo_estado === 'en_proceso' && !orden.fecha_inicio) dataUpdate.fecha_inicio = new Date()
@@ -632,6 +689,142 @@ export async function PATCH(request: NextRequest) {
       include: { persona: true }
     })
 
+    // Si se solicita cambio de vehículo y está pendiente, actualizar el pivot
+    if (orden.estado_orden === 'pendiente' && idVehiculoNuevo && Number.isFinite(Number(idVehiculoNuevo))) {
+      try {
+        const pivots = await prisma.transaccionVehiculo.findMany({ where: { id_transaccion: Number(id_transaccion) } })
+        for (const p of pivots) {
+          await prisma.transaccionVehiculo.delete({ where: { id_transaccion_id_vehiculo: { id_transaccion: p.id_transaccion, id_vehiculo: p.id_vehiculo } } })
+        }
+        await prisma.transaccionVehiculo.create({
+          data: {
+            id_transaccion: Number(id_transaccion),
+            id_vehiculo: Number(idVehiculoNuevo),
+            id_usuario: Number(session.user.id),
+            descripcion: `Cambio de vehículo en edición de orden ${updated.codigo_transaccion}`
+          }
+        })
+      } catch (e) {
+        console.warn('No se pudo actualizar el vehículo de la orden', e)
+      }
+    }
+
+    // Si vienen items para reemplazar y está pendiente: rehacer detalles
+    if (orden.estado_orden === 'pendiente' && Array.isArray(itemsPatch) && itemsPatch.length > 0) {
+      // Validación básica de estructura y conversión
+      const parsedItems = itemsPatch as Array<{ id_producto: any; cantidad: any; precio_unitario: any; descuento?: any; tipo?: 'producto'|'servicio'; servicio_ref?: any }>
+      const productoIds = [...new Set(parsedItems.map(i => toInt(i.id_producto as any)!).filter(Boolean))]
+      const [productos, servicios] = await Promise.all([
+        prisma.producto.findMany({ where: { id_producto: { in: productoIds } } }),
+        prisma.servicio.findMany({ where: { id_servicio: { in: productoIds } } })
+      ])
+      const productosMap = new Map(productos.map(p => [p.id_producto, p]))
+      const serviciosMap = new Map(servicios.map(s => [s.id_servicio, s]))
+
+      let subtotal = 0
+      let totalMinutosMin = 0
+      let totalMinutosMax = 0
+
+      const itemsValidados: Array<{ id_producto?: number; id_servicio?: number; cantidad: number; precio: number; descuento: number; total: number; tipo: 'producto'|'servicio'; servicio_ref?: number; tiempo_servicio?: { minimo: number; maximo: number; unidad: string; minimoMinutos: number; maximoMinutos: number } }> = []
+
+      for (const raw of parsedItems) {
+        const id_producto = toInt(raw.id_producto as any)!
+        const tipoSolicitado = raw.tipo
+        const producto = productosMap.get(id_producto)
+        const servicio = serviciosMap.get(id_producto)
+        let tipo: 'producto'|'servicio'
+        if (tipoSolicitado === 'producto') {
+          if (!producto || producto.estatus === false) return NextResponse.json({ error: `Producto con ID ${id_producto} no está disponible` }, { status: 400 })
+          tipo = 'producto'
+        } else if (tipoSolicitado === 'servicio') {
+          if (!servicio || servicio.estatus === false) return NextResponse.json({ error: `Servicio con ID ${id_producto} no está disponible` }, { status: 400 })
+          tipo = 'servicio'
+        } else if (servicio && servicio.estatus !== false) {
+          tipo = 'servicio'
+        } else if (producto && producto.estatus !== false) {
+          tipo = 'producto'
+        } else {
+          return NextResponse.json({ error: `Item con ID ${id_producto} no está disponible` }, { status: 400 })
+        }
+        const cantidad = toInt(raw.cantidad as any)!
+        const precio = typeof raw.precio_unitario === 'string' ? parseFloat(raw.precio_unitario) : raw.precio_unitario as number
+        const descuento = raw.descuento ? (typeof raw.descuento === 'string' ? parseFloat(raw.descuento) : raw.descuento) : 0
+        if (descuento < 0 || descuento > 100) return NextResponse.json({ error: `Descuento inválido para item ${id_producto}` }, { status: 400 })
+        if (tipo === 'producto' && producto!.stock < cantidad) return NextResponse.json({ error: `Stock insuficiente para ${producto!.nombre}. Disponible: ${producto!.stock}` }, { status: 400 })
+        const totalItem = cantidad * precio * (1 - descuento / 100)
+        subtotal += totalItem
+        const servicioInfo = serviciosMap.get(id_producto)
+        const tiempoServicio = tipo === 'servicio' && servicioInfo ? {
+          minimo: servicioInfo.tiempo_minimo,
+          maximo: servicioInfo.tiempo_maximo,
+          unidad: servicioInfo.unidad_tiempo,
+          minimoMinutos: convertirATotalMinutos(servicioInfo.tiempo_minimo, servicioInfo.unidad_tiempo) * cantidad,
+          maximoMinutos: convertirATotalMinutos(servicioInfo.tiempo_maximo, servicioInfo.unidad_tiempo) * cantidad
+        } : undefined
+        if (tiempoServicio) { totalMinutosMin += tiempoServicio.minimoMinutos; totalMinutosMax += tiempoServicio.maximoMinutos }
+        itemsValidados.push({ ...(tipo === 'producto' ? { id_producto } : { id_servicio: id_producto }), cantidad, precio, descuento, total: totalItem, tipo, ...(tipo === 'producto' && raw.servicio_ref ? { servicio_ref: toInt(raw.servicio_ref as any) } : {}), ...(tiempoServicio ? { tiempo_servicio: tiempoServicio } : {}) })
+      }
+      // Validación 0–1 producto por servicio
+      const cuentaProductosPorServicio = new Map<number, number>()
+      for (const item of itemsValidados.filter(i => i.tipo === 'producto' && i.servicio_ref)) {
+        const srvId = item.servicio_ref!
+        const count = cuentaProductosPorServicio.get(srvId) || 0
+        if (count >= 1) return NextResponse.json({ error: `Cada servicio solo puede tener 0 o 1 producto asociado (servicio ${srvId})` }, { status: 400 })
+        cuentaProductosPorServicio.set(srvId, count + 1)
+      }
+
+      const impuesto = subtotal * 0.18
+      const total = subtotal + impuesto
+
+      await prisma.$transaction(async (tx) => {
+        // revertir stock y eliminar tareas + detalles existentes
+        const detallesExistentes = await tx.detalleTransaccion.findMany({ where: { id_transaccion: Number(id_transaccion) } })
+        const idsExistentes = detallesExistentes.map(d => d.id_detalle_transaccion)
+        if (idsExistentes.length) {
+          await tx.tarea.deleteMany({ where: { id_detalle_transaccion: { in: idsExistentes } } })
+        }
+        for (const d of detallesExistentes) {
+          if (d.id_producto) {
+            await tx.producto.update({ where: { id_producto: d.id_producto }, data: { stock: { increment: d.cantidad } } })
+          }
+        }
+        await tx.detalleTransaccion.deleteMany({ where: { id_transaccion: Number(id_transaccion) } })
+
+        // crear servicios
+        const mapaDetalleServicio = new Map<number, number>()
+        for (const item of itemsValidados.filter(i => i.tipo === 'servicio')) {
+          const detalle = await tx.detalleTransaccion.create({ data: { id_transaccion: Number(id_transaccion), id_servicio: item.id_servicio ?? null, cantidad: item.cantidad, precio: item.precio, descuento: item.descuento, total: item.total } })
+          mapaDetalleServicio.set(item.id_servicio!, detalle.id_detalle_transaccion)
+          const estimado = item.tiempo_servicio ? item.tiempo_servicio.maximoMinutos : 60
+          await tx.tarea.create({ data: { id_detalle_transaccion: detalle.id_detalle_transaccion, id_trabajador: updated.id_trabajador_principal ?? null, estado: 'pendiente', tiempo_estimado: estimado } })
+        }
+        // crear productos
+        for (const item of itemsValidados.filter(i => i.tipo === 'producto')) {
+          await tx.detalleTransaccion.create({ data: { id_transaccion: Number(id_transaccion), id_producto: item.id_producto ?? null, cantidad: item.cantidad, precio: item.precio, descuento: item.descuento, total: item.total, id_detalle_servicio_asociado: item.servicio_ref ? mapaDetalleServicio.get(item.servicio_ref) ?? null : null } })
+          await tx.producto.update({ where: { id_producto: item.id_producto! }, data: { stock: { decrement: item.cantidad } } })
+        }
+        // actualizar totales y duración
+        await tx.transaccion.update({ where: { id_transaccion: Number(id_transaccion) }, data: { impuesto, total, duracion_min: totalMinutosMin || null, duracion_max: totalMinutosMax || null, unidad_tiempo: (totalMinutosMin > 0 || totalMinutosMax > 0) ? 'minutos' : null } })
+      })
+    }
+
+    // Si se envía al Kanban (por_hacer), mover tareas existentes a 'por_hacer'
+    if (nuevo_estado === 'por_hacer') {
+      try {
+        const detallesIds = await prisma.detalleTransaccion.findMany({
+          where: { id_transaccion: Number(id_transaccion) },
+          select: { id_detalle_transaccion: true }
+        })
+        const ids = detallesIds.map(d => d.id_detalle_transaccion)
+        if (ids.length) {
+          await prisma.tarea.updateMany({
+            where: { id_detalle_transaccion: { in: ids }, estado: 'pendiente' },
+            data: { estado: 'por_hacer' }
+          })
+        }
+      } catch (e) { console.warn('No se pudieron actualizar tareas a por_hacer', e) }
+    }
+
     // Generar tareas faltantes si se solicitó o se asignó trabajador principal ahora
     if (generar_tareas_faltantes === true || asignadoPrincipalAhora) {
       try {
@@ -650,7 +843,7 @@ export async function PATCH(request: NextRequest) {
                 data: {
                   id_detalle_transaccion: d.id_detalle_transaccion,
                   id_trabajador: asignar_trabajador ? Number(asignar_trabajador) : updated.id_trabajador_principal,
-                  estado: 'pendiente',
+                  estado: 'por_hacer',
                   tiempo_estimado: tiempoEstimado
                 }
               })
