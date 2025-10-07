@@ -8,6 +8,13 @@ generator client {
   provider = "prisma-client-js"
 }
 
+enum TipoDocumento {
+  DNI
+  RUC
+  CE
+  PASAPORTE
+}
+
 // ✅ Modelo para Cotizaciones:
 model Cotizacion {
   id_cotizacion         Int       @id @default(autoincrement())
@@ -70,14 +77,17 @@ model Persona {
   nombre           String    @db.VarChar(100)
   apellido_paterno String    @db.VarChar(100)
   apellido_materno String?   @db.VarChar(100)
-  tipo_documento   String    @db.VarChar(20)
+  tipo_documento   TipoDocumento
   numero_documento String    @unique @db.VarChar(20)
   sexo             String?   @db.VarChar(10)
   telefono         String?   @db.VarChar(15)
   correo           String?   @db.VarChar(100)
-  empresa          String?   @db.VarChar(200)
+  nombre_comercial String?   @db.VarChar(150)
+  registrar_empresa Boolean   @default(false)
+  fecha_nacimiento DateTime?  @db.Date
   fecha_registro   DateTime  @default(now())
   estatus          Boolean   @default(true)
+  empresa_persona  EmpresaPersona?
   
   // Relaciones - Una persona puede ser cliente, proveedor o usuario
   cliente       Cliente?
@@ -86,6 +96,21 @@ model Persona {
   transacciones Transaccion[]
   
   @@map("persona")
+}
+
+model EmpresaPersona {
+  id_empresa_persona Int      @id @default(autoincrement())
+  persona_id         Int      @unique
+  ruc                String   @unique @db.VarChar(11)
+  razon_social       String   @db.VarChar(150)
+  nombre_comercial   String?  @db.VarChar(100)
+  direccion_fiscal   String?  @db.VarChar(200)
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+
+  persona Persona @relation(fields: [persona_id], references: [id_persona], onDelete: Cascade)
+
+  @@map("empresa_persona")
 }
 
 model Cliente {

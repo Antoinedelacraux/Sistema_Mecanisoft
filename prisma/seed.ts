@@ -41,11 +41,13 @@ async function main() {
       nombre: 'Admin',
       apellido_paterno: 'Sistema',
       apellido_materno: 'Principal',
-      tipo_documento: 'DNI',
+  tipo_documento: 'DNI',
       numero_documento: '12345678',
       sexo: 'M',
       telefono: '999888777',
       correo: 'admin@tallersystem.com',
+      registrar_empresa: false,
+      fecha_nacimiento: new Date('1990-01-01'),
     }
   })
   
@@ -210,6 +212,129 @@ async function main() {
   }
 
   console.log('✅ Modelos de vehículos creados')
+
+  // Crear clientes de ejemplo para el módulo
+  console.log('✅ Creando clientes de ejemplo...')
+
+  const personaClienteNatural = await prisma.persona.upsert({
+    where: { numero_documento: '87654321' },
+    update: {
+      nombre: 'Juana',
+      apellido_paterno: 'Torres',
+      apellido_materno: 'Lopez',
+      telefono: '987654321',
+      correo: 'juana.torres@example.com',
+      fecha_nacimiento: new Date('1992-07-14'),
+      registrar_empresa: false
+    },
+    create: {
+      nombre: 'Juana',
+      apellido_paterno: 'Torres',
+      apellido_materno: 'Lopez',
+      tipo_documento: 'DNI',
+      numero_documento: '87654321',
+      sexo: 'F',
+      telefono: '987654321',
+      correo: 'juana.torres@example.com',
+      fecha_nacimiento: new Date('1992-07-14'),
+      registrar_empresa: false
+    }
+  })
+
+  await prisma.cliente.upsert({
+    where: { id_persona: personaClienteNatural.id_persona },
+    update: {},
+    create: {
+      id_persona: personaClienteNatural.id_persona
+    }
+  })
+
+  const personaClienteRuc = await prisma.persona.upsert({
+    where: { numero_documento: '20123456789' },
+    update: {
+      nombre: 'Carlos',
+      apellido_paterno: 'Rivas',
+      apellido_materno: 'Salazar',
+      telefono: '988112233',
+      correo: 'carlos.rivas@example.com',
+      nombre_comercial: 'CR Servicios Automotrices',
+      fecha_nacimiento: new Date('1986-03-22'),
+      registrar_empresa: false
+    },
+    create: {
+      nombre: 'Carlos',
+      apellido_paterno: 'Rivas',
+      apellido_materno: 'Salazar',
+      tipo_documento: 'RUC',
+      numero_documento: '20123456789',
+      sexo: 'M',
+      telefono: '988112233',
+      correo: 'carlos.rivas@example.com',
+      nombre_comercial: 'CR Servicios Automotrices',
+      fecha_nacimiento: new Date('1986-03-22'),
+      registrar_empresa: false
+    }
+  })
+
+  await prisma.cliente.upsert({
+    where: { id_persona: personaClienteRuc.id_persona },
+    update: {},
+    create: {
+      id_persona: personaClienteRuc.id_persona
+    }
+  })
+
+  const personaRepresentante = await prisma.persona.upsert({
+    where: { numero_documento: '44556677' },
+    update: {
+      nombre: 'María',
+      apellido_paterno: 'Huamán',
+      apellido_materno: 'Quispe',
+      telefono: '977665544',
+      correo: 'maria.huaman@example.com',
+      fecha_nacimiento: new Date('1990-11-05'),
+      registrar_empresa: true
+    },
+    create: {
+      nombre: 'María',
+      apellido_paterno: 'Huamán',
+      apellido_materno: 'Quispe',
+      tipo_documento: 'DNI',
+      numero_documento: '44556677',
+      sexo: 'F',
+      telefono: '977665544',
+      correo: 'maria.huaman@example.com',
+      fecha_nacimiento: new Date('1990-11-05'),
+      registrar_empresa: true
+    }
+  })
+
+  await prisma.cliente.upsert({
+    where: { id_persona: personaRepresentante.id_persona },
+    update: {},
+    create: {
+      id_persona: personaRepresentante.id_persona
+    }
+  })
+
+  await prisma.empresaPersona.upsert({
+    where: { persona_id: personaRepresentante.id_persona },
+    update: {
+      ruc: '20987654321',
+      razon_social: 'Servicios Integrales Huamán SAC',
+      nombre_comercial: 'Servicios Huamán',
+      direccion_fiscal: 'Av. Los Ingenieros 123, Lima'
+    },
+    create: {
+      persona_id: personaRepresentante.id_persona,
+      ruc: '20987654321',
+      razon_social: 'Servicios Integrales Huamán SAC',
+      nombre_comercial: 'Servicios Huamán',
+      direccion_fiscal: 'Av. Los Ingenieros 123, Lima'
+    }
+  })
+
+  console.log('✅ Clientes de ejemplo creados')
 
   // Crear algunos vehículos de ejemplo (opcional)
   // Solo si ya tienes clientes creados en el seed anterior

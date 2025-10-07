@@ -4,6 +4,8 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import type { Prisma } from '@prisma/client'
 
+type DocumentoPermitido = 'DNI' | 'RUC' | 'CE' | 'PASAPORTE'
+
 // Función para generar código de empleado único
 async function generateCodigoEmpleado() {
   const lastWorker = await prisma.trabajador.findFirst({
@@ -101,9 +103,17 @@ export async function POST(request: NextRequest) {
     } = data
 
     // Validar campos requeridos
-    if (!nombre || !apellido_paterno || !numero_documento || !nombre_usuario || !password || !especialidad) {
+    if (!nombre || !apellido_paterno || !numero_documento || !tipo_documento || !nombre_usuario || !password || !especialidad) {
       return NextResponse.json(
         { error: 'Faltan campos requeridos' }, 
+        { status: 400 }
+      )
+    }
+
+    const tipoDocumentoNormalizado = String(tipo_documento).toUpperCase() as DocumentoPermitido
+    if (!['DNI', 'RUC', 'CE', 'PASAPORTE'].includes(tipoDocumentoNormalizado)) {
+      return NextResponse.json(
+        { error: 'Tipo de documento inválido' },
         { status: 400 }
       )
     }
@@ -155,10 +165,12 @@ export async function POST(request: NextRequest) {
           nombre,
           apellido_paterno,
           apellido_materno,
-          tipo_documento,
+          tipo_documento: tipoDocumentoNormalizado,
           numero_documento,
           telefono,
-          correo
+          correo,
+          registrar_empresa: false,
+          fecha_nacimiento: null
         }
       })
 
@@ -186,7 +198,11 @@ export async function POST(request: NextRequest) {
         include: {
           usuario: {
             include: {
-              persona: true,
+              persona: {
+                include: {
+                  empresa_persona: true
+                }
+              },
               rol: true
             }
           }

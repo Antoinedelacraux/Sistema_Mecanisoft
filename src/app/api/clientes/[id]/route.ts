@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { validateClientePayload, ClienteValidationError } from '@/lib/clientes/validation'
 
 // Tipado flexible para compatibilidad con el validador de rutas de Next 15
 type ParamsInput = { params: { id: string } } | { params: Promise<{ id: string }> }
@@ -33,7 +34,11 @@ export async function GET(
     const cliente = await prisma.cliente.findUnique({
       where: { id_cliente: id },
       include: {
-        persona: true,
+        persona: {
+          include: {
+            empresa_persona: true,
+          },
+        },
         vehiculos: {
           include: {
             modelo: {
@@ -81,7 +86,13 @@ export async function PATCH(
     if (action === 'toggle_status') {
       const cliente = await prisma.cliente.findUnique({
         where: { id_cliente: id },
-        include: { persona: true }
+        include: {
+          persona: {
+            include: {
+              empresa_persona: true,
+            },
+          },
+        },
       })
 
       if (!cliente) {
@@ -128,95 +139,114 @@ export async function PUT(
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
     const { id: rawId } = await resolveParams(ctx)
-    const id = parseInt(rawId, 10);
-    if (isNaN(id)) {
-      return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
+    const id = parseInt(rawId, 10)
+    if (Number.isNaN(id)) {
+      return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
     }
 
-    const data = await request.json();
-    console.log('Datos recibidos:', data); // Log para depuración
+    const data = await request.json()
 
-    // Verificar que el cliente existe
     const clienteExistente = await prisma.cliente.findUnique({
       where: { id_cliente: id },
-      include: { persona: true },
-    });
+      include: {
+        persona: {
+          include: {
+            empresa_persona: true,
+          },
+        },
+      },
+    })
 
     if (!clienteExistente) {
-      return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 });
+      return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 })
     }
 
-    // Verificar si el nuevo documento ya existe (si se cambió)
-    if (data.numero_documento !== clienteExistente.persona.numero_documento) {
-      const existeDocumento = await prisma.persona.findUnique({
-        where: { numero_documento: data.numero_documento },
-      });
-
-      if (existeDocumento) {
-        return NextResponse.json(
-          { error: 'Ya existe una persona con este número de documento' },
-          { status: 400 }
-        );
-      }
-    }
-
+    let validated
     try {
-      // Actualizar persona
-      await prisma.persona.update({
+      validated = await validateClientePayload(data, {
+        prisma,
+        personaId: clienteExistente.persona.id_persona,
+      })
+    } catch (error) {
+      if (error instanceof ClienteValidationError) {
+        return NextResponse.json({ error: error.message }, { status: error.status })
+      }
+      throw error
+    }
+
+    const clienteActualizado = await prisma.$transaction(async (tx) => {
+      const personaActualizada = await tx.persona.update({
         where: { id_persona: clienteExistente.id_persona },
         data: {
-          nombre: data.nombre,
-          apellido_paterno: data.apellido_paterno,
-          apellido_materno: data.apellido_materno || null,
-          tipo_documento: data.tipo_documento,
-          numero_documento: data.numero_documento,
-          sexo: data.sexo || null,
-          telefono: data.telefono || null,
-          correo: data.correo || null,
-          empresa: data.empresa || null,
+          nombre: validated.nombre,
+          apellido_paterno: validated.apellido_paterno,
+          apellido_materno: validated.apellido_materno,
+          tipo_documento: validated.tipo_documento,
+          numero_documento: validated.numero_documento,
+          sexo: validated.sexo,
+          telefono: validated.telefono,
+          correo: validated.correo,
+          nombre_comercial: validated.nombre_comercial_persona,
+          registrar_empresa: validated.registrar_empresa,
+          fecha_nacimiento: validated.fecha_nacimiento,
         },
-      });
-    } catch (error) {
-      console.error('Error actualizando persona:', error);
-      return NextResponse.json(
-        { error: 'Error actualizando los datos de la persona' },
-        { status: 500 }
-      );
-    }
+      })
 
-    try {
-      // Volver a buscar el cliente con todas las relaciones para la respuesta y la bitácora
-      const clienteActualizado = await prisma.cliente.findUnique({
-        where: { id_cliente: id },
-        include: { persona: true },
-      });
-
-      // Verificar si clienteActualizado es null
-      if (!clienteActualizado) {
-        return NextResponse.json(
-          { error: 'No se pudo encontrar el cliente actualizado' },
-          { status: 404 }
-        );
+      if (validated.empresa) {
+        await tx.empresaPersona.upsert({
+          where: { persona_id: personaActualizada.id_persona },
+          create: {
+            persona_id: personaActualizada.id_persona,
+            ruc: validated.empresa.ruc,
+            razon_social: validated.empresa.razon_social,
+            nombre_comercial: validated.empresa.nombre_comercial,
+            direccion_fiscal: validated.empresa.direccion_fiscal,
+          },
+          update: {
+            ruc: validated.empresa.ruc,
+            razon_social: validated.empresa.razon_social,
+            nombre_comercial: validated.empresa.nombre_comercial,
+            direccion_fiscal: validated.empresa.direccion_fiscal,
+          },
+        })
+      } else if (clienteExistente.persona.empresa_persona) {
+        await tx.empresaPersona.delete({
+          where: { persona_id: personaActualizada.id_persona },
+        })
       }
 
-      // Registrar en bitácora
-      await prisma.bitacora.create({
-        data: {
-          id_usuario: parseInt(session.user.id, 10),
-          accion: 'UPDATE_CLIENTE',
-          descripcion: `Cliente actualizado: ${clienteActualizado.persona.nombre} ${clienteActualizado.persona.apellido_paterno}`,
-          tabla: 'cliente',
+      return tx.cliente.findUnique({
+        where: { id_cliente: id },
+        include: {
+          persona: {
+            include: {
+              empresa_persona: true,
+            },
+          },
+          _count: {
+            select: { vehiculos: true }
+          }
         },
-      });
+      })
+    })
 
-      return NextResponse.json(clienteActualizado);
-    } catch (error) {
-      console.error('Error registrando en bitácora o buscando cliente actualizado:', error);
+    if (!clienteActualizado) {
       return NextResponse.json(
-        { error: 'Error interno al finalizar la actualización' },
-        { status: 500 }
-      );
+        { error: 'No se pudo encontrar el cliente actualizado' },
+        { status: 404 }
+      )
     }
+
+    await prisma.bitacora.create({
+      data: {
+        id_usuario: parseInt(session.user.id, 10),
+        accion: 'UPDATE_CLIENTE',
+        descripcion: `Cliente actualizado: ${clienteActualizado.persona.nombre} ${clienteActualizado.persona.apellido_paterno}`,
+        tabla: 'cliente',
+      },
+    })
+
+    return NextResponse.json(clienteActualizado)
   } catch (error) {
     console.error('Error general en PUT cliente:', error);
     return NextResponse.json(

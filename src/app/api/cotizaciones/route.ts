@@ -59,9 +59,25 @@ export async function GET(request: NextRequest) {
 
     // Obtener cotizaciones con paginación
     const cotizacionInclude = {
-      cliente: { include: { persona: true } },
+      cliente: {
+        include: {
+          persona: {
+            include: {
+              empresa_persona: true,
+            },
+          },
+        },
+      },
       vehiculo: { include: { modelo: { include: { marca: true } } } },
-      usuario: { include: { persona: true } },
+      usuario: {
+        include: {
+          persona: {
+            include: {
+              empresa_persona: true,
+            },
+          },
+        },
+      },
       detalle_cotizacion: { include: { producto: true, servicio: true } },
       _count: { select: { detalle_cotizacion: true } }
     }
@@ -202,10 +218,26 @@ export async function POST(request: NextRequest) {
     const cotizacionCompleta = await prisma.cotizacion.findUnique({
       where: { id_cotizacion: cotizacionCreada.id_cotizacion },
       include: {
-        cliente: { include: { persona: true } },
+        cliente: {
+          include: {
+            persona: {
+              include: {
+                empresa_persona: true,
+              },
+            },
+          },
+        },
         vehiculo: { include: { modelo: { include: { marca: true } } } },
         detalle_cotizacion: { include: { producto: true, servicio: true } },
-        usuario: { include: { persona: true } }
+        usuario: {
+          include: {
+            persona: {
+              include: {
+                empresa_persona: true,
+              },
+            },
+          },
+        }
       }
     })
 

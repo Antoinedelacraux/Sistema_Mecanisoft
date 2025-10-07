@@ -1,5 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import type { Cliente } from '@prisma/client'
+import type { PersonaConEmpresa } from '@/types'
 
 export type CotizacionModo = 'solo_servicios' | 'solo_productos' | 'servicios_y_productos'
 
@@ -67,8 +69,12 @@ export interface CotizacionItemValidado {
   tipo: 'producto' | 'servicio'
 }
 
+type ClienteConPersona = Cliente & {
+  persona: PersonaConEmpresa
+}
+
 export interface CotizacionValidationResult {
-  cliente: NonNullable<Awaited<ReturnType<typeof prisma.cliente.findUnique>>>
+  cliente: ClienteConPersona
   vehiculo: NonNullable<Awaited<ReturnType<typeof prisma.vehiculo.findUnique>>>
   itemsValidados: CotizacionItemValidado[]
   subtotal: number
@@ -89,7 +95,13 @@ export async function validarCotizacionPayload(
 
   const cliente = await prismaClient.cliente.findUnique({
     where: { id_cliente },
-    include: { persona: true }
+    include: {
+      persona: {
+        include: {
+          empresa_persona: true,
+        },
+      },
+    },
   })
 
   if (!cliente || cliente.estatus === false) {
@@ -220,7 +232,7 @@ export async function validarCotizacionPayload(
   vigenciaHasta.setDate(vigenciaHasta.getDate() + vigencia_dias)
 
   return {
-    cliente: cliente as NonNullable<typeof cliente>,
+  cliente: cliente as ClienteConPersona,
     vehiculo: vehiculo as NonNullable<typeof vehiculo>,
     itemsValidados,
     subtotal,

@@ -1,8 +1,32 @@
-import type { Persona, Cliente, Vehiculo, Marca, Modelo, Trabajador, Usuario, Rol, Cotizacion, DetalleCotizacion, Pago, Tarea, Transaccion, DetalleTransaccion, Producto, Categoria, Fabricante, UnidadMedida } from '@prisma/client'
+import type {
+  Persona,
+  Cliente,
+  Vehiculo,
+  Marca,
+  Modelo,
+  Trabajador,
+  Usuario,
+  Rol,
+  Cotizacion,
+  DetalleCotizacion,
+  Pago,
+  Tarea,
+  Transaccion,
+  DetalleTransaccion,
+  Producto,
+  Categoria,
+  Fabricante,
+  UnidadMedida,
+  EmpresaPersona,
+} from '@prisma/client'
+
+export type PersonaConEmpresa = Persona & {
+  empresa_persona?: EmpresaPersona | null
+}
 
 // Tipos extendidos para incluir relaciones
 export type ClienteCompleto = Cliente & {
-  persona: Persona
+  persona: PersonaConEmpresa
   vehiculos: VehiculoCompleto[]
   _count: {
     vehiculos: number
@@ -11,7 +35,7 @@ export type ClienteCompleto = Cliente & {
 
 export type VehiculoCompleto = Vehiculo & {
   cliente: Cliente & {
-    persona: Persona
+    persona: PersonaConEmpresa
   }
   modelo: Modelo & {
     marca: Marca
@@ -82,12 +106,20 @@ export type ClienteFormData = {
   nombre: string
   apellido_paterno: string
   apellido_materno?: string
-  tipo_documento: string
+  tipo_documento: 'DNI' | 'RUC' | 'CE' | 'PASAPORTE'
   numero_documento: string
   sexo?: string
   telefono?: string
   correo?: string
-  empresa?: string
+  fecha_nacimiento: string
+  registrar_empresa: boolean
+  nombre_comercial?: string | null
+  empresa?: {
+    ruc: string
+    razon_social: string
+    nombre_comercial?: string
+    direccion_fiscal?: string
+  } | null
 }
 
 export type VehiculoFormData = {
@@ -221,7 +253,7 @@ export type SelectOption = {
 // ✅ Tipos para trabajadores y relacionados
 export type TrabajadorCompleto = Trabajador & {
   usuario: Usuario & {
-    persona: Persona
+    persona: PersonaConEmpresa
     rol: Rol
   }
   _count: {
@@ -232,7 +264,7 @@ export type TrabajadorCompleto = Trabajador & {
 
 export type CotizacionCompleta = Cotizacion & {
   cliente: Cliente & {
-    persona: Persona
+    persona: PersonaConEmpresa
   }
   vehiculo: Vehiculo & {
     modelo: Modelo & {
@@ -240,7 +272,7 @@ export type CotizacionCompleta = Cotizacion & {
     }
   }
   usuario: Usuario & {
-    persona: Persona
+    persona: PersonaConEmpresa
   }
   detalle_cotizacion: (DetalleCotizacion & {
     producto?: Producto | null
@@ -254,7 +286,7 @@ export type TareaCompleta = Tarea & {
     producto?: Producto | null
     servicio?: ServicioCompleto | null
     transaccion: Transaccion & {
-      persona: Persona
+      persona: PersonaConEmpresa
       transaccion_vehiculos: Array<{
         vehiculo: Vehiculo & {
           modelo: Modelo & {
@@ -270,6 +302,6 @@ export type TareaCompleta = Tarea & {
 export type PagoCompleto = Pago & {
   transaccion: Transaccion
   usuario_registro: Usuario & {
-    persona: Persona
+    persona: PersonaConEmpresa
   }
 }

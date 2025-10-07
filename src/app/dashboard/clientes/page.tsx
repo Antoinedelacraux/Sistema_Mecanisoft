@@ -102,10 +102,15 @@ export default function ClientesPage() {
                     {selectedCliente.estatus ? 'Activo' : 'Inactivo'}
                   </p>
                 </div>
-                {selectedCliente.persona.empresa && (
+                {selectedCliente.persona.empresa_persona && (
                   <div>
                     <h4 className="font-semibold">Empresa</h4>
-                    <p>{selectedCliente.persona.empresa}</p>
+                    <p>{selectedCliente.persona.empresa_persona.razon_social}</p>
+                    {selectedCliente.persona.empresa_persona.nombre_comercial && (
+                      <p className="text-sm text-muted-foreground">
+                        {selectedCliente.persona.empresa_persona.nombre_comercial}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>

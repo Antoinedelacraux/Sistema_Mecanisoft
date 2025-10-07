@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Badge, badgeVariants } from '@/components/ui/badge'
+import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Search, Plus, Edit, Trash2, Eye, Car, ToggleLeft, ToggleRight } from 'lucide-react'
@@ -23,6 +23,7 @@ export function ClientesTable({ onEdit, onView, onCreateNew, refreshTrigger }: C
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
+  const [typeFilter, setTypeFilter] = useState<'all' | 'natural' | 'ruc' | 'juridica'>('all')
   const [page, setPage] = useState(1)
   const [pagination, setPagination] = useState({
     total: 0,
@@ -63,6 +64,16 @@ export function ClientesTable({ onEdit, onView, onCreateNew, refreshTrigger }: C
   useEffect(() => {
     fetchClientes()
   }, [fetchClientes])
+
+  const getClienteTipo = useCallback((cliente: ClienteCompleto): 'natural' | 'ruc' | 'juridica' => {
+    if (cliente.persona.tipo_documento === 'RUC') return 'ruc'
+    if (cliente.persona.empresa_persona) return 'juridica'
+    return 'natural'
+  }, [])
+
+  const clientePuedeFacturar = useCallback((cliente: ClienteCompleto) => {
+    return cliente.persona.tipo_documento === 'RUC' || Boolean(cliente.persona.empresa_persona)
+  }, [])
 
   // Refresca la tabla cuando el `refreshTrigger` cambia
   useEffect(() => {
@@ -141,13 +152,18 @@ export function ClientesTable({ onEdit, onView, onCreateNew, refreshTrigger }: C
 
   // ✅ Filtrar clientes por estado antes de mostrar
   const filteredClientes = clientes.filter(cliente => {
-    if (statusFilter === 'active') return cliente.estatus === true
-    if (statusFilter === 'inactive') return cliente.estatus === false
-    return true // 'all' muestra todos
+    if (statusFilter === 'active' && !cliente.estatus) return false
+    if (statusFilter === 'inactive' && cliente.estatus) return false
+    if (typeFilter !== 'all' && getClienteTipo(cliente) !== typeFilter) return false
+    return true
   })
 
   const totalActivos = clientes.filter(c => c.estatus).length
   const totalInactivos = clientes.filter(c => !c.estatus).length
+  const totalNaturales = clientes.filter(c => getClienteTipo(c) === 'natural').length
+  const totalRuc = clientes.filter(c => getClienteTipo(c) === 'ruc').length
+  const totalJuridicas = clientes.filter(c => getClienteTipo(c) === 'juridica').length
+  const totalFacturan = clientes.filter(clientePuedeFacturar).length
 
 
   return (
@@ -169,8 +185,8 @@ export function ClientesTable({ onEdit, onView, onCreateNew, refreshTrigger }: C
       
       <CardContent>
         {/* Barra de búsqueda y filtros */}
-        <div className="flex items-center justify-between gap-4 mb-6">
-          <div className="relative flex-1">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+          <div className="relative flex-1 min-w-[240px]">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <Input
               placeholder="Buscar por nombre, documento o correo..."
@@ -180,36 +196,74 @@ export function ClientesTable({ onEdit, onView, onCreateNew, refreshTrigger }: C
             />
           </div>
           
-          {/* ✅ Filtro de estado */}
-          <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-600">Estado:</label>
-            <Select value={statusFilter} onValueChange={(value: 'all' | 'active' | 'inactive') => setStatusFilter(value)}>
-              <SelectTrigger className="w-32">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
-                <SelectItem value="active">Activos</SelectItem>
-                <SelectItem value="inactive">Inactivos</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-600">Estado:</label>
+              <Select
+                value={statusFilter}
+                onValueChange={(value: 'all' | 'active' | 'inactive') => {
+                  setStatusFilter(value)
+                  setPage(1)
+                }}
+              >
+                <SelectTrigger className="w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="active">Activos</SelectItem>
+                  <SelectItem value="inactive">Inactivos</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-600">Tipo:</label>
+              <Select
+                value={typeFilter}
+                onValueChange={(value: 'all' | 'natural' | 'ruc' | 'juridica') => {
+                  setTypeFilter(value)
+                  setPage(1)
+                }}
+              >
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="natural">Persona natural</SelectItem>
+                  <SelectItem value="ruc">Persona con RUC</SelectItem>
+                  <SelectItem value="juridica">Persona jurídica</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
 
         {/* ✅ Estadísticas rápidas */}
-        <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="text-center p-3 bg-blue-50 rounded-lg">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+          <div className="rounded-lg border bg-blue-50 p-3 text-center">
             <div className="text-2xl font-bold text-blue-600">{clientes.length}</div>
-            <div className="text-sm text-blue-600">Total</div>
+            <div className="text-sm text-blue-600">Clientes</div>
           </div>
-          <div className="text-center p-3 bg-green-50 rounded-lg">
+          <div className="rounded-lg border bg-green-50 p-3 text-center">
             <div className="text-2xl font-bold text-green-600">{totalActivos}</div>
             <div className="text-sm text-green-600">Activos</div>
           </div>
-          <div className="text-center p-3 bg-red-50 rounded-lg">
+          <div className="rounded-lg border bg-red-50 p-3 text-center">
             <div className="text-2xl font-bold text-red-600">{totalInactivos}</div>
             <div className="text-sm text-red-600">Inactivos</div>
           </div>
+          <div className="rounded-lg border bg-amber-50 p-3 text-center">
+            <div className="text-2xl font-bold text-amber-600">{totalFacturan}</div>
+            <div className="text-sm text-amber-600">Pueden facturar</div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2 mb-6 text-sm text-slate-600">
+          <span className="px-2 py-1 rounded-full bg-slate-100">Naturales: {totalNaturales}</span>
+          <span className="px-2 py-1 rounded-full bg-slate-100">Con RUC: {totalRuc}</span>
+          <span className="px-2 py-1 rounded-full bg-slate-100">Con empresa: {totalJuridicas}</span>
         </div>
 
         {/* Tabla */}
@@ -246,6 +300,8 @@ export function ClientesTable({ onEdit, onView, onCreateNew, refreshTrigger }: C
                   <TableRow>
                     <TableHead>Cliente</TableHead>
                     <TableHead>Documento</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead>Facturación</TableHead>
                     <TableHead>Contacto</TableHead>
                     <TableHead>Vehículos</TableHead>
                     <TableHead>Estado</TableHead>
@@ -253,105 +309,141 @@ export function ClientesTable({ onEdit, onView, onCreateNew, refreshTrigger }: C
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredClientes.map((cliente) => (
-                    <TableRow
-                      key={cliente.id_cliente}
-                      className={!cliente.estatus ? "bg-gray-50 opacity-75" : ""} // ✅ Estilo visual para inactivos
-                    >
-                      <TableCell>
-                        <div className={!cliente.estatus ? "text-gray-500" : ""}>
-                          <div
-                            className="font-medium"
-                          >
-                            {cliente.persona.nombre} {cliente.persona.apellido_paterno}
+                  {filteredClientes.map((cliente) => {
+                    const tipo = getClienteTipo(cliente)
+                    const puedeFacturar = clientePuedeFacturar(cliente)
+                    const persona = cliente.persona
+
+                    const tipoLabel =
+                      tipo === 'natural'
+                        ? 'Persona natural'
+                        : tipo === 'ruc'
+                          ? 'Persona con RUC'
+                          : 'Persona jurídica'
+
+                    const tipoBadgeClass =
+                      tipo === 'natural'
+                        ? 'bg-slate-100 text-slate-700'
+                        : tipo === 'ruc'
+                          ? 'bg-sky-100 text-sky-700'
+                          : 'bg-purple-100 text-purple-700'
+
+                    const facturacionBadgeClass = puedeFacturar
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : 'bg-slate-100 text-slate-600'
+
+                    return (
+                      <TableRow
+                        key={cliente.id_cliente}
+                        className={!cliente.estatus ? 'bg-gray-50 opacity-75' : ''}
+                      >
+                        <TableCell>
+                          <div className={!cliente.estatus ? 'text-gray-500 flex flex-col gap-1' : 'flex flex-col gap-1'}>
+                            <div className="font-medium">
+                              {persona.nombre} {persona.apellido_paterno}
+                            </div>
+                            {tipo === 'ruc' && persona.nombre_comercial && (
+                              <div className="text-sm text-sky-600">
+                                {persona.nombre_comercial}
+                              </div>
+                            )}
+                            {persona.empresa_persona && (
+                              <div className="text-sm text-gray-500">
+                                {persona.empresa_persona.razon_social}
+                              </div>
+                            )}
                           </div>
-                          {cliente.persona.empresa && (
-                            <div className="text-sm text-gray-500">
-                              {cliente.persona.empresa}
+                        </TableCell>
+                        <TableCell className={!cliente.estatus ? 'text-gray-500' : ''}>
+                          <div className="flex flex-col gap-1">
+                            <div className="text-sm">{persona.tipo_documento}</div>
+                            <div className="font-mono text-sm">{persona.numero_documento}</div>
+                          </div>
+                          {persona.empresa_persona && (
+                            <div className="text-xs text-muted-foreground">
+                              Empresa RUC: {persona.empresa_persona.ruc}
                             </div>
                           )}
-                        </div>
-                      </TableCell>
-                      <TableCell className={!cliente.estatus ? "text-gray-500" : ""}>
-                        <div>
-                          <div className="text-sm">{cliente.persona.tipo_documento}</div>
-                          <div className="font-mono text-sm">{cliente.persona.numero_documento}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell className={!cliente.estatus ? "text-gray-500" : ""}>
-                        <div>
-                          {cliente.persona.telefono && (
-                            <div className="text-sm">{cliente.persona.telefono}</div>
-                          )}
-                          {cliente.persona.correo && (
-                            <div className="text-sm">{cliente.persona.correo}</div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className={!cliente.estatus ? "text-gray-500" : ""}>
-                        <div className="flex items-center gap-2 ">
-                          <Car className="w-4 h-4 text-gray-400" />
-                          <span className="text-sm">{cliente._count.vehiculos}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {/* ✅ Badge más descriptivo */}
-                        <Badge
-                          variant={cliente.estatus ? "default" : "secondary"}
-                          className={cliente.estatus ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}
-                        >
-                          {cliente.estatus ? "Activo" : "Inactivo"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => onView(cliente)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={tipoBadgeClass}>{tipoLabel}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={facturacionBadgeClass}>
+                            {puedeFacturar ? 'Factura' : 'Boleta'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className={!cliente.estatus ? 'text-gray-500' : ''}>
+                          <div className="flex flex-col gap-1">
+                            {persona.telefono && (
+                              <div className="text-sm">{persona.telefono}</div>
+                            )}
+                            {persona.correo && (
+                              <div className="text-sm">{persona.correo}</div>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className={!cliente.estatus ? 'text-gray-500' : ''}>
+                          <div className="flex items-center gap-2">
+                            <Car className="w-4 h-4 text-gray-400" />
+                            <span className="text-sm">{cliente._count.vehiculos}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={cliente.estatus ? 'default' : 'secondary'}
+                            className={cliente.estatus ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}
                           >
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                          
-                          {/* ✅ Solo permitir editar si está activo */}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => onEdit(cliente)}
-                            disabled={!cliente.estatus} // ✅ Deshabilitar si está inactivo
-                            className={!cliente.estatus ? "opacity-50 cursor-not-allowed" : ""}
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          
-                          {/* ✅ Toggle de estado */}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleToggleStatus(cliente)}
-                            className={cliente.estatus ? "text-orange-600 hover:text-orange-700" : "text-green-600 hover:text-green-700"}
-                            title={cliente.estatus ? "Desactivar cliente" : "Activar cliente"}
-                          >
-                            {cliente.estatus ? <ToggleLeft className="w-4 h-4" /> : <ToggleRight className="w-4 h-4" />}
-                          </Button>
-                          
-                          {/* ✅ Solo permitir eliminar si está inactivo */}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDelete(cliente)}
-                            disabled={cliente.estatus} // ✅ Solo eliminar si está inactivo
-                            className={cliente.estatus
-                              ? "opacity-50 cursor-not-allowed"
-                              : "text-red-600 hover:text-red-700"}
-                            title={cliente.estatus ? "Desactiva el cliente antes de eliminarlo" : "Eliminar cliente"}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                            {cliente.estatus ? 'Activo' : 'Inactivo'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => onView(cliente)}
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Button>
+
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => onEdit(cliente)}
+                              disabled={!cliente.estatus}
+                              className={!cliente.estatus ? 'opacity-50 cursor-not-allowed' : ''}
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleToggleStatus(cliente)}
+                              className={cliente.estatus ? 'text-orange-600 hover:text-orange-700' : 'text-green-600 hover:text-green-700'}
+                              title={cliente.estatus ? 'Desactivar cliente' : 'Activar cliente'}
+                            >
+                              {cliente.estatus ? <ToggleLeft className="w-4 h-4" /> : <ToggleRight className="w-4 h-4" />}
+                            </Button>
+
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDelete(cliente)}
+                              disabled={cliente.estatus}
+                              className={cliente.estatus
+                                ? 'opacity-50 cursor-not-allowed'
+                                : 'text-red-600 hover:text-red-700'}
+                              title={cliente.estatus ? 'Desactiva el cliente antes de eliminarlo' : 'Eliminar cliente'}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
                 </TableBody>
               </Table>
             </div>

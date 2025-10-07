@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { useForm, Controller } from 'react-hook-form'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useForm } from 'react-hook-form'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -13,6 +13,24 @@ import { Separator } from '@/components/ui/separator'
 import { ClienteFormData, ClienteCompleto } from '@/types'
 import { useToast } from '@/components/ui/use-toast'
 import { AlertCircle, CheckCircle } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
+
+const createEmptyEmpresa = () => ({
+  ruc: '',
+  razon_social: '',
+  nombre_comercial: '',
+  direccion_fiscal: ''
+})
+
+const formatDateInput = (value?: string | Date | null): string => {
+  if (!value) return ''
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const timezoneOffset = date.getTimezoneOffset() * 60000
+  const adjusted = new Date(date.getTime() - timezoneOffset)
+  return adjusted.toISOString().split('T')[0]
+}
 
 interface ClienteFormProps {
   cliente?: ClienteCompleto
@@ -28,20 +46,60 @@ export function ClienteForm({ cliente, onSuccess, onCancel }: ClienteFormProps) 
     message: string
     type: 'success' | 'error' | 'warning'
   } | null>(null)
+  const [validatingEmpresa, setValidatingEmpresa] = useState(false)
+  const [empresaDocumentValidation, setEmpresaDocumentValidation] = useState<{
+    isValid: boolean
+    message: string
+    type: 'success' | 'error' | 'warning'
+  } | null>(null)
   const { toast } = useToast()
 
+  const defaultValues = useMemo<ClienteFormData>(() => {
+    if (cliente) {
+      const persona = cliente.persona
+      const empresa = persona.empresa_persona
+
+      return {
+        nombre: persona.nombre,
+        apellido_paterno: persona.apellido_paterno,
+        apellido_materno: persona.apellido_materno || '',
+        tipo_documento: persona.tipo_documento as ClienteFormData['tipo_documento'],
+        numero_documento: persona.numero_documento,
+        sexo: persona.sexo || '',
+        telefono: persona.telefono || '',
+        correo: persona.correo || '',
+        fecha_nacimiento: formatDateInput(persona.fecha_nacimiento) || '',
+        registrar_empresa: Boolean(persona.registrar_empresa && empresa),
+  nombre_comercial: persona.nombre_comercial || '',
+        empresa: empresa
+          ? {
+              ruc: empresa.ruc,
+              razon_social: empresa.razon_social,
+              nombre_comercial: empresa.nombre_comercial || '',
+              direccion_fiscal: empresa.direccion_fiscal || ''
+            }
+          : createEmptyEmpresa()
+      }
+    }
+
+    return {
+      nombre: '',
+      apellido_paterno: '',
+      apellido_materno: '',
+      tipo_documento: 'DNI',
+      numero_documento: '',
+      sexo: '',
+      telefono: '',
+      correo: '',
+      fecha_nacimiento: '',
+      registrar_empresa: false,
+      nombre_comercial: '',
+      empresa: createEmptyEmpresa()
+    }
+  }, [cliente])
+
   const form = useForm<ClienteFormData>({
-    defaultValues: cliente ? {
-      nombre: cliente.persona.nombre,
-      apellido_paterno: cliente.persona.apellido_paterno,
-      apellido_materno: cliente.persona.apellido_materno || '',
-      tipo_documento: cliente.persona.tipo_documento,
-      numero_documento: cliente.persona.numero_documento,
-      sexo: cliente.persona.sexo || '',
-      telefono: cliente.persona.telefono || '',
-      correo: cliente.persona.correo || '',
-      empresa: cliente.persona.empresa || ''
-    } : {}
+    defaultValues
   })
 
   const {
@@ -57,6 +115,36 @@ export function ClienteForm({ cliente, onSuccess, onCancel }: ClienteFormProps) 
 
   const tipoDocumento = watch('tipo_documento')
   const numeroDocumento = watch('numero_documento')
+  const registrarEmpresa = watch('registrar_empresa')
+  const empresaRuc = watch('empresa.ruc')
+
+  const maxBirthDate = useMemo(() => {
+    const limit = new Date()
+    limit.setFullYear(limit.getFullYear() - 18)
+    return formatDateInput(limit)
+  }, [])
+
+  useEffect(() => {
+    if (tipoDocumento === 'RUC') {
+      setValue('registrar_empresa', false)
+      setValue('empresa', createEmptyEmpresa())
+      setEmpresaDocumentValidation(null)
+    }
+  }, [tipoDocumento, setValue])
+
+  useEffect(() => {
+    if (!registrarEmpresa) {
+      setValue('empresa', createEmptyEmpresa())
+      clearErrors(['empresa.ruc', 'empresa.razon_social', 'empresa.nombre_comercial', 'empresa.direccion_fiscal'])
+      setEmpresaDocumentValidation(null)
+    }
+  }, [registrarEmpresa, setValue, clearErrors])
+
+  useEffect(() => {
+    if (tipoDocumento !== 'RUC') {
+      setValue('nombre_comercial', '')
+    }
+  }, [tipoDocumento, setValue])
 
   // ✅ Validación de documento en tiempo real
   const validateDocument = useCallback(async (documento: string) => {
@@ -107,6 +195,59 @@ export function ClienteForm({ cliente, onSuccess, onCancel }: ClienteFormProps) 
     }
   }, [cliente?.id_cliente, clearErrors, setError])
 
+  const validateEmpresaRuc = useCallback(async (ruc: string) => {
+    if (!registrarEmpresa) {
+      setEmpresaDocumentValidation(null)
+      return
+    }
+
+    if (!ruc || ruc.length !== 11) {
+      setEmpresaDocumentValidation(null)
+      return
+    }
+
+    setValidatingEmpresa(true)
+    try {
+      const response = await fetch('/api/clientes/validar-documento', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          numero_documento: ruc,
+          cliente_id: cliente?.id_cliente
+        })
+      })
+
+      const data = await response.json()
+
+      if (data.disponible) {
+        setEmpresaDocumentValidation({
+          isValid: true,
+          message: 'RUC disponible',
+          type: 'success'
+        })
+        clearErrors('empresa.ruc')
+      } else {
+        setEmpresaDocumentValidation({
+          isValid: false,
+          message: data.mensaje,
+          type: 'error'
+        })
+        setError('empresa.ruc', {
+          type: 'manual',
+          message: data.mensaje || 'Este RUC ya está registrado'
+        })
+      }
+    } catch (error) {
+      setEmpresaDocumentValidation({
+        isValid: false,
+        message: 'Error validando RUC',
+        type: 'warning'
+      })
+    } finally {
+      setValidatingEmpresa(false)
+    }
+  }, [registrarEmpresa, cliente?.id_cliente, clearErrors, setError])
+
   const onSubmit = async (data: ClienteFormData) => {
     try {
       if (documentValidation && !documentValidation.isValid) {
@@ -117,6 +258,29 @@ export function ClienteForm({ cliente, onSuccess, onCancel }: ClienteFormProps) 
         return
       }
       setLoading(true)
+
+      const normalized: ClienteFormData = {
+        ...data,
+        numero_documento: data.numero_documento.trim(),
+        sexo: data.sexo?.trim() || '',
+        telefono: data.telefono?.trim() || '',
+        correo: data.correo?.trim() || '',
+        nombre_comercial:
+          data.tipo_documento === 'RUC'
+            ? (data.nombre_comercial?.trim() || null)
+            : null,
+        registrar_empresa: data.tipo_documento === 'RUC' ? false : data.registrar_empresa,
+        empresa: null
+      }
+
+      if (normalized.registrar_empresa) {
+        normalized.empresa = {
+          ruc: data.empresa?.ruc?.trim() || '',
+          razon_social: data.empresa?.razon_social?.trim() || '',
+          nombre_comercial: data.empresa?.nombre_comercial?.trim() || '',
+          direccion_fiscal: data.empresa?.direccion_fiscal?.trim() || ''
+        }
+      }
 
       const url = cliente 
         ? `/api/clientes/${cliente.id_cliente}`
@@ -129,7 +293,7 @@ export function ClienteForm({ cliente, onSuccess, onCancel }: ClienteFormProps) 
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(data)
+        body: JSON.stringify(normalized)
       })
 
       if (!response.ok) {
@@ -145,7 +309,7 @@ export function ClienteForm({ cliente, onSuccess, onCancel }: ClienteFormProps) 
 
       toast(
         cliente ? "Cliente actualizado" : "Cliente creado",
-        { description: `${data.nombre} ${data.apellido_paterno} ha sido ${cliente ? 'actualizado' : 'creado'} correctamente` }
+        { description: `${normalized.nombre} ${normalized.apellido_paterno} ha sido ${cliente ? 'actualizado' : 'creado'} correctamente` }
       )
 
       onSuccess()
@@ -171,6 +335,24 @@ export function ClienteForm({ cliente, onSuccess, onCancel }: ClienteFormProps) 
     return () => clearTimeout(timeoutId)
   }, [numeroDocumento, tipoDocumento, validateDocument])
 
+  useEffect(() => {
+    if (!registrarEmpresa) {
+      setEmpresaDocumentValidation(null)
+      return
+    }
+
+    if (!empresaRuc || empresaRuc.length !== 11) {
+      setEmpresaDocumentValidation(null)
+      return
+    }
+
+    const timeoutId = setTimeout(() => {
+      validateEmpresaRuc(empresaRuc)
+    }, 500)
+
+    return () => clearTimeout(timeoutId)
+  }, [registrarEmpresa, empresaRuc, validateEmpresaRuc])
+
   return (
     <Card className="w-full max-w-2xl mx-auto">
       <CardHeader>
@@ -191,13 +373,13 @@ export function ClienteForm({ cliente, onSuccess, onCancel }: ClienteFormProps) 
           {/* Información Personal */}
           <div>
             <h3 className="text-lg font-semibold mb-4">Información Personal</h3>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="nombre">Nombre *</Label>
                 <Input
                   id="nombre"
-                  {...register('nombre', { 
+                  {...register('nombre', {
                     required: 'El nombre es requerido',
                     minLength: { value: 2, message: 'Mínimo 2 caracteres' }
                   })}
@@ -212,8 +394,8 @@ export function ClienteForm({ cliente, onSuccess, onCancel }: ClienteFormProps) 
                 <Label htmlFor="apellido_paterno">Apellido Paterno *</Label>
                 <Input
                   id="apellido_paterno"
-                  {...register('apellido_paterno', { 
-                    required: 'El apellido paterno es requerido' 
+                  {...register('apellido_paterno', {
+                    required: 'El apellido paterno es requerido'
                   })}
                   placeholder="Apellido paterno"
                 />
@@ -236,7 +418,7 @@ export function ClienteForm({ cliente, onSuccess, onCancel }: ClienteFormProps) 
                 <Select
                   {...register('sexo')}
                   onValueChange={(value) => setValue('sexo', value)}
-                  defaultValue={cliente?.persona.sexo || ''}
+                  defaultValue={form.getValues('sexo') || ''}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccionar sexo" />
@@ -247,6 +429,22 @@ export function ClienteForm({ cliente, onSuccess, onCancel }: ClienteFormProps) 
                   </SelectContent>
                 </Select>
               </div>
+
+              <div className="md:col-span-2">
+                <Label htmlFor="fecha_nacimiento">Fecha de nacimiento *</Label>
+                <Input
+                  id="fecha_nacimiento"
+                  type="date"
+                  max={maxBirthDate}
+                  min="1900-01-01"
+                  {...register('fecha_nacimiento', {
+                    required: 'La fecha de nacimiento es requerida'
+                  })}
+                />
+                {errors.fecha_nacimiento && (
+                  <p className="text-red-500 text-sm mt-1">{errors.fecha_nacimiento.message}</p>
+                )}
+              </div>
             </div>
           </div>
 
@@ -255,7 +453,7 @@ export function ClienteForm({ cliente, onSuccess, onCancel }: ClienteFormProps) 
           {/* Documento de Identidad */}
           <div>
             <h3 className="text-lg font-semibold mb-4">Documento de Identidad</h3>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <FormField
@@ -296,16 +494,18 @@ export function ClienteForm({ cliente, onSuccess, onCancel }: ClienteFormProps) 
                     {...register('numero_documento', {
                       required: 'El número de documento es requerido',
                       pattern: {
-                        value: tipoDocumento === 'DNI'
-                          ? /^\d{8}$/
-                          : tipoDocumento === 'RUC'
-                            ? /^\d{11}$/
-                            : /^.+$/,
-                        message: tipoDocumento === 'DNI'
-                          ? 'DNI debe tener 8 dígitos'
-                          : tipoDocumento === 'RUC'
-                            ? 'RUC debe tener 11 dígitos'
-                            : 'Formato inválido'
+                        value:
+                          tipoDocumento === 'DNI'
+                            ? /^\d{8}$/
+                            : tipoDocumento === 'RUC'
+                              ? /^\d{11}$/
+                              : /^.{3,}$/,
+                        message:
+                          tipoDocumento === 'DNI'
+                            ? 'El DNI debe tener 8 dígitos'
+                            : tipoDocumento === 'RUC'
+                              ? 'El RUC debe tener 11 dígitos'
+                              : 'Debe contener al menos 3 caracteres'
                       }
                     })}
                     placeholder={
@@ -336,10 +536,43 @@ export function ClienteForm({ cliente, onSuccess, onCancel }: ClienteFormProps) 
                   <p className="text-red-500 text-sm mt-1">{errors.numero_documento.message}</p>
                 )}
                 {documentValidation && !validatingDocument && (
-                  <p className={`text-sm mt-1 ${documentValidation.type === 'error' ? 'text-red-500' : 'text-green-600'}`}>{documentValidation.message}</p>
+                  <p
+                    className={`text-sm mt-1 ${documentValidation.type === 'error' ? 'text-red-500' : 'text-green-600'}`}
+                  >
+                    {documentValidation.message}
+                  </p>
                 )}
               </div>
+
+              {tipoDocumento === 'RUC' && (
+                <div className="md:col-span-2">
+                  <Label htmlFor="nombre_comercial">Nombre comercial (opcional)</Label>
+                  <Input
+                    id="nombre_comercial"
+                    {...register('nombre_comercial', {
+                      maxLength: {
+                        value: 150,
+                        message: 'El nombre comercial no puede superar 150 caracteres'
+                      }
+                    })}
+                    placeholder="Ej. Servicios Automotrices Lima"
+                  />
+                  {errors.nombre_comercial && (
+                    <p className="text-red-500 text-sm mt-1">{errors.nombre_comercial.message}</p>
+                  )}
+                </div>
+              )}
             </div>
+
+            {tipoDocumento === 'RUC' && (
+              <Alert className="mt-4 border-amber-200 bg-amber-50 text-amber-900">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Registro con RUC</AlertTitle>
+                <AlertDescription>
+                  Ya estás registrando una persona con RUC, por lo que no es necesario asociar una empresa adicional.
+                </AlertDescription>
+              </Alert>
+            )}
           </div>
 
           <Separator />
@@ -347,7 +580,7 @@ export function ClienteForm({ cliente, onSuccess, onCancel }: ClienteFormProps) 
           {/* Información de Contacto */}
           <div>
             <h3 className="text-lg font-semibold mb-4">Información de Contacto</h3>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="telefono">Teléfono</Label>
@@ -355,8 +588,8 @@ export function ClienteForm({ cliente, onSuccess, onCancel }: ClienteFormProps) 
                   id="telefono"
                   {...register('telefono', {
                     pattern: {
-                      value: /^\d{9}$/,
-                      message: 'Teléfono debe tener 9 dígitos'
+                      value: /^\d{6,15}$/,
+                      message: 'El teléfono debe tener entre 6 y 15 dígitos'
                     }
                   })}
                   placeholder="987654321"
@@ -383,17 +616,125 @@ export function ClienteForm({ cliente, onSuccess, onCancel }: ClienteFormProps) 
                   <p className="text-red-500 text-sm mt-1">{errors.correo.message}</p>
                 )}
               </div>
-
-              <div className="md:col-span-2">
-                <Label htmlFor="empresa">Empresa (opcional)</Label>
-                <Input
-                  id="empresa"
-                  {...register('empresa')}
-                  placeholder="Nombre de la empresa"
-                />
-              </div>
             </div>
           </div>
+
+          {tipoDocumento !== 'RUC' && (
+            <>
+              <Separator />
+
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Empresa asociada (opcional)</h3>
+
+                <FormField
+                  control={control}
+                  name="registrar_empresa"
+                  render={({ field }) => (
+                    <FormItem className="flex items-center justify-between rounded-lg border px-4 py-3">
+                      <div>
+                        <Label className="text-base" htmlFor="registrar_empresa_switch">
+                          ¿Registrar empresa asociada?
+                        </Label>
+                        <p className="text-sm text-muted-foreground">
+                          Permite emitir facturas a nombre de la empresa representante.
+                        </p>
+                      </div>
+                      <FormControl>
+                        <Switch
+                          id="registrar_empresa_switch"
+                          checked={field.value}
+                          onCheckedChange={(checked) => field.onChange(checked)}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+
+                {registrarEmpresa && (
+                  <div className="mt-4 space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="empresa_ruc">RUC de la empresa *</Label>
+                        <div className="relative">
+                          <Input
+                            id="empresa_ruc"
+                            {...register('empresa.ruc', {
+                              required: registrarEmpresa ? 'El RUC es requerido' : undefined,
+                              pattern: registrarEmpresa
+                                ? {
+                                    value: /^\d{11}$/,
+                                    message: 'El RUC debe tener 11 dígitos'
+                                  }
+                                : undefined
+                            })}
+                            placeholder="20123456789"
+                            className={empresaDocumentValidation?.isValid === false ? 'border-red-500' : ''}
+                          />
+                          <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                            {validatingEmpresa && (
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                            )}
+                            {!validatingEmpresa && empresaDocumentValidation && (
+                              <>
+                                {empresaDocumentValidation.isValid ? (
+                                  <CheckCircle className="h-4 w-4 text-green-600" />
+                                ) : (
+                                  <AlertCircle className="h-4 w-4 text-red-600" />
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        {errors.empresa?.ruc?.message && !empresaDocumentValidation && (
+                          <p className="text-red-500 text-sm mt-1">{errors.empresa?.ruc?.message}</p>
+                        )}
+                        {empresaDocumentValidation && !validatingEmpresa && (
+                          <p
+                            className={`text-sm mt-1 ${empresaDocumentValidation.type === 'error' ? 'text-red-500' : 'text-green-600'}`}
+                          >
+                            {empresaDocumentValidation.message}
+                          </p>
+                        )}
+                      </div>
+
+                      <div>
+                        <Label htmlFor="empresa_razon_social">Razón social *</Label>
+                        <Input
+                          id="empresa_razon_social"
+                          {...register('empresa.razon_social', {
+                            required: registrarEmpresa ? 'La razón social es requerida' : undefined
+                          })}
+                          placeholder="Empresa S.A.C."
+                        />
+                        {errors.empresa?.razon_social?.message && (
+                          <p className="text-red-500 text-sm mt-1">{errors.empresa?.razon_social?.message}</p>
+                        )}
+                      </div>
+
+                      <div>
+                        <Label htmlFor="empresa_nombre_comercial">Nombre comercial (opcional)</Label>
+                        <Input
+                          id="empresa_nombre_comercial"
+                          {...register('empresa.nombre_comercial')}
+                          placeholder="Nombre comercial"
+                        />
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <Label htmlFor="empresa_direccion_fiscal">Dirección fiscal</Label>
+                        <Textarea
+                          id="empresa_direccion_fiscal"
+                          {...register('empresa.direccion_fiscal')}
+                          placeholder="Dirección fiscal de la empresa"
+                          rows={3}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
 
           {/* Botones */}
           <div className="flex justify-end gap-3 pt-6">

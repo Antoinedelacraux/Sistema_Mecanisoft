@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { validateClientePayload, ClienteValidationError } from '@/lib/clientes/validation'
 
 export async function GET(request: NextRequest) {
   try {
@@ -39,7 +40,11 @@ export async function GET(request: NextRequest) {
       prisma.cliente.findMany({
         where: finalWhereCondition,
         include: {
-          persona: true,
+          persona: {
+            include: {
+              empresa_persona: true
+            }
+          },
           _count: {
             select: { vehiculos: true }
           }
@@ -82,68 +87,62 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    const data = await request.json()
-    
-    // Validar datos requeridos
-    const {
-      nombre,
-      apellido_paterno,
-      apellido_materno,
-      tipo_documento,
-      numero_documento,
-      sexo,
-      telefono,
-      correo,
-      empresa
-    } = data
+    const payload = await request.json()
 
-    if (!nombre || !apellido_paterno || !tipo_documento || !numero_documento) {
-      return NextResponse.json(
-        { error: 'Faltan campos requeridos' }, 
-        { status: 400 }
-      )
+    let validated
+    try {
+      validated = await validateClientePayload(payload, { prisma })
+    } catch (error) {
+      if (error instanceof ClienteValidationError) {
+        return NextResponse.json({ error: error.message }, { status: error.status })
+      }
+      throw error
     }
 
-    // Verificar si el documento ya existe
-    const existeDocumento = await prisma.persona.findUnique({
-      where: { numero_documento }
-    })
-
-    if (existeDocumento) {
-      return NextResponse.json(
-        { error: 'Ya existe una persona con este número de documento' }, 
-        { status: 400 }
-      )
-    }
-
-    // Crear persona y cliente en una transacción
     const resultado = await prisma.$transaction(async (tx) => {
-      // Crear persona
       const persona = await tx.persona.create({
         data: {
-          nombre,
-          apellido_paterno,
-          apellido_materno,
-          tipo_documento,
-          numero_documento,
-          sexo,
-          telefono,
-          correo,
-          empresa
+          nombre: validated.nombre,
+          apellido_paterno: validated.apellido_paterno,
+          apellido_materno: validated.apellido_materno,
+          tipo_documento: validated.tipo_documento,
+          numero_documento: validated.numero_documento,
+          sexo: validated.sexo,
+          telefono: validated.telefono,
+          correo: validated.correo,
+          nombre_comercial: validated.nombre_comercial_persona,
+          registrar_empresa: validated.registrar_empresa,
+          fecha_nacimiento: validated.fecha_nacimiento
         }
       })
 
-      // Crear cliente
-      const cliente = await tx.cliente.create({
+      if (validated.empresa) {
+        await tx.empresaPersona.create({
+          data: {
+            persona_id: persona.id_persona,
+            ruc: validated.empresa.ruc,
+            razon_social: validated.empresa.razon_social,
+            nombre_comercial: validated.empresa.nombre_comercial,
+            direccion_fiscal: validated.empresa.direccion_fiscal
+          }
+        })
+      }
+
+      return tx.cliente.create({
         data: {
           id_persona: persona.id_persona
         },
         include: {
-          persona: true
+          persona: {
+            include: {
+              empresa_persona: true
+            }
+          },
+          _count: {
+            select: { vehiculos: true }
+          }
         }
       })
-
-      return cliente
     })
 
     // Registrar en bitácora
@@ -151,7 +150,7 @@ export async function POST(request: NextRequest) {
       data: {
         id_usuario: parseInt(session.user.id),
         accion: 'CREATE_CLIENTE',
-        descripcion: `Cliente creado: ${nombre} ${apellido_paterno}`,
+        descripcion: `Cliente creado: ${validated.nombre} ${validated.apellido_paterno}`,
         tabla: 'cliente'
       }
     })

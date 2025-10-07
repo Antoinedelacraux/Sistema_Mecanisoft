@@ -29,7 +29,11 @@ export async function GET(
       include: {
         usuario: {
           include: {
-            persona: true,
+            persona: {
+              include: {
+                empresa_persona: true,
+              },
+            },
             rol: true
           }
         },
@@ -80,7 +84,13 @@ export async function PUT(
       where: { id_trabajador: id },
       include: {
         usuario: {
-          include: { persona: true }
+          include: {
+            persona: {
+              include: {
+                empresa_persona: true,
+              },
+            },
+          },
         }
       }
     })
@@ -116,7 +126,11 @@ export async function PUT(
         include: {
           usuario: {
             include: {
-              persona: true,
+              persona: {
+                include: {
+                  empresa_persona: true,
+                },
+              },
               rol: true
             }
           }
@@ -169,7 +183,15 @@ export async function PATCH(
       const trabajador = await prisma.trabajador.findUnique({
         where: { id_trabajador: id },
         include: {
-          usuario: { include: { persona: true } }
+          usuario: {
+            include: {
+              persona: {
+                include: {
+                  empresa_persona: true,
+                },
+              },
+            },
+          }
         }
       })
 
@@ -190,7 +212,11 @@ export async function PATCH(
           include: {
             usuario: {
               include: {
-                persona: true,
+                persona: {
+                  include: {
+                    empresa_persona: true,
+                  },
+                },
                 rol: true
               }
             }
