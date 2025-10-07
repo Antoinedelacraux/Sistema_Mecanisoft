@@ -163,8 +163,7 @@ export async function POST(request: NextRequest) {
       })
 
       // Crear usuario
-      const bcrypt = require('bcryptjs')
-      const hashedPassword = await bcrypt.hash(password, 10)
+  const hashedPassword = await (await import('bcryptjs')).hash(password, 10)
       
       const usuario = await tx.usuario.create({
         data: {

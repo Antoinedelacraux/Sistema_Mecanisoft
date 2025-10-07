@@ -1,12 +1,13 @@
-import { ProductoCompleto, ServicioCompleto } from '@/types'
+import type { ProductoCompleto, ServicioCompleto } from '@/types'
 
-export type Step = 'modo' | 'cliente' | 'vehiculo' | 'servicios' | 'asignacion' | 'resumen'
+export type CotizacionModo = 'solo_servicios' | 'solo_productos' | 'servicios_y_productos'
+export type CotizacionStep = 'modo' | 'cliente' | 'vehiculo' | 'items' | 'resumen'
 
 export type CatalogoItem =
   | { tipo: 'producto'; producto: ProductoCompleto }
   | { tipo: 'servicio'; servicio: ServicioCompleto }
 
-export interface ItemOrden {
+export interface ItemCotizacion {
   id_referencia: number
   tipo: 'producto' | 'servicio'
   nombre: string
@@ -17,6 +18,5 @@ export interface ItemOrden {
   total: number
   oferta: boolean
   permiteEditarDescuento: boolean
-  // Asociación opcional: si el item es producto, puede referenciar el id del servicio en la misma orden
   servicio_ref?: number | null
 }

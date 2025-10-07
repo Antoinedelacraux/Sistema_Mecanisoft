@@ -21,7 +21,7 @@ interface OrdenWizardProps {
 }
 
 export function OrdenWizard({ onSuccess, onCancel }: OrdenWizardProps) {
-  const [currentStep, setCurrentStep] = useState<Step>('cliente')
+  const [currentStep, setCurrentStep] = useState<Step>('modo')
   const [loading, setLoading] = useState(false)
   const [clienteSeleccionado, setClienteSeleccionado] = useState<ClienteCompleto | null>(null)
   const [vehiculoSeleccionado, setVehiculoSeleccionado] = useState<VehiculoCompleto | null>(null)
@@ -37,7 +37,8 @@ export function OrdenWizard({ onSuccess, onCancel }: OrdenWizardProps) {
   const [productos, setProductos] = useState<ProductoCompleto[]>([])
   const { toast } = useToast()
 
-  const steps: Array<{ id: Step; title: string; icon: React.ComponentType<any> }> = [
+  const steps: Array<{ id: Step; title: string; icon: React.ComponentType<{ className?: string }> }> = [
+    { id: 'modo', title: 'Tipo de Orden', icon: Package },
     { id: 'cliente', title: 'Cliente', icon: User },
     { id: 'vehiculo', title: 'Vehículo', icon: Car },
     { id: 'servicios', title: 'Servicios', icon: Package },
@@ -145,8 +146,9 @@ export function OrdenWizard({ onSuccess, onCancel }: OrdenWizardProps) {
       const result = await response.json()
       toast({ title: 'Orden creada exitosamente', description: `Orden ${result.codigo_transaccion} creada para ${clienteSeleccionado.persona.nombre}` })
       onSuccess()
-    } catch (error: any) {
-      toast({ title: 'Error', description: error.message || 'Ocurrió un error al crear la orden', variant: 'destructive' })
+    } catch (error: unknown) {
+      const message = (error as Error)?.message || 'Ocurrió un error al crear la orden'
+      toast({ title: 'Error', description: message, variant: 'destructive' })
     } finally {
       setLoading(false)
     }
@@ -167,6 +169,15 @@ export function OrdenWizard({ onSuccess, onCancel }: OrdenWizardProps) {
         </div>
       </CardHeader>
       <CardContent>
+        {currentStep === 'modo' && (
+          <div className="space-y-6">
+            <h3 className="text-lg font-semibold">¿Qué tipo de orden requiere el cliente?</h3>
+            <div className="flex gap-4">
+              <Button type="button" variant={modoOrden==='solo_servicios'?'default':'outline'} onClick={()=>setModoOrden('solo_servicios')}>Solo servicios</Button>
+              <Button type="button" variant={modoOrden==='servicios_y_productos'?'default':'outline'} onClick={()=>setModoOrden('servicios_y_productos')}>Servicios + productos</Button>
+            </div>
+          </div>
+        )}
         {currentStep === 'cliente' && (
           <ClienteStep clientes={clientes} clienteSeleccionado={clienteSeleccionado} setClienteSeleccionado={setClienteSeleccionado} />
         )}
@@ -253,8 +264,6 @@ export function OrdenWizard({ onSuccess, onCancel }: OrdenWizardProps) {
             setPrioridad={setPrioridad}
             observaciones={observaciones}
             setObservaciones={setObservaciones}
-            modoOrden={modoOrden}
-            setModoOrden={setModoOrden}
           />
         )}
         {currentStep === 'resumen' && (

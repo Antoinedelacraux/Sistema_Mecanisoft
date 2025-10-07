@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
       detalle_transaccion: {
         transaccion: {
           estado_orden: {
-            in: ['pendiente', 'asignado', 'en_proceso', 'pausado', 'completado', 'entregado']
+            in: ['pendiente', 'asignado', 'por_hacer', 'en_proceso', 'pausado', 'completado', 'entregado']
           }
         }
       }

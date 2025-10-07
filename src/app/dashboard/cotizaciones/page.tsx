@@ -66,7 +66,14 @@ export default function CotizacionesPage() {
         refreshTrigger={refreshTrigger}
       />
 
-      <Dialog open={modalState !== 'closed'} onOpenChange={() => setModalState('closed')}>
+      <Dialog
+        open={modalState !== 'closed'}
+        onOpenChange={(open) => {
+          if (!open) {
+            handleCancel()
+          }
+        }}
+      >
         <DialogContent className="max-w-7xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="sr-only">
@@ -77,6 +84,14 @@ export default function CotizacionesPage() {
           </DialogHeader>
           {modalState === 'create' && (
             <CotizacionWizard
+              onSuccess={handleSuccess}
+              onCancel={handleCancel}
+            />
+          )}
+
+          {modalState === 'edit' && selectedCotizacion && (
+            <CotizacionWizard
+              cotizacion={selectedCotizacion}
               onSuccess={handleSuccess}
               onCancel={handleCancel}
             />

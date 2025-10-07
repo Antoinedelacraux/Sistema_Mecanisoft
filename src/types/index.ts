@@ -185,6 +185,7 @@ export type CotizacionFormData = {
     precio_unitario: number
     descuento: number
     tipo?: 'producto' | 'servicio'
+    servicio_ref?: number | null
   }[]
 }
 export type OrdenFormData = {
@@ -244,6 +245,7 @@ export type CotizacionCompleta = Cotizacion & {
   detalle_cotizacion: (DetalleCotizacion & {
     producto?: Producto | null
     servicio?: ServicioCompleto | null
+    servicio_ref?: number | null
   })[]
 }
 

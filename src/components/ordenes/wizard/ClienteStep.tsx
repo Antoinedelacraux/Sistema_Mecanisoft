@@ -1,5 +1,6 @@
 import { Card, CardContent } from '@/components/ui/card'
 import { ClienteCompleto } from '@/types'
+import { Car } from 'lucide-react'
 
 interface Props {
   clientes: ClienteCompleto[]
@@ -26,6 +27,10 @@ export function ClienteStep({ clientes, clienteSeleccionado, setClienteSeleccion
               </div>
               <div className="text-sm text-gray-600">
                 {cliente.persona.tipo_documento}: {cliente.persona.numero_documento}
+              </div>
+              <div className="flex items-center gap-2 mt-2">
+                <Car className="w-4 h-4 text-gray-400" />
+                <span className="text-sm">{cliente._count?.vehiculos ?? 0} vehículo{(cliente._count?.vehiculos ?? 0) !== 1 ? 's' : ''}</span>
               </div>
               {cliente.persona.telefono && (
                 <div className="text-sm text-gray-600 mt-1">📞 {cliente.persona.telefono}</div>

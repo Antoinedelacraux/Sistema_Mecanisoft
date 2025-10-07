@@ -15,11 +15,9 @@ interface Props {
   setPrioridad: (p: string) => void
   observaciones: string
   setObservaciones: (o: string) => void
-  modoOrden: 'solo_servicios' | 'servicios_y_productos'
-  setModoOrden: (m: 'solo_servicios' | 'servicios_y_productos') => void
 }
 
-export function AsignacionStep({ trabajadores, trabajadorSeleccionado, setTrabajadorSeleccionado, prioridad, setPrioridad, observaciones, setObservaciones, modoOrden, setModoOrden }: Props) {
+export function AsignacionStep({ trabajadores, trabajadorSeleccionado, setTrabajadorSeleccionado, prioridad, setPrioridad, observaciones, setObservaciones }: Props) {
   return (
     <div className="space-y-6">
       <h3 className="text-lg font-semibold">Asignación y Programación</h3>
@@ -42,14 +40,7 @@ export function AsignacionStep({ trabajadores, trabajadorSeleccionado, setTrabaj
           </div>
         </div>
         <div className="space-y-4">
-          <h4 className="font-medium">Configuración de la Orden</h4>
-          <div>
-            <Label>Necesidad del cliente</Label>
-            <div className="mt-2 flex items-center gap-3">
-              <Button type="button" variant={modoOrden==='solo_servicios'?'default':'outline'} onClick={()=>setModoOrden('solo_servicios')}>Solo servicios</Button>
-              <Button type="button" variant={modoOrden==='servicios_y_productos'?'default':'outline'} onClick={()=>setModoOrden('servicios_y_productos')}>Servicios + productos</Button>
-            </div>
-          </div>
+          <h4 className="font-medium">Detalles finales</h4>
           <div>
             <Label htmlFor="prioridad">Prioridad</Label>
             <Select value={prioridad} onValueChange={setPrioridad}>

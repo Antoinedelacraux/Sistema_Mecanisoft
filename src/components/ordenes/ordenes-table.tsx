@@ -1,4 +1,8 @@
-'use client'
+
+"use client";
+import { OrdenEditModal } from './table/OrdenEditModal'
+import { OrdenDeleteModal } from './table/OrdenDeleteModal'
+import { OrdenesTableRow } from './table/OrdenesTableRow'
 
 import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
@@ -8,8 +12,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Search, Plus, Edit, Eye, Clock, User, Car, AlertCircle, Trash2, LayoutGrid } from 'lucide-react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useToast } from '@/components/ui/use-toast'
+import type { TrabajadorCompleto } from '@/types'
 
 // Tipo temporal hasta que definamos OrdenCompleta
 export interface OrdenCompleta {
@@ -19,12 +23,14 @@ export interface OrdenCompleta {
   estado_orden: string
   prioridad: string
   total: number
+  observaciones?: string
   persona: {
     nombre: string
     apellido_paterno: string
     numero_documento: string
   }
   trabajador_principal?: {
+    id_trabajador: number
     codigo_empleado: string
     usuario: {
       persona: {
@@ -74,6 +80,11 @@ interface OrdenesTableProps {
 }
 
 export function OrdenesTable({ onEdit, onView, onCreateNew, refreshTrigger }: OrdenesTableProps) {
+  // Estado para edición de orden
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [ordenAEditar, setOrdenAEditar] = useState<OrdenCompleta | null>(null)
+  const [editLoading, setEditLoading] = useState(false)
+  const [trabajadores, setTrabajadores] = useState<TrabajadorCompleto[]>([])
   const [ordenes, setOrdenes] = useState<OrdenCompleta[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -129,6 +140,26 @@ export function OrdenesTable({ onEdit, onView, onCreateNew, refreshTrigger }: Or
   useEffect(() => {
     fetchOrdenes()
   }, [fetchOrdenes])
+
+  const fetchTrabajadores = useCallback(async () => {
+    try {
+      const response = await fetch('/api/trabajadores?solo_activos=true', { credentials: 'include' })
+      if (!response.ok) throw new Error('Error al cargar mecánicos')
+      const data = await response.json()
+      setTrabajadores(Array.isArray(data.trabajadores) ? data.trabajadores : [])
+    } catch (error) {
+      console.error('Error obteniendo trabajadores:', error)
+      toast({
+        title: 'Error',
+        description: 'No se pudieron cargar los mecánicos disponibles.',
+        variant: 'destructive'
+      })
+    }
+  }, [toast])
+
+  useEffect(() => {
+    fetchTrabajadores()
+  }, [fetchTrabajadores])
 
   useEffect(() => {
     if (refreshTrigger && refreshTrigger > 0) {
@@ -224,11 +255,11 @@ export function OrdenesTable({ onEdit, onView, onCreateNew, refreshTrigger }: Or
       })
       return
     }
-    // Solo si está pendiente
-    if (orden.estado_orden !== 'pendiente') {
+    // Solo si está pendiente o asignado
+    if (!['pendiente', 'asignado'].includes(orden.estado_orden)) {
       toast({
         title: 'Estado inválido',
-        description: 'Solo puedes enviar órdenes pendientes al Kanban.',
+        description: 'Solo puedes enviar órdenes pendientes o asignadas al Kanban.',
         variant: 'destructive'
       })
       return
@@ -248,6 +279,54 @@ export function OrdenesTable({ onEdit, onView, onCreateNew, refreshTrigger }: Or
       fetchOrdenes()
     } catch (e:any) {
       toast({ title: 'Error', description: e.message, variant: 'destructive' })
+    }
+  }
+
+  const enviarAFacturacion = async (orden: OrdenCompleta) => {
+    if (orden.estado_orden !== 'completado') {
+      toast({
+        title: 'Estado inválido',
+        description: 'Solo las órdenes completadas pueden enviarse a facturación.',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    const tipoComprobante = orden.persona.numero_documento?.length === 11 ? 'factura' : 'boleta'
+
+    try {
+      const response = await fetch('/api/facturacion/ordenes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id_transaccion: orden.id_transaccion,
+          tipo_comprobante: tipoComprobante
+        })
+      })
+
+      if (!response.ok) {
+        let description = 'No se pudo enviar la orden a facturación.'
+        try {
+          const error = await response.json()
+          if (error?.error) description = error.error
+        } catch (parseError) {
+          console.warn('Respuesta de facturación no es JSON', parseError)
+        }
+        throw new Error(description)
+      }
+
+      const data = await response.json()
+      toast({
+        title: 'Orden enviada a facturación',
+        description: data?.message || `La orden ${orden.codigo_transaccion} fue marcada para facturación (${tipoComprobante}).`
+      })
+    } catch (error) {
+      console.error('Error enviando orden a facturación', error)
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'No se pudo conectar con el módulo de facturación.',
+        variant: 'destructive'
+      })
     }
   }
 
@@ -275,8 +354,8 @@ export function OrdenesTable({ onEdit, onView, onCreateNew, refreshTrigger }: Or
   }
 
   return (
-    <>
-    <Card>
+    <div className="space-y-0">
+      <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
@@ -399,213 +478,68 @@ export function OrdenesTable({ onEdit, onView, onCreateNew, refreshTrigger }: Or
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {ordenes.map((orden) => {
-                    const vehiculo = orden.transaccion_vehiculos[0]?.vehiculo
-                    const progreso = calcularProgreso(orden)
-                    const detallesCount = orden._count?.detalles_transaccion ?? orden.detalles_transaccion.length
-                    
-                    return (
-                      <TableRow key={orden.id_transaccion}>
-                        <TableCell>
-                          <div>
-                            <div className="font-medium">{orden.codigo_transaccion}</div>
-                            <div className="text-sm text-gray-500">
-                              {new Date(orden.fecha).toLocaleDateString('es-PE')}
-                            </div>
-                            <div className="mt-1">
-                              {getPrioridadBadge(orden.prioridad)}
-                            </div>
-                          </div>
-                        </TableCell>
-                        
-                        <TableCell>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <User className="w-4 h-4 text-gray-400" />
-                              <span className="font-medium">
-                                {orden.persona.nombre} {orden.persona.apellido_paterno}
-                              </span>
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              {orden.persona.numero_documento}
-                            </div>
-                            {vehiculo && (
-                              <div className="flex items-center gap-2 mt-1">
-                                <Car className="w-4 h-4 text-gray-400" />
-                                <span className="text-sm">
-                                  {vehiculo.placa} - {vehiculo.modelo.marca.nombre_marca} {vehiculo.modelo.nombre_modelo}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </TableCell>
-                        
-                        <TableCell>
-                          {orden.trabajador_principal ? (
-                            <div>
-                              <div className="font-medium text-sm">
-                                {orden.trabajador_principal.usuario.persona.nombre} {orden.trabajador_principal.usuario.persona.apellido_paterno}
-                              </div>
-                              <Badge variant="outline" className="text-xs">
-                                {orden.trabajador_principal.codigo_empleado}
-                              </Badge>
-                            </div>
-                          ) : (
-                            <Badge variant="secondary" className="text-xs">
-                              Sin asignar
-                            </Badge>
-                          )}
-                        </TableCell>
-                        
-                        <TableCell>
-                          <div className="space-y-1">
-                            <div className="flex items-center justify-between text-sm">
-                              <span>Progreso</span>
-                              <span>{progreso}%</span>
-                            </div>
-                            <div className="w-full bg-gray-200 rounded-full h-2">
-                              {(() => {
-                                const bucket = Math.min(100, Math.max(0, Math.round(progreso / 5) * 5))
-                                const widthClasses: Record<number,string> = {
-                                  0:'w-0',5:'w-1/12',10:'w-1/6',15:'w-1/5',20:'w-1/5',25:'w-1/4',30:'w-1/3',35:'w-[35%]',40:'w-2/5',45:'w-[45%]',50:'w-1/2',55:'w-[55%]',60:'w-3/5',65:'w-[65%]',70:'w-7/10',75:'w-3/4',80:'w-4/5',85:'w-[85%]',90:'w-9/10',95:'w-[95%]',100:'w-full'
-                                }
-                                const colorClass = progreso === 100 ? 'bg-green-500' : progreso > 50 ? 'bg-blue-500' : 'bg-gray-400'
-                                const widthClass = widthClasses[bucket] || 'w-full'
-                                return <div className={`h-2 rounded-full transition-all ${colorClass} ${widthClass}`} data-progress={progreso} />
-                              })()}
-                            </div>
-                            <div className="text-xs text-gray-500">
-                              {detallesCount} item{detallesCount !== 1 ? 's' : ''}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {typeof (orden as any).duracion_min === 'number' && typeof (orden as any).duracion_max === 'number' ? (
-                            <div className="text-sm text-gray-700">
-                              {formatDurationRange((orden as any).duracion_min, (orden as any).duracion_max)}
-                            </div>
-                          ) : (
-                            <div className="text-xs text-gray-400">—</div>
-                          )}
-                        </TableCell>
-                        
-                        <TableCell>
-                          <div className="text-right">
-                            <div className="font-semibold">{formatPrice(orden.total)}</div>
-                            <div className="text-xs text-gray-500">
-                              Incluye IGV
-                            </div>
-                          </div>
-                        </TableCell>
-                        
-                        <TableCell>
-                          {getEstadoBadge(orden.estado_orden)}
-                          {orden.prioridad === 'urgente' && (
-                            <div className="mt-1">
-                              <AlertCircle className="w-4 h-4 text-red-500 inline" />
-                            </div>
-                          )}
-                        </TableCell>
-                        
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => onView(orden)}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => onEdit(orden)}
-                              disabled={orden.estado_orden !== 'pendiente'}
-                            >
-                              <Edit className="w-4 h-4" />
-                            </Button>
-                            {/* Botón enviar al Kanban si está pendiente */}
-                            {orden.estado_orden === 'pendiente' && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => enviarAlKanban(orden)}
-                                className="text-blue-600 hover:text-blue-700"
-                              >
-                                <LayoutGrid className="w-4 h-4" />
-                              </Button>
-                            )}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => solicitarEliminacion(orden)}
-                              disabled={orden.estado_orden === 'entregado'}
-                              className="text-red-600 hover:text-red-700"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
+                  {ordenes.map((orden) => (
+                    <OrdenesTableRow
+                      key={orden.id_transaccion}
+                      orden={orden}
+                      onView={onView}
+                      onEdit={(orden) => {
+                        setOrdenAEditar(orden)
+                        setShowEditModal(true)
+                      }}
+                      onKanban={enviarAlKanban}
+                      onFacturar={enviarAFacturacion}
+                      onDelete={solicitarEliminacion}
+                    />
+                  ))}
                 </TableBody>
               </Table>
             </div>
-
-            {/* Paginación */}
-            {pagination.pages > 1 && (
-              <div className="flex items-center justify-between mt-4">
-                <div className="text-sm text-gray-500">
-                  Mostrando {((page - 1) * pagination.limit) + 1} - {Math.min(page * pagination.limit, pagination.total)} de {pagination.total} órdenes
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage(Math.max(1, page - 1))}
-                    disabled={page === 1}
-                  >
-                    Anterior
-                  </Button>
-                  <span className="text-sm">
-                    Página {page} de {pagination.pages}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage(Math.min(pagination.pages, page + 1))}
-                    disabled={page === pagination.pages}
-                  >
-                    Siguiente
-                  </Button>
-                </div>
-              </div>
-            )}
           </>
         )}
       </CardContent>
-    </Card>
-    <Dialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Eliminar Orden</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4">
-          {ordenAEliminar && (
-            <div className="p-3 bg-red-50 rounded border border-red-200 text-sm">
-              ¿Seguro que deseas eliminar la orden
-              {' '}<span className="font-semibold">{ordenAEliminar.codigo_transaccion}</span>?<br />
-              Esta acción la ocultará de la lista (borrado lógico).
-            </div>
-          )}
-          <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={() => { setShowDeleteModal(false); setOrdenAEliminar(null) }}>Cancelar</Button>
-            <Button variant="destructive" onClick={confirmarEliminacion}>Eliminar</Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-    </>
+      </Card>
+      <OrdenDeleteModal
+      open={showDeleteModal}
+      onClose={() => { setShowDeleteModal(false); setOrdenAEliminar(null) }}
+      orden={ordenAEliminar}
+      onConfirm={async () => { await confirmarEliminacion() }}
+      />
+      <OrdenEditModal
+      open={showEditModal}
+      onClose={() => { setShowEditModal(false); setOrdenAEditar(null) }}
+      orden={ordenAEditar}
+      loading={editLoading}
+      trabajadores={trabajadores}
+      onSave={async ({ prioridad, observaciones, id_trabajador_principal }) => {
+        setEditLoading(true)
+        try {
+          const body: Record<string, unknown> = {
+            id_transaccion: ordenAEditar?.id_transaccion,
+            prioridad,
+            observaciones
+          }
+          if (id_trabajador_principal) {
+            body.asignar_trabajador = id_trabajador_principal
+          }
+          const resp = await fetch('/api/ordenes', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(body)
+          })
+          if (!resp.ok) throw new Error('No se pudo actualizar la orden')
+          toast({ title: 'Orden actualizada', description: `Orden ${ordenAEditar?.codigo_transaccion} actualizada correctamente` })
+          setShowEditModal(false)
+          setOrdenAEditar(null)
+          await fetchOrdenes()
+        } catch (err: any) {
+          toast({ title: 'Error', description: err.message, variant: 'destructive' })
+        } finally {
+          setEditLoading(false)
+        }
+      }}
+      />
+    </div>
   )
 }

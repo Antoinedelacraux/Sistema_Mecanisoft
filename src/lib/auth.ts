@@ -30,7 +30,7 @@ export const authOptions: NextAuthOptions = {
           console.log('[AUTH] Intento de login:', username)
 
           // Buscar usuario en la BD (solo activos)
-          let usuario = await prisma.usuario.findFirst({
+          const usuario = await prisma.usuario.findFirst({
             where: {
               nombre_usuario: username,
               estado: true,

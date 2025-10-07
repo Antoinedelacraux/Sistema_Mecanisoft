@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 const cotizacionInclude = {
   cliente: { include: { persona: true } },
   vehiculo: { include: { modelo: { include: { marca: true } } } },
-  detalle_cotizacion: { include: { producto: true } }
+  detalle_cotizacion: { include: { producto: true, servicio: true } }
 } as const
 
 // Aprobación digital usando token (no requiere sesión para permitir enlace público controlado)

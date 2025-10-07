@@ -92,7 +92,7 @@ function toInt(val: unknown): number | undefined {
 }
 
 function isUniqueConstraintError(e: unknown): boolean {
-  return !!(typeof e === 'object' && e && (e as any).code === 'P2002')
+  return typeof e === 'object' && e !== null && 'code' in (e as { code?: string }) && (e as { code?: string }).code === 'P2002'
 }
 
 export async function GET(request: NextRequest) {
@@ -120,7 +120,7 @@ export async function GET(request: NextRequest) {
     const skip = (page - 1) * limit
 
     // Construir filtro
-    let whereCondition: any = {
+    const whereCondition: Record<string, unknown> = {
       tipo_transaccion: 'orden',
       estatus: 'activo'
     }
@@ -146,7 +146,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Filtro por rango de fechas
-    const fechaFilter: any = {}
+  const fechaFilter: Record<string, Date> = {}
     if (fechaDesdeRaw) {
       const d = new Date(fechaDesdeRaw)
       if (!isNaN(d.getTime())) fechaFilter.gte = d
@@ -181,7 +181,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Definir includes según modo
-    const includeFull: any = {
+    const includeFull = {
       persona: true,
       usuario: { include: { persona: true } },
       trabajador_principal: { include: { usuario: { include: { persona: true } } } },
@@ -189,7 +189,7 @@ export async function GET(request: NextRequest) {
       detalles_transaccion: { include: { producto: true, servicio: true, ...(includeTareas ? { tareas: true } : {}), servicio_asociado: { include: { servicio: true, producto: true } }, productos_asociados: { include: { producto: true } } } },
       _count: { select: { detalles_transaccion: true } }
     }
-    const includeLight: any = {
+    const includeLight = {
       persona: { select: { nombre: true, apellido_paterno: true } },
       trabajador_principal: { select: { id_trabajador: true } },
       transaccion_vehiculos: { include: { vehiculo: { select: { placa: true } } } },
@@ -211,7 +211,11 @@ export async function GET(request: NextRequest) {
     let ordenes = ordenesBase
     if (includeProgreso) {
       // Calcular progreso por cada orden (naive N consultas)
-      const enriquecidas = [] as any[]
+      const enriquecidas: Array<
+        typeof ordenesBase[number] & {
+          progreso: { total: number; pendientes: number; en_proceso: number; completadas: number; verificadas: number; porcentaje: number }
+        }
+      > = []
       for (const o of ordenesBase) {
         const progreso = await calcularProgresoOrden(o.id_transaccion)
         enriquecidas.push({ ...o, progreso })
@@ -304,7 +308,7 @@ export async function POST(request: NextRequest) {
     }
 
   // Batch fetch catalog entries (productos y servicios). Por compatibilidad actual usamos id_producto y su tipo.
-  const productoIds = [...new Set(items.map(i => toInt(i.id_producto as any)!))]
+  const productoIds = [...new Set(items.map(i => toInt(i.id_producto as unknown)!).filter(Boolean))]
   const productos = await prisma.producto.findMany({ where: { id_producto: { in: productoIds } } })
   const servicios = await prisma.servicio.findMany({ where: { id_servicio: { in: productoIds } } })
   const productosMap = new Map(productos.map(p => [p.id_producto, p]))
@@ -340,7 +344,7 @@ export async function POST(request: NextRequest) {
       if (modoSoloServicios && raw.tipo === 'producto') {
         return NextResponse.json({ error: 'Modo Solo servicios activo: no se permiten productos en la orden.' }, { status: 400 })
       }
-      const id_producto = toInt(raw.id_producto as any)!
+  const id_producto = toInt(raw.id_producto as unknown)!
       const tipoSolicitado = raw.tipo
       const producto = productosMap.get(id_producto)
       const servicio = serviciosMap.get(id_producto)
@@ -365,7 +369,7 @@ export async function POST(request: NextRequest) {
       }
 
       const entry = tipo === 'producto' ? producto! : servicio!
-      const cantidad = toInt(raw.cantidad as any)!
+  const cantidad = toInt(raw.cantidad as unknown)!
       const precio = typeof raw.precio_unitario === 'string' ? parseFloat(raw.precio_unitario) : raw.precio_unitario as number
       const descuento = raw.descuento ? (typeof raw.descuento === 'string' ? parseFloat(raw.descuento) : raw.descuento) : 0
       if (descuento < 0 || descuento > 100) {
@@ -399,7 +403,7 @@ export async function POST(request: NextRequest) {
         descuento,
         total: totalItem,
         tipo,
-        ...(tipo === 'producto' && raw.servicio_ref ? { servicio_ref: toInt(raw.servicio_ref as any) } : {}),
+  ...(tipo === 'producto' && raw.servicio_ref ? { servicio_ref: toInt(raw.servicio_ref as unknown) } : {}),
         ...(tiempoServicio ? { tiempo_servicio: tiempoServicio } : {})
       })
     }
@@ -414,8 +418,12 @@ export async function POST(request: NextRequest) {
         ? new Date(fechaReferencia.getTime() + totalMinutosMax * 60_000)
         : null
 
+    const trabajadorAsignadoInicial = id_trabajador_principal ?? trabajadoresSecundarios[0] ?? null
+    const estadoInicialOrden = trabajadorAsignadoInicial ? 'asignado' : 'pendiente'
+    const estadoInicialTarea = trabajadorAsignadoInicial ? 'por_hacer' : 'pendiente'
+
     // Retry para crear con código único (hasta 3 intentos)
-    let transaccionCreada: any = null
+  let transaccionCreada: { id_transaccion: number; fecha_fin_estimada: Date | null } | null = null
     let codigoFinal = ''
     for (let intento = 0; intento < 3; intento++) {
       const codigoOrden = await generateCodigoOrden()
@@ -427,17 +435,17 @@ export async function POST(request: NextRequest) {
               usuario: { connect: { id_usuario: parseInt(session.user.id) } },
               ...(id_trabajador_principal && { trabajador_principal: { connect: { id_trabajador: id_trabajador_principal } } }),
               tipo_transaccion: 'orden',
-              tipo_comprobante: 'orden_trabajo',
-              codigo_transaccion: codigoOrden,
-              fecha: new Date(),
-              descuento: 0,
-              impuesto: impuesto,
-              porcentaje: 18,
-              total: total,
-              observaciones: observaciones,
-                  // Estado inicial siempre 'pendiente' (no enviada al Kanban)
-                  estado_orden: 'pendiente',
-              prioridad: prioridad || 'media',
+        tipo_comprobante: 'orden_trabajo',
+        codigo_transaccion: codigoOrden,
+        fecha: new Date(),
+        descuento: 0,
+        impuesto: impuesto,
+        porcentaje: 18,
+        total: total,
+        observaciones: observaciones,
+          // Estado inicial: asignado si hay personal, de lo contrario pendiente
+          estado_orden: estadoInicialOrden,
+        prioridad: prioridad || 'media',
                   ...(fechaFinCalculada ? { fecha_fin_estimada: fechaFinCalculada } : {}),
                   // Persistir duración total estimada en minutos
                   duracion_min: totalMinutosMin > 0 ? totalMinutosMin : null,
@@ -462,8 +470,10 @@ export async function POST(request: NextRequest) {
               await tx.transaccionTrabajador.create({
                 data: { id_transaccion: transaccion.id_transaccion, id_trabajador: idTrabSec, rol: 'apoyo' }
               })
-            } catch (e:any) {
-              if (e.code !== 'P2002') console.warn('Pivot trabajador duplicado u error', e)
+            } catch (e: unknown) {
+              if (!isUniqueConstraintError(e)) {
+                console.warn('Pivot trabajador duplicado u error', e)
+              }
             }
           }
 
@@ -481,13 +491,13 @@ export async function POST(request: NextRequest) {
               }
             })
             mapaDetalleServicio.set(item.id_servicio!, detalle.id_detalle_transaccion)
-            const estimado = item.tiempo_servicio ? item.tiempo_servicio.maximoMinutos : 60
+                  const estimado = item.tiempo_servicio ? item.tiempo_servicio.maximoMinutos : 60
             try {
               await tx.tarea.create({
                 data: {
                   id_detalle_transaccion: detalle.id_detalle_transaccion,
-                  id_trabajador: id_trabajador_principal ?? trabajadoresSecundarios[0] ?? null,
-                  estado: 'pendiente',
+                  id_trabajador: trabajadorAsignadoInicial,
+                  estado: estadoInicialTarea,
                   tiempo_estimado: estimado
                 }
               })
@@ -596,7 +606,7 @@ export async function PATCH(request: NextRequest) {
   const { id_transaccion, nuevo_estado, prioridad, asignar_trabajador, fecha_fin_estimada, agregar_trabajadores, remover_trabajadores, generar_tareas_faltantes, registrar_pago, observaciones, id_vehiculo: idVehiculoNuevo, items: itemsPatch } = body || {}
     if (!id_transaccion) return NextResponse.json({ error: 'id_transaccion requerido' }, { status: 400 })
 
-  const orden: any = await prisma.transaccion.findUnique({ where: { id_transaccion: Number(id_transaccion) } })
+  const orden = await prisma.transaccion.findUnique({ where: { id_transaccion: Number(id_transaccion) } })
     if (!orden || orden.tipo_transaccion !== 'orden') {
       return NextResponse.json({ error: 'Orden no encontrada' }, { status: 404 })
     }
@@ -609,6 +619,7 @@ export async function PATCH(request: NextRequest) {
     // Validar transición
     const transiciones: Record<string,string[]> = {
       pendiente: ['por_hacer'],
+      asignado: ['por_hacer'],
       por_hacer: ['en_proceso','pausado'],
       en_proceso: ['pausado','completado'],
       pausado: ['en_proceso','completado'],
@@ -638,7 +649,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Preparar data de actualización
-  const dataUpdate: any = {}
+  const dataUpdate: Record<string, unknown> = {}
     if (prioridad) dataUpdate.prioridad = prioridad
     if (fecha_fin_estimada) dataUpdate.fecha_fin_estimada = new Date(fecha_fin_estimada)
     if (typeof observaciones === 'string') dataUpdate.observaciones = observaciones
@@ -669,7 +680,7 @@ export async function PATCH(request: NextRequest) {
         if (!Number.isFinite(idT)) continue
         try {
           await prisma.transaccionTrabajador.create({ data: { id_transaccion: Number(id_transaccion), id_trabajador: idT, rol: 'apoyo' } })
-        } catch (e:any) { if (e.code !== 'P2002') console.warn('Error agregando trabajador apoyo', e) }
+  } catch (e: unknown) { if ((e as { code?: string }).code !== 'P2002') console.warn('Error agregando trabajador apoyo', e) }
       }
     }
     // Remover trabajadores secundarios
@@ -683,7 +694,7 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    const updated: any = await prisma.transaccion.update({
+    const updated = await prisma.transaccion.update({
       where: { id_transaccion: Number(id_transaccion) },
       data: dataUpdate,
       include: { persona: true }
@@ -712,8 +723,8 @@ export async function PATCH(request: NextRequest) {
     // Si vienen items para reemplazar y está pendiente: rehacer detalles
     if (orden.estado_orden === 'pendiente' && Array.isArray(itemsPatch) && itemsPatch.length > 0) {
       // Validación básica de estructura y conversión
-      const parsedItems = itemsPatch as Array<{ id_producto: any; cantidad: any; precio_unitario: any; descuento?: any; tipo?: 'producto'|'servicio'; servicio_ref?: any }>
-      const productoIds = [...new Set(parsedItems.map(i => toInt(i.id_producto as any)!).filter(Boolean))]
+  const parsedItems = itemsPatch as Array<{ id_producto: number|string; cantidad: number|string; precio_unitario: number|string; descuento?: number|string; tipo?: 'producto'|'servicio'; servicio_ref?: number|string }>
+  const productoIds = [...new Set(parsedItems.map(i => toInt(i.id_producto as unknown)!).filter(Boolean))]
       const [productos, servicios] = await Promise.all([
         prisma.producto.findMany({ where: { id_producto: { in: productoIds } } }),
         prisma.servicio.findMany({ where: { id_servicio: { in: productoIds } } })
@@ -728,7 +739,7 @@ export async function PATCH(request: NextRequest) {
       const itemsValidados: Array<{ id_producto?: number; id_servicio?: number; cantidad: number; precio: number; descuento: number; total: number; tipo: 'producto'|'servicio'; servicio_ref?: number; tiempo_servicio?: { minimo: number; maximo: number; unidad: string; minimoMinutos: number; maximoMinutos: number } }> = []
 
       for (const raw of parsedItems) {
-        const id_producto = toInt(raw.id_producto as any)!
+  const id_producto = toInt(raw.id_producto as unknown)!
         const tipoSolicitado = raw.tipo
         const producto = productosMap.get(id_producto)
         const servicio = serviciosMap.get(id_producto)
@@ -746,7 +757,7 @@ export async function PATCH(request: NextRequest) {
         } else {
           return NextResponse.json({ error: `Item con ID ${id_producto} no está disponible` }, { status: 400 })
         }
-        const cantidad = toInt(raw.cantidad as any)!
+  const cantidad = toInt(raw.cantidad as unknown)!
         const precio = typeof raw.precio_unitario === 'string' ? parseFloat(raw.precio_unitario) : raw.precio_unitario as number
         const descuento = raw.descuento ? (typeof raw.descuento === 'string' ? parseFloat(raw.descuento) : raw.descuento) : 0
         if (descuento < 0 || descuento > 100) return NextResponse.json({ error: `Descuento inválido para item ${id_producto}` }, { status: 400 })
@@ -762,7 +773,7 @@ export async function PATCH(request: NextRequest) {
           maximoMinutos: convertirATotalMinutos(servicioInfo.tiempo_maximo, servicioInfo.unidad_tiempo) * cantidad
         } : undefined
         if (tiempoServicio) { totalMinutosMin += tiempoServicio.minimoMinutos; totalMinutosMax += tiempoServicio.maximoMinutos }
-        itemsValidados.push({ ...(tipo === 'producto' ? { id_producto } : { id_servicio: id_producto }), cantidad, precio, descuento, total: totalItem, tipo, ...(tipo === 'producto' && raw.servicio_ref ? { servicio_ref: toInt(raw.servicio_ref as any) } : {}), ...(tiempoServicio ? { tiempo_servicio: tiempoServicio } : {}) })
+  itemsValidados.push({ ...(tipo === 'producto' ? { id_producto } : { id_servicio: id_producto }), cantidad, precio, descuento, total: totalItem, tipo, ...(tipo === 'producto' && raw.servicio_ref ? { servicio_ref: toInt(raw.servicio_ref as unknown) } : {}), ...(tiempoServicio ? { tiempo_servicio: tiempoServicio } : {}) })
       }
       // Validación 0–1 producto por servicio
       const cuentaProductosPorServicio = new Map<number, number>()
@@ -825,16 +836,40 @@ export async function PATCH(request: NextRequest) {
       } catch (e) { console.warn('No se pudieron actualizar tareas a por_hacer', e) }
     }
 
-    // Generar tareas faltantes si se solicitó o se asignó trabajador principal ahora
+    // Generar tareas faltantes o completar asignación si se solicitó o se asignó trabajador principal ahora
     if (generar_tareas_faltantes === true || asignadoPrincipalAhora) {
       try {
         const detallesServicios = await prisma.detalleTransaccion.findMany({
           where: { id_transaccion: Number(id_transaccion) },
           include: { producto: true, servicio: true, tareas: true }
         })
+        const trabajadorObjetivo = asignar_trabajador ? Number(asignar_trabajador) : updated.id_trabajador_principal ?? null
         for (const d of detallesServicios) {
           const esServicio = d.servicio != null || (d.producto && d.producto.tipo === 'servicio')
-          if (esServicio && d.tareas.length === 0 && (asignar_trabajador || updated.id_trabajador_principal)) {
+          if (esServicio && trabajadorObjetivo) {
+            // Alinear todas las tareas del detalle con el trabajador actual y estado mínimo requerido
+            await prisma.tarea.updateMany({
+              where: {
+                id_detalle_transaccion: d.id_detalle_transaccion
+              },
+              data: {
+                id_trabajador: trabajadorObjetivo
+              }
+            })
+            const tareasSinPorHacer = d.tareas.filter(t => t.estado === 'pendiente')
+            if (tareasSinPorHacer.length > 0) {
+              await prisma.tarea.updateMany({
+                where: {
+                  id_detalle_transaccion: d.id_detalle_transaccion,
+                  estado: 'pendiente'
+                },
+                data: {
+                  estado: 'por_hacer'
+                }
+              })
+            }
+          }
+          if (esServicio && d.tareas.length === 0 && trabajadorObjetivo) {
             const unidad = d.servicio?.unidad_tiempo || 'minutos'
             const minutosMaximos = d.servicio ? convertirATotalMinutos(d.servicio.tiempo_maximo, unidad) : 60
             const tiempoEstimado = minutosMaximos * d.cantidad
@@ -842,7 +877,7 @@ export async function PATCH(request: NextRequest) {
               await prisma.tarea.create({
                 data: {
                   id_detalle_transaccion: d.id_detalle_transaccion,
-                  id_trabajador: asignar_trabajador ? Number(asignar_trabajador) : updated.id_trabajador_principal,
+                  id_trabajador: trabajadorObjetivo,
                   estado: 'por_hacer',
                   tiempo_estimado: tiempoEstimado
                 }
@@ -854,7 +889,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Registrar pago rápido si viene registrar_pago { monto, tipo_pago, numero_operacion, observaciones }
-    let pagoRegistrado = null as any
+  let pagoRegistrado: unknown = null
     if (registrar_pago && registrar_pago.monto) {
       try {
         const monto = Number(registrar_pago.monto)

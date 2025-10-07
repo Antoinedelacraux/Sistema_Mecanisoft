@@ -10,10 +10,39 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import { Search, Plus, Edit, Eye, FileText, Check, X, ArrowRight } from 'lucide-react'
+import { Search, Plus, Edit, Eye, FileText, Check, X, ArrowRight, Trash2 } from 'lucide-react'
 import { CotizacionCompleta } from '@/types'
 // Nota: evitamos importar Decimal del runtime de Prisma en componentes cliente para no romper el bundling
 import { useToast } from '@/components/ui/use-toast'
+
+type CotizacionModo = 'solo_servicios' | 'solo_productos' | 'servicios_y_productos'
+
+const getModoCotizacion = (cotizacion: CotizacionCompleta): CotizacionModo => {
+  const modo = (cotizacion as CotizacionCompleta & { modo_cotizacion?: CotizacionModo | null }).modo_cotizacion
+  if (modo) return modo
+
+  const tieneServicios = cotizacion.detalle_cotizacion.some((detalle) => Boolean(detalle.servicio))
+  const tieneProductos = cotizacion.detalle_cotizacion.some((detalle) => Boolean(detalle.producto))
+
+  if (tieneServicios && tieneProductos) return 'servicios_y_productos'
+  if (tieneServicios) return 'solo_servicios'
+  if (tieneProductos) return 'solo_productos'
+  return 'servicios_y_productos'
+}
+
+const renderModoBadge = (modo: CotizacionModo) => {
+  const config: Record<CotizacionModo, { label: string; className: string }> = {
+    solo_servicios: { label: 'Solo servicios', className: 'bg-sky-100 text-sky-700' },
+    solo_productos: { label: 'Solo productos', className: 'bg-purple-100 text-purple-700' },
+    servicios_y_productos: { label: 'Servicios + productos', className: 'bg-emerald-100 text-emerald-700' }
+  }
+  const { label, className } = config[modo]
+  return (
+    <Badge className={className} variant="secondary">
+      {label}
+    </Badge>
+  )
+}
 
 interface CotizacionesTableProps {
   onEdit: (cotizacion: CotizacionCompleta) => void
@@ -38,6 +67,9 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger 
   const [razonRechazo, setRazonRechazo] = useState<string | null>(null)
   const [trabajadorAsignado, setTrabajadorAsignado] = useState('')
   const [prioridadOrden, setPrioridadOrden] = useState('media')
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [cotizacionToDelete, setCotizacionToDelete] = useState<CotizacionCompleta | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
   
   const { toast } = useToast()
 
@@ -112,6 +144,79 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger 
     setTrabajadorAsignado('')
     setPrioridadOrden('media')
     setShowConvertModal(true)
+  }
+
+  const handleEliminar = (cotizacion: CotizacionCompleta) => {
+    setCotizacionToDelete(cotizacion)
+    setDeleteLoading(false)
+    setShowDeleteModal(true)
+  }
+
+  const confirmarEliminacion = async () => {
+    if (!cotizacionToDelete) return
+    try {
+      setDeleteLoading(true)
+      const response = await fetch(`/api/cotizaciones/${cotizacionToDelete.id_cotizacion}`, { method: 'DELETE' })
+      if (!response.ok) {
+        let message = 'No se pudo eliminar la cotización'
+        try {
+          const error = await response.json()
+          if (error?.error) message = error.error
+        } catch (parseError) {
+          console.warn('No se pudo parsear respuesta de eliminación de cotización', parseError)
+        }
+        throw new Error(message)
+      }
+
+      setCotizaciones(prev => prev.filter(c => c.id_cotizacion !== cotizacionToDelete.id_cotizacion))
+      toast({
+        title: 'Cotización eliminada',
+        description: `${cotizacionToDelete.codigo_cotizacion} fue eliminada correctamente`
+      })
+      setShowDeleteModal(false)
+      setCotizacionToDelete(null)
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'No se pudo eliminar la cotización',
+        variant: 'destructive'
+      })
+    } finally {
+      setDeleteLoading(false)
+    }
+  }
+
+  const handleEnviarFacturacion = async (cotizacion: CotizacionCompleta) => {
+    try {
+      const response = await fetch('/api/facturacion/cotizaciones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_cotizacion: cotizacion.id_cotizacion })
+      })
+
+      if (!response.ok) {
+        let description = 'No se pudo enviar la cotización a facturación.'
+        try {
+          const errorBody = await response.json()
+          if (errorBody?.error) description = errorBody.error
+        } catch (parseError) {
+          console.warn('Respuesta inesperada al enviar cotización a facturación', parseError)
+        }
+        throw new Error(description)
+      }
+
+      const data = await response.json()
+      toast({
+        title: 'Cotización enviada a facturación',
+        description: data?.message || `Cotización ${cotizacion.codigo_cotizacion} lista para facturación.`
+      })
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'No se pudo preparar la cotización para facturación.',
+        variant: 'destructive'
+      })
+    }
   }
 
   const confirmarAprobacion = async (accion: 'aprobar' | 'rechazar') => {
@@ -306,6 +411,7 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger 
                     <TableHead>Total</TableHead>
                     <TableHead>Vigencia</TableHead>
                     <TableHead>Estado</TableHead>
+                    <TableHead>Tipo</TableHead>
                     <TableHead>Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -370,6 +476,8 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger 
                           </div>
                         )}
                       </TableCell>
+
+                      <TableCell>{renderModoBadge(getModoCotizacion(cotizacion))}</TableCell>
                       
                       <TableCell>
                         <div className="flex items-center gap-1">
@@ -412,7 +520,24 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger 
                             </>
                           )}
                           
-                          {cotizacion.estado === 'aprobada' && (
+                          {(() => {
+                            if (cotizacion.estado !== 'aprobada') return null
+                            const modoCotizacion = getModoCotizacion(cotizacion)
+
+                            if (modoCotizacion === 'solo_productos') {
+                              return (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleEnviarFacturacion(cotizacion)}
+                                  className="text-purple-600 hover:text-purple-700"
+                                >
+                                  <FileText className="w-4 h-4" />
+                                </Button>
+                              )
+                            }
+
+                            return (
                             <Button
                               variant="ghost"
                               size="sm"
@@ -421,7 +546,8 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger 
                             >
                               <ArrowRight className="w-4 h-4" />
                             </Button>
-                          )}
+                            )
+                          })()}
                           
                           {cotizacion.estado === 'borrador' && (
                             <Button
@@ -430,6 +556,17 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger 
                               onClick={() => onEdit(cotizacion)}
                             >
                               <Edit className="w-4 h-4" />
+                            </Button>
+                          )}
+
+                          {['borrador', 'rechazada', 'vencida'].includes(cotizacion.estado) && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEliminar(cotizacion)}
+                              className="text-red-600 hover:text-red-700"
+                            >
+                              <Trash2 className="w-4 h-4" />
                             </Button>
                           )}
                         </div>
@@ -573,6 +710,59 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger 
               <Button onClick={confirmarConversion}>
                 <ArrowRight className="w-4 h-4 mr-2" />
                 Crear Orden
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={showDeleteModal}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowDeleteModal(false)
+            setCotizacionToDelete(null)
+          } else {
+            setShowDeleteModal(true)
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Eliminar cotización</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {cotizacionToDelete && (
+              <div className="p-3 bg-red-50 rounded-lg">
+                <p className="font-medium text-red-800">{cotizacionToDelete.codigo_cotizacion}</p>
+                <p className="text-sm text-red-600">
+                  {cotizacionToDelete.cliente.persona.nombre} {cotizacionToDelete.cliente.persona.apellido_paterno}
+                </p>
+              </div>
+            )}
+
+            <p className="text-sm text-gray-600">
+              Esta acción eliminará la cotización y todos sus detalles asociados. No podrás recuperarla después.
+            </p>
+
+            <div className="flex justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowDeleteModal(false)
+                  setCotizacionToDelete(null)
+                }}
+                disabled={deleteLoading}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={confirmarEliminacion}
+                disabled={deleteLoading}
+              >
+                {deleteLoading ? 'Eliminando...' : 'Eliminar'}
               </Button>
             </div>
           </div>
