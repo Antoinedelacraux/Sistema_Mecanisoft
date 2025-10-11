@@ -173,6 +173,15 @@ export async function actualizarOrden(
     const productosMap = new Map(productos.map((p) => [p.id_producto, p]))
     const serviciosMap = new Map(servicios.map((s) => [s.id_servicio, s]))
 
+    const almacenPrincipal = await prisma.almacen.findFirst({
+      where: { activo: true },
+      orderBy: { id_almacen: 'asc' }
+    })
+    if (!almacenPrincipal) {
+      throw new OrdenServiceError(409, 'No hay almacenes activos configurados')
+    }
+    const almacenReservaId = almacenPrincipal.id_almacen
+
     let subtotal = 0
     let totalMinutosMin = 0
     let totalMinutosMax = 0
@@ -186,6 +195,8 @@ export async function actualizarOrden(
       total: number
       tipo: 'producto' | 'servicio'
       servicio_ref?: number
+      almacenId?: number
+      ubicacionId?: number | null
       tiempo_servicio?: {
         minimo: number
         maximo: number
@@ -228,6 +239,15 @@ export async function actualizarOrden(
         throw new OrdenServiceError(400, `Stock insuficiente para ${producto.nombre}. Disponible: ${producto.stock}`)
       }
 
+      const almacenSeleccionado = tipo === 'producto' ? toInt(raw.almacen_id) ?? almacenReservaId : undefined
+      const ubicacionSeleccionada = tipo === 'producto'
+        ? (raw.ubicacion_id === null || raw.ubicacion_id === undefined ? null : toInt(raw.ubicacion_id) ?? null)
+        : undefined
+
+      if (tipo === 'producto' && !almacenSeleccionado) {
+        throw new OrdenServiceError(400, `Debe seleccionar un almacén válido para el producto ${producto?.nombre || idProducto}`)
+      }
+
       const totalItem = cantidad * precio * (1 - descuento / 100)
       subtotal += totalItem
       const servicioInfo = serviciosMap.get(idProducto)
@@ -253,6 +273,8 @@ export async function actualizarOrden(
         total: totalItem,
         tipo,
         ...(tipo === 'producto' && raw.servicio_ref ? { servicio_ref: toInt(raw.servicio_ref) ?? undefined } : {}),
+        ...(tipo === 'producto' ? { almacenId: almacenSeleccionado ?? almacenReservaId } : {}),
+        ...(tipo === 'producto' ? { ubicacionId: ubicacionSeleccionada ?? null } : {}),
         ...(tiempoServicio ? { tiempo_servicio: tiempoServicio } : {})
       })
     }
@@ -267,15 +289,6 @@ export async function actualizarOrden(
 
     const impuesto = subtotal * 0.18
     const total = subtotal + impuesto
-
-    const almacenPrincipal = await prisma.almacen.findFirst({
-      where: { activo: true },
-      orderBy: { id_almacen: 'asc' }
-    })
-    if (!almacenPrincipal) {
-      throw new OrdenServiceError(409, 'No hay almacenes activos configurados')
-    }
-    const almacenReservaId = almacenPrincipal.id_almacen
 
     await prisma.$transaction(async (tx) => {
       const detallesExistentes = await tx.detalleTransaccion.findMany({ where: { id_transaccion: idTransaccion } })
@@ -353,7 +366,8 @@ export async function actualizarOrden(
         })
         await reservarStockEnTx(tx, {
           productoId: item.id_producto!,
-          almacenId: almacenReservaId,
+          almacenId: item.almacenId ?? almacenReservaId,
+          ubicacionId: item.ubicacionId ?? null,
           usuarioId,
           cantidad: item.cantidad,
           transaccionId: idTransaccion,
@@ -363,6 +377,8 @@ export async function actualizarOrden(
             origen: 'orden_trabajo',
             codigo_transaccion: updated.codigo_transaccion,
             motivo: 'reserva_por_actualizacion',
+            almacen_id: item.almacenId ?? almacenReservaId,
+            ubicacion_id: item.ubicacionId ?? null,
           },
         })
       }

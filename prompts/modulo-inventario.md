@@ -143,6 +143,10 @@ model BitacoraInventario {
   - GET (listado paginado, filtros activos), POST (crear almacén).
 - `src/app/api/inventario/almacenes/[id]/route.ts`
   - GET detalle, PUT update, DELETE soft delete.
+- `src/app/api/inventario/almacenes/[id]/ubicaciones/route.ts`
+  - GET (paginado por almacén) y POST (crear ubicación con validaciones de unicidad).
+- `src/app/api/inventario/almacenes/[id]/ubicaciones/[ubicacionId]/route.ts`
+  - GET detalle, PUT update, DELETE soft delete de ubicaciones.
 - `src/app/api/inventario/productos/route.ts`
   - GET stock por producto, POST crear inventario inicial.
 - `src/app/api/inventario/movimientos/route.ts`
@@ -158,6 +162,8 @@ model BitacoraInventario {
 ## Componentes y vistas (App Router)
 - `src/app/dashboard/inventario/page.tsx`
   - Overview con KPIs, cards de stock crítico, gráfico simples (stock vs comprometido).
+- `src/app/dashboard/inventario/almacenes/page.tsx`
+  - Vista para gestionar almacenes y sus ubicaciones con formularios rápidos de creación.
 - `src/app/dashboard/inventario/movimientos/page.tsx`
   - Tabla con filtro por tipo, fecha, almacén; botón "Registrar movimiento".
 - `src/app/dashboard/inventario/transferencias/page.tsx`
@@ -166,6 +172,10 @@ model BitacoraInventario {
   - Formulario de ajuste con motivo, soporte adjunto (opcional) y vista previa de impacto.
 - Componentes reutilizables en `src/components/inventario/`:
   - `inventario-table.tsx`, `movimiento-form.tsx`, `transferencia-wizard.tsx`, `stock-badges.tsx`.
+  - Formularios rápidos (`movimiento-quick-form.tsx`, `transferencia-wizard.tsx`) utilizan los selectores de almacenes/ubicaciones para reducir errores al capturar IDs manuales.
+  - `almacenes/almacenes-manager.tsx` centraliza listado paginado, búsqueda y formularios para almacenes/ubicaciones.
+  - Selectores de dominio (`selectors/almacen-select.tsx`, `selectors/ubicacion-select.tsx`) exponen listas reusables de almacenes y ubicaciones con soporte para estados inactivos, búsqueda incremental con debounce y paginación "cargar más".
+  - El asistente de órdenes (`orden-wizard.tsx`) reutiliza estos selectores para asociar cada producto a un almacén y, opcionalmente, a una ubicación específica antes de confirmar la orden.
 - Integración con productos: botón "Ver stock" que abre drawer con stock por almacén y detalle de movimientos recientes.
 
 ## Flujos clave
@@ -192,7 +202,7 @@ model BitacoraInventario {
 
 ## Testing
 - Tests unitarios en `tests/lib/inventario/` para cada servicio (mock Prisma + bitácora) siguiendo patrón actual.
-- Tests de API (`tests/api/inventarioMovimientosApi.test.ts`) para validar validaciones y respuestas 401/422/409.
+- Tests de API (`tests/api/inventarioMovimientosApi.test.ts`, `tests/api/inventarioAlmacenesApi.test.ts`, `tests/api/inventarioUbicacionesApi.test.ts`) para validar validaciones y respuestas 401/422/409.
 - Tests de integración front-end con React Testing Library para formularios críticos (movimientos, transferencias).
 
 ## Migraciones y despliegue
@@ -218,8 +228,9 @@ model BitacoraInventario {
   - Ejecutar `npx tsc --noEmit` y `npm run lint` al cierre.
 3. **Iteración 2 – Reservas y órdenes**
   - Conectar con módulo de órdenes para reservar stock (`stock_comprometido`).
-  - Añadir endpoints específicos (`POST /api/inventario/reservas`) y hooks del lado de órdenes.
-  - Cobertura de tests sobre escenarios de reserva/consumo y errores de stock insuficiente.
+    - Añadir endpoints específicos (`POST /api/inventario/reservas`) y hooks del lado de órdenes.
+    - Cobertura de tests sobre escenarios de reserva/consumo y errores de stock insuficiente.
+    - Reutilizar selectores de almacén/ubicación en el wizard de órdenes para definir el punto exacto de reserva por producto.
 4. **Iteración 3 – Transferencias y ajustes avanzados**
   - Implementar flujo completo de transferencia (envío, recepción, anulación) con wizard UI.
   - Registrar ajustes con evidencia y ampliar bitácora.

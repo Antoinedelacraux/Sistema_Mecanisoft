@@ -1,64 +1,38 @@
 ## Purpose
 
-This file helps AI coding assistants get productive quickly in this repository. It highlights the app architecture, common patterns, important files, environment requirements, and concrete examples you can follow.
+Quick ramp-up notes for AI assistants working on this Next.js + Prisma workshop app. Focus on domain-specific flows (clientes, inventario, órdenes) and the guardrails that keep data consistent.
 
-## Quick start (commands discovered in package.json)
-- Dev server: `npm run dev` (runs `next dev --turbopack`).
-- Build: `npm run build` (runs `next build --turbopack`).
-- Start: `npm run start` (runs `next start`).
-- Lint: `npm run lint` (runs `eslint`).
-- DB seed: `npm run seed` (runs `tsx prisma/seed.ts`).
+## Core workflows
+- Dev: `npm run dev` (Turbopack, React 19). Build: `npm run build`. Start: `npm run start`. Lint: `npm run lint`. Seed demo data with `npm run seed` (tsx runner).
+- Tests use Jest; no package script. Run `npx jest` or scope (e.g., `npx jest tests/lib/ordenes`). UI specs require the default jsdom env declared inside the test files.
+- Clean fixtures after integration suites with `tsx prisma/clean-test-data.ts` to reset inventario/orden tables.
 
-Note: there is no `test` script in package.json; run tests with `npx jest` or `npm exec -- jest`.
+## Environment & integrations
+- `DATABASE_URL` for PostgreSQL (see `prisma/schema.prisma`).
+- `NEXTAUTH_SECRET` enables JWT sessions; login lives at `src/lib/auth.ts`.
+- Optional SMTP block (`SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`) powers `src/lib/mailer.ts`. Code throws a descriptive error if host is missing.
 
-## Environment variables (required/important)
-- `DATABASE_URL` — PostgreSQL connection for Prisma (see `prisma/schema.prisma`).
-- `NEXTAUTH_SECRET` — next-auth JWT secret used by `src/lib/auth.ts`.
+## Architecture snapshot
+- App Router (`src/app/**`) with authenticated dashboards under `/dashboard/*`; middleware redirects `/` to `/dashboard` and allows `/login` unauthenticated.
+- API routes are grouped by domain (`src/app/api/{clientes, inventario, ordenes,...}`) and always gate with `getServerSession(authOptions)`. Write endpoints wrap changes in Prisma `$transaction` and log to `prisma.bitacora` (see `clientes/route.ts`, `upload/route.ts`).
+- Domain services and validations sit in `src/lib/**` (e.g., `clientes/validation.ts` normalises payloads, `inventario/reportes.ts` aggregates stock). Favor these helpers from routes/components instead of duplicating logic.
+- Shared types live in `src/types`, including large DTOs like `InventarioResumenResponse`; UI components consume them directly for prop typing.
 
-## Big picture / architecture
-- Next.js App Router under `src/app` (server and client components). API routes live as `route.ts` files under `src/app/api/*` (e.g., `src/app/api/vehiculos/route.ts`).
-- Prisma for DB access; Prisma client wrapper at `src/lib/prisma.ts` uses a `globalForPrisma` pattern to avoid multiple clients in dev.
-- Authentication: next-auth with CredentialsProvider in `src/lib/auth.ts`. API routes commonly call `getServerSession(authOptions)` to protect endpoints.
-- Types: extended Prisma types live in `src/types/index.ts` (e.g., `VehiculoCompleto`, `ClienteCompleto`). Use these in frontend props and API responses.
-- UI: shadcn-style components under `src/components/ui/*` and feature components under `src/components/{clientes,vehiculos,...}`. Icons come from `lucide-react`.
+## Coding patterns to follow
+- Spanish domain names everywhere (DB columns, props, UI labels). Keep new identifiers consistent (`numero_documento`, `fecha_registro`, etc.).
+- Use Prisma includes to hydrate nested relations exactly like existing handlers (`cliente.persona`, `modelo.marca`, etc.) so tables render without extra fetches.
+- Whenever a write changes business data, append a bitácora entry using the session `user.id`. Many routes also capture human-readable `descripcion` strings; reuse that style.
+- Validation happens before persistence: prefer the existing Zod or custom validators (`validateClientePayload`, `ordenes/crear.ts`). Return meaningful `{ error: '...' }` payloads instead of throwing.
+- Frontend components lean on shadcn UI primitives (`src/components/ui`) plus the `cn` helper. Respect client/server component boundaries—fetch in server components, mutate via API routes.
 
-## Key files and what they show
-- `src/app/api/vehiculos/route.ts` — canonical example of API routes: pagination (query params `page`, `limit`, `search`, `cliente_id`), returns `{ vehiculos, pagination: { total, pages, current, limit } }`, and uses `getServerSession` + `prisma` + bitácora audit.
-- `src/lib/prisma.ts` — Prisma client singleton pattern. Important to import `prisma` from here in server code and tests.
-- `src/lib/auth.ts` — next-auth configuration (CredentialsProvider), JWT session callbacks and `session.user.id` set to `token.sub`.
-- `src/types/index.ts` — extended types used across components and API responses (useful for generating mocks/tests).
-- `src/components/vehiculos/vehiculos-table.tsx` and `vehiculo-form.tsx` — examples of client components consuming API shapes and using `VehiculoCompleto`.
-- `prisma/schema.prisma` — canonical DB schema; field names are Spanish (e.g., `año`).
+## Testing guidance
+- API tests stub both NextAuth and Prisma. Mirror `tests/api/clientesIdApi.test.ts`: `jest.mock('@/lib/prisma', () => ({ prisma: { ... } }))` and supply every method the handler touches.
+- UI tests rely on `@testing-library/react` with mocked `global.fetch`. Utilities like `buildAlmacen` in `tests/ui/almacenesManager.test.tsx` show how to craft Spanish-domain fixtures.
 
-## Conventions & notable project patterns
-- Language: variable/DB names and UX are Spanish; mimic naming when adding fields or tests (e.g., `placa`, `año`, `numero_documento`).
-- API responses: prefer `NextResponse.json(data, { status })` and return helpful error messages like `{ error: 'No autorizado' }`.
-- Auth guard: always call `getServerSession(authOptions)` at the top of API handlers and return 401 if missing.
-- Audit: many write operations create a `bitacora` record (see `bitacora.create` in several API routes). Mirror this when adding new write endpoints.
-- Prisma usage: use `include` to eager-load relations in API responses (see `vehiculo` endpoint includes `cliente.persona` and `modelo.marca`).
-- Pagination: use `page` and `limit` query params, compute `skip = (page-1)*limit`, and return pagination object with `total` and `pages`.
+## Helpful references
+- `prisma/schema.prisma` documents the full domain (cotizaciones, inventario, bitácora, órdenes). Use it to map foreign keys and enum names.
+- `src/app/api/inventario/alertas/cron/route.ts` demonstrates dynamic routes plus auth-protected cron-style jobs.
+- `src/app/api/upload/route.ts` pairs file-system writes under `public/uploads/productos` with bitácora logging and content-type/size checks.
+- `src/lib/ordenes-utils.ts` contains formatting helpers (`formatDurationRange`, `formatPrice`) expected by dashboard widgets.
 
-## Testing patterns
-- Tests live in `tests/` and mock Prisma and next-auth. Example: `tests/api/clientesIdApi.test.ts` uses `jest.mock('@/lib/prisma', ...)` and mocks `getServerSession`.
-- When writing tests, mock `prisma` shape (e.g., `prisma.cliente.findUnique = jest.fn()`) and set return values for each mocked call.
-
-## Common pitfalls and gotchas
-- Prisma schema and TypeScript types use Spanish field names including `año` — be careful with encoding and string operations.
-- The app uses Next.js App Router; API handlers are server-only and cannot import client-only browser APIs.
-- Prisma client singleton must be used to avoid connection storms in dev (see `src/lib/prisma.ts`).
-
-## Small examples
-- Fetch list of vehicles (frontend): `GET /api/vehiculos?page=1&limit=10&search=ABC` returns:
-
-  {
-    "vehiculos": [ /* VehiculoCompleto[] */ ],
-    "pagination": { "total": 42, "pages": 5, "current": 1, "limit": 10 }
-  }
-
-- Protected POST (create vehicle): API routes call `getServerSession(authOptions)` and then `prisma.vehiculo.create(...)` followed by `prisma.bitacora.create(...)`.
-
-## When editing the codebase
-- Update or reuse types from `src/types/index.ts` for any API response or component prop.
-- For new API routes follow the pattern in `src/app/api/*/route.ts`: auth guard, validate inputs, perform prisma operations, return `NextResponse.json(...)`.
-
-If anything here is unclear or you want me to expand a section (tests, db seeding, or a specific feature area), tell me which part to iterate on.
+Ping if any section needs more depth (e.g., órdenes flow, PDF facturación, inventario transfers) and we can expand it.

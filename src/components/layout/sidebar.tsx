@@ -61,17 +61,17 @@ const menuItems = [
     href: "/dashboard/servicios",
   },
   {
-    title: "Trabajadores", // ✅ Nuevo
+    title: "Trabajadores",
     icon: Users,
     href: "/dashboard/trabajadores",
   },
   {
-    title: "Tareas", // ✅ Nuevo  
+    title: "Tareas",
     icon: ClipboardList,
     href: "/dashboard/tareas",
   },
   {
-    title: "Mis Tareas", // ✅ Nuevo (solo para mecánicos)
+    title: "Mis Tareas",
     icon: Clock,
     href: "/dashboard/mis-tareas",
   },

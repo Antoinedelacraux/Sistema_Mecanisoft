@@ -19,4 +19,6 @@ export interface ItemOrden {
   permiteEditarDescuento: boolean
   // Asociación opcional: si el item es producto, puede referenciar el id del servicio en la misma orden
   servicio_ref?: number | null
+  almacenId?: number | null
+  ubicacionId?: number | null
 }

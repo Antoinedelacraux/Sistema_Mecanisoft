@@ -13,6 +13,8 @@ interface ItemValidado {
   total: number
   tipo: 'producto' | 'servicio'
   servicio_ref?: number
+  almacenId?: number
+  ubicacionId?: number | null
   tiempo_servicio?: {
     minimo: number
     maximo: number
@@ -134,6 +136,15 @@ export async function crearOrden(prisma: PrismaClient, data: CrearOrdenInput, us
       throw new OrdenServiceError(400, `Stock insuficiente para ${producto.nombre}. Disponible: ${producto.stock}`)
     }
 
+    const almacenSeleccionado = tipo === 'producto' ? toInt(raw.almacen_id) ?? almacenReservaId : undefined
+    const ubicacionSeleccionada = tipo === 'producto'
+      ? (raw.ubicacion_id === null || raw.ubicacion_id === undefined ? null : toInt(raw.ubicacion_id) ?? null)
+      : undefined
+
+    if (tipo === 'producto' && !almacenSeleccionado) {
+      throw new OrdenServiceError(400, `Debe seleccionar un almacén válido para el producto ${producto?.nombre || id_producto}`)
+    }
+
     const totalItem = cantidad * precio * (1 - descuento / 100)
     subtotal += totalItem
 
@@ -161,6 +172,8 @@ export async function crearOrden(prisma: PrismaClient, data: CrearOrdenInput, us
       total: totalItem,
       tipo,
       ...(tipo === 'producto' && raw.servicio_ref ? { servicio_ref: toInt(raw.servicio_ref) } : {}),
+      ...(tipo === 'producto' ? { almacenId: almacenSeleccionado ?? almacenReservaId } : {}),
+      ...(tipo === 'producto' ? { ubicacionId: ubicacionSeleccionada ?? null } : {}),
       ...(tiempoServicio ? { tiempo_servicio: tiempoServicio } : {})
     })
   }
@@ -287,7 +300,8 @@ export async function crearOrden(prisma: PrismaClient, data: CrearOrdenInput, us
           })
           await reservarStockEnTx(tx, {
             productoId: item.id_producto!,
-            almacenId: almacenReservaId,
+            almacenId: item.almacenId ?? almacenReservaId,
+            ubicacionId: item.ubicacionId ?? null,
             usuarioId,
             cantidad: item.cantidad,
             transaccionId: transaccion.id_transaccion,
@@ -296,6 +310,8 @@ export async function crearOrden(prisma: PrismaClient, data: CrearOrdenInput, us
             metadata: {
               origen: 'orden_trabajo',
               codigo_transaccion: codigoOrden,
+              almacen_id: item.almacenId ?? almacenReservaId,
+              ubicacion_id: item.ubicacionId ?? null,
             },
           })
         }

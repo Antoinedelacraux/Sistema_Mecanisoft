@@ -5,6 +5,7 @@ import { ServicioCompleto, ProductoCompleto } from '@/types'
 import { ItemOrden, CatalogoItem } from './types'
 import { useToast } from '@/components/ui/use-toast'
 import { calcularTotalLinea, formatMoney, unidadTiempoEnMinutos } from './utils'
+import { AlmacenSelect, UbicacionSelect } from '@/components/inventario/selectors'
 
 interface Props {
   servicios: ServicioCompleto[]
@@ -112,38 +113,59 @@ export function ServiciosStep({ servicios, productos, modoOrden, items, setItems
                     </div>
                     {servicio && <div className="text-xs text-blue-600">Duración estimada: {minCalculado}–{maxCalculado} min</div>}
                     {item.tipo === 'producto' && (
-                      <div className="text-xs text-gray-700 flex items-center gap-2">
-                        <span>Asociar a servicio:</span>
-                        <select
-                          className="border rounded px-2 py-1 text-xs"
-                          value={item.servicio_ref ?? ''}
-                          aria-label="Asociar producto a servicio"
-                          onChange={(e) => {
-                            const valor = e.target.value
-                            const idSrv = valor ? parseInt(valor, 10) : NaN
-                            if (!valor) {
-                              actualizarItem(index, 'servicio_ref', null)
-                              return
-                            }
-                            if (!Number.isFinite(idSrv)) return
-                            const yaAsociado = items.some((i, idx) => i.tipo === 'producto' && idx !== index && i.servicio_ref === idSrv)
-                            if (yaAsociado) {
-                              toast({ title: 'Regla de asociación', description: 'Cada servicio solo puede tener 0 o 1 producto asociado.', variant: 'destructive' })
-                              return
-                            }
-                            actualizarItem(index, 'servicio_ref', idSrv)
-                          }}
-                        >
-                          <option value="">Sin asociar</option>
-                          {items.filter(i => i.tipo === 'servicio').map((srvItem) => {
-                            const disabled = items.some(i => i.tipo === 'producto' && i.servicio_ref === srvItem.id_referencia && i !== item)
-                            return (
-                              <option key={`opt-srv-${srvItem.id_referencia}`} value={srvItem.id_referencia} disabled={disabled}>
-                                {srvItem.nombre}{disabled ? ' (ocupado)' : ''}
-                              </option>
-                            )
-                          })}
-                        </select>
+                      <div className="space-y-3 text-xs text-gray-700">
+                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                          <span className="font-medium text-[11px] uppercase tracking-wide text-muted-foreground">Asociación</span>
+                          <select
+                            className="border rounded px-2 py-1 text-xs"
+                            value={item.servicio_ref ?? ''}
+                            aria-label="Asociar producto a servicio"
+                            onChange={(e) => {
+                              const valor = e.target.value
+                              const idSrv = valor ? parseInt(valor, 10) : NaN
+                              if (!valor) {
+                                actualizarItem(index, 'servicio_ref', null)
+                                return
+                              }
+                              if (!Number.isFinite(idSrv)) return
+                              const yaAsociado = items.some((i, idx) => i.tipo === 'producto' && idx !== index && i.servicio_ref === idSrv)
+                              if (yaAsociado) {
+                                toast({ title: 'Regla de asociación', description: 'Cada servicio solo puede tener 0 o 1 producto asociado.', variant: 'destructive' })
+                                return
+                              }
+                              actualizarItem(index, 'servicio_ref', idSrv)
+                            }}
+                          >
+                            <option value="">Sin asociar</option>
+                            {items.filter(i => i.tipo === 'servicio').map((srvItem) => {
+                              const disabled = items.some(i => i.tipo === 'producto' && i.servicio_ref === srvItem.id_referencia && i !== item)
+                              return (
+                                <option key={`opt-srv-${srvItem.id_referencia}`} value={srvItem.id_referencia} disabled={disabled}>
+                                  {srvItem.nombre}{disabled ? ' (ocupado)' : ''}
+                                </option>
+                              )
+                            })}
+                          </select>
+                        </div>
+                        <div className="grid gap-2 md:grid-cols-2">
+                          <AlmacenSelect
+                            value={item.almacenId ? String(item.almacenId) : ''}
+                            onChange={(valor) => actualizarItem(index, 'almacenId', valor ? Number(valor) : null)}
+                            placeholder="Almacén para reservar"
+                            emptyLabel="No hay almacenes registrados."
+                          />
+                          <UbicacionSelect
+                            almacenId={item.almacenId ? String(item.almacenId) : null}
+                            value={item.ubicacionId ? String(item.ubicacionId) : ''}
+                            onChange={(valor) => actualizarItem(index, 'ubicacionId', valor ? Number(valor) : null)}
+                            allowSinUbicacion
+                            placeholder="Sin ubicación específica"
+                            emptyLabel="No hay ubicaciones registradas."
+                          />
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          Selecciona el almacén y la ubicación desde donde se reservará el stock de este producto.
+                        </p>
                       </div>
                     )}
                   </CardContent>

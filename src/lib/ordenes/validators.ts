@@ -6,7 +6,9 @@ export const ordenItemSchema = z.object({
   precio_unitario: z.union([z.number().positive(), z.string().regex(/^\d+(\.\d+)?$/)]),
   descuento: z.union([z.number(), z.string().regex(/^\d+(\.\d+)?$/)]).optional(),
   tipo: z.enum(['producto', 'servicio']).optional(),
-  servicio_ref: z.union([z.number().int().positive(), z.string().regex(/^\d+$/)]).optional()
+  servicio_ref: z.union([z.number().int().positive(), z.string().regex(/^\d+$/)]).optional(),
+  almacen_id: z.union([z.number().int().positive(), z.string().regex(/^\d+$/)]).optional(),
+  ubicacion_id: z.union([z.number().int().positive(), z.string().regex(/^\d+$/), z.null()]).optional()
 })
 
 export const crearOrdenSchema = z.object({

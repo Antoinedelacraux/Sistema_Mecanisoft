@@ -3,6 +3,8 @@
 import { useRouter } from 'next/navigation';
 import { useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 
+import { AlmacenSelect, UbicacionSelect } from '@/components/inventario/selectors';
+
 const STEPS = [
   { id: 1, title: 'Origen y producto' },
   { id: 2, title: 'Destino y confirmación' },
@@ -61,6 +63,17 @@ const TransferenciaWizard = ({ onSuccess }: { onSuccess?: () => void }) => {
 
   const handleChange = (field: keyof TransferenciaFormState) => (event: ChangeEvent<HTMLInputElement>) => {
     setForm((prev) => ({ ...prev, [field]: event.target.value }));
+  };
+
+  const handleSelectAlmacen = <K extends 'origenAlmacenId' | 'destinoAlmacenId', R extends 'origenUbicacionId' | 'destinoUbicacionId'>(
+    field: K,
+    resetField: R,
+  ) => (value: string) => {
+    setForm((prev) => ({ ...prev, [field]: value, [resetField]: '' }));
+  };
+
+  const handleSelectUbicacion = (field: 'origenUbicacionId' | 'destinoUbicacionId') => (value: string) => {
+    setForm((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleNext = () => {
@@ -180,24 +193,24 @@ const TransferenciaWizard = ({ onSuccess }: { onSuccess?: () => void }) => {
             </div>
             <div className="grid gap-2">
               <label className="text-sm font-medium" htmlFor="origenAlmacenId">Almacén origen</label>
-              <input
+              <AlmacenSelect
                 id="origenAlmacenId"
-                type="number"
-                className="rounded-md border border-input bg-background p-2"
                 value={form.origenAlmacenId}
-                onChange={handleChange('origenAlmacenId')}
-                required
+                onChange={handleSelectAlmacen('origenAlmacenId', 'origenUbicacionId')}
+                disabled={isSubmitting}
+                placeholder="Selecciona un almacén"
               />
             </div>
             <div className="grid gap-2">
               <label className="text-sm font-medium" htmlFor="origenUbicacionId">Ubicación origen (opcional)</label>
-              <input
+              <UbicacionSelect
                 id="origenUbicacionId"
-                type="number"
-                className="rounded-md border border-input bg-background p-2"
+                almacenId={form.origenAlmacenId ? form.origenAlmacenId : null}
                 value={form.origenUbicacionId}
-                onChange={handleChange('origenUbicacionId')}
-                min="1"
+                onChange={handleSelectUbicacion('origenUbicacionId')}
+                disabled={isSubmitting}
+                allowSinUbicacion
+                placeholder="Sin ubicación específica"
               />
             </div>
           </div>
@@ -207,24 +220,24 @@ const TransferenciaWizard = ({ onSuccess }: { onSuccess?: () => void }) => {
           <div className="grid gap-4 md:grid-cols-2">
             <div className="grid gap-2">
               <label className="text-sm font-medium" htmlFor="destinoAlmacenId">Almacén destino</label>
-              <input
+              <AlmacenSelect
                 id="destinoAlmacenId"
-                type="number"
-                className="rounded-md border border-input bg-background p-2"
                 value={form.destinoAlmacenId}
-                onChange={handleChange('destinoAlmacenId')}
-                required
+                onChange={handleSelectAlmacen('destinoAlmacenId', 'destinoUbicacionId')}
+                disabled={isSubmitting}
+                placeholder="Selecciona un almacén"
               />
             </div>
             <div className="grid gap-2">
               <label className="text-sm font-medium" htmlFor="destinoUbicacionId">Ubicación destino (opcional)</label>
-              <input
+              <UbicacionSelect
                 id="destinoUbicacionId"
-                type="number"
-                className="rounded-md border border-input bg-background p-2"
+                almacenId={form.destinoAlmacenId ? form.destinoAlmacenId : null}
                 value={form.destinoUbicacionId}
-                onChange={handleChange('destinoUbicacionId')}
-                min="1"
+                onChange={handleSelectUbicacion('destinoUbicacionId')}
+                disabled={isSubmitting}
+                allowSinUbicacion
+                placeholder="Sin ubicación específica"
               />
             </div>
             <div className="grid gap-2 md:col-span-2">

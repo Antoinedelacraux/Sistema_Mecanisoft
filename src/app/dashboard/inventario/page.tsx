@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { Prisma } from '@prisma/client';
 
 import MovimientoQuickForm from '@/components/inventario/movimiento-quick-form';
@@ -160,9 +161,17 @@ const InventarioDashboardPage = async () => {
 
   return (
     <div className="space-y-8">
-      <section>
-        <h1 className="text-2xl font-semibold tracking-tight">Inventario</h1>
-        <p className="text-sm text-muted-foreground">Primer acercamiento al módulo — vista resumida mientras completamos el resto del roadmap.</p>
+      <section className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Inventario</h1>
+          <p className="text-sm text-muted-foreground">Primer acercamiento al módulo — vista resumida mientras completamos el resto del roadmap.</p>
+        </div>
+        <Link
+          href="/dashboard/inventario/almacenes"
+          className="inline-flex items-center justify-center rounded-md border border-border px-4 py-2 text-sm font-medium transition hover:border-primary hover:text-primary"
+        >
+          Gestionar almacenes
+        </Link>
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">

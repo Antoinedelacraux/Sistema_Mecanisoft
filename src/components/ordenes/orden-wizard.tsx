@@ -120,6 +120,16 @@ export function OrdenWizard({ onSuccess, onCancel }: OrdenWizardProps) {
       toast({ title: 'Modo solo servicios', description: 'No puedes agregar productos en modo Solo servicios.', variant: 'destructive' })
       return
     }
+    const productoSinAlmacen = items.find((item) => item.tipo === 'producto' && !item.almacenId)
+    if (productoSinAlmacen) {
+      toast({
+        title: 'Selecciona un almacén',
+        description: `Define desde qué almacén se reservará el producto ${productoSinAlmacen.nombre}.`,
+        variant: 'destructive',
+      })
+      setCurrentStep('servicios')
+      return
+    }
     setLoading(true)
     try {
       const ordenData = {
@@ -138,7 +148,9 @@ export function OrdenWizard({ onSuccess, onCancel }: OrdenWizardProps) {
           precio_unitario: item.precio_unitario,
           descuento: item.descuento,
           tipo: item.tipo,
-          ...(item.tipo === 'producto' && item.servicio_ref ? { servicio_ref: item.servicio_ref } : {})
+          ...(item.tipo === 'producto' && item.servicio_ref ? { servicio_ref: item.servicio_ref } : {}),
+          ...(item.tipo === 'producto' ? { almacen_id: item.almacenId } : {}),
+          ...(item.tipo === 'producto' ? { ubicacion_id: item.ubicacionId ?? null } : {})
         }))
       }
       const response = await fetch('/api/ordenes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ordenData) })
@@ -226,7 +238,8 @@ export function OrdenWizard({ onSuccess, onCancel }: OrdenWizardProps) {
                 total: calcularTotalLinea(1, precioBase, permiteEditarDescuento ? descuentoBase : 0),
                 oferta: ofertaActiva,
                 permiteEditarDescuento,
-                servicio_ref: esProducto ? null : undefined
+                servicio_ref: esProducto ? null : undefined,
+                ...(esProducto ? { almacenId: null, ubicacionId: null } : {})
               }
               setItems(prev => [...prev, nuevoItem])
             }}
@@ -247,6 +260,13 @@ export function OrdenWizard({ onSuccess, onCancel }: OrdenWizardProps) {
               } else if (campo === 'servicio_ref') {
                 const idSrv = parseInt(String(valor), 10)
                 item.servicio_ref = Number.isFinite(idSrv) ? idSrv : null
+              } else if (campo === 'almacenId') {
+                const parsed = typeof valor === 'number' ? valor : parseInt(String(valor), 10)
+                item.almacenId = Number.isFinite(parsed) ? parsed : null
+                item.ubicacionId = null
+              } else if (campo === 'ubicacionId') {
+                const parsed = typeof valor === 'number' ? valor : parseInt(String(valor), 10)
+                item.ubicacionId = Number.isFinite(parsed) ? parsed : null
               }
               item.total = calcularTotalLinea(item.cantidad, item.precio_unitario, item.descuento)
               newItems[index] = item

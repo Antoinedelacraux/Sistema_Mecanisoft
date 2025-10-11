@@ -113,6 +113,13 @@ export function ResumenStep({ clienteSeleccionado, vehiculoSeleccionado, trabaja
                         <div className="font-semibold text-green-700">{formatMoney(item.total)}</div>
                       </div>
                       {servicio && <div className="text-xs text-blue-600">Duración estimada: {formatearDuracion(minCalculado)} – {formatearDuracion(maxCalculado)}</div>}
+                      {item.tipo === 'producto' && (
+                        <div className="text-xs text-muted-foreground space-x-2">
+                          <span><span className="font-medium">Almacén:</span> {item.almacenId ? `#${item.almacenId}` : 'Pendiente'}</span>
+                          <span>•</span>
+                          <span><span className="font-medium">Ubicación:</span> {item.ubicacionId ? `#${item.ubicacionId}` : 'Sin ubicación específica'}</span>
+                        </div>
+                      )}
                     </div>
                   )
                 })}

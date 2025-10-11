@@ -3,6 +3,8 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
+import { AlmacenSelect, UbicacionSelect } from '@/components/inventario/selectors';
+
 const TIPO_MOVIMIENTO_OPTIONS = [
   { value: 'INGRESO', label: 'Ingreso' },
   { value: 'SALIDA', label: 'Salida' },
@@ -14,6 +16,7 @@ type MovimientoFormState = {
   tipo: 'INGRESO' | 'SALIDA' | 'AJUSTE_POSITIVO' | 'AJUSTE_NEGATIVO';
   productoId: string;
   almacenId: string;
+  ubicacionId: string;
   cantidad: string;
   costoUnitario: string;
   motivo: string;
@@ -24,6 +27,7 @@ const INITIAL_STATE: MovimientoFormState = {
   tipo: 'INGRESO',
   productoId: '',
   almacenId: '',
+  ubicacionId: '',
   cantidad: '',
   costoUnitario: '',
   motivo: '',
@@ -41,6 +45,14 @@ const MovimientoQuickForm = ({ onSuccess }: { onSuccess?: () => void }) => {
 
   const handleChange = (field: keyof MovimientoFormState) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setForm((prev) => ({ ...prev, [field]: event.target.value }));
+  };
+
+  const handleSelectAlmacen = (value: string) => {
+    setForm((prev) => ({ ...prev, almacenId: value, ubicacionId: '' }));
+  };
+
+  const handleSelectUbicacion = (value: string) => {
+    setForm((prev) => ({ ...prev, ubicacionId: value }));
   };
 
   const resetFeedback = () => {
@@ -73,6 +85,10 @@ const MovimientoQuickForm = ({ onSuccess }: { onSuccess?: () => void }) => {
         referencia: form.referencia.trim() || undefined,
       };
 
+      if (form.ubicacionId) {
+        payload.ubicacionId = Number.parseInt(form.ubicacionId, 10);
+      }
+
       if (form.tipo === 'INGRESO') {
         payload.costoUnitario = parseNumber(form.costoUnitario);
       }
@@ -93,7 +109,7 @@ const MovimientoQuickForm = ({ onSuccess }: { onSuccess?: () => void }) => {
       }
 
       setMessage('Movimiento registrado correctamente');
-      setForm(INITIAL_STATE);
+  setForm(INITIAL_STATE);
       onSuccess?.();
       router.refresh();
     } catch (err) {
@@ -139,15 +155,26 @@ const MovimientoQuickForm = ({ onSuccess }: { onSuccess?: () => void }) => {
         </div>
 
         <div className="grid gap-2">
-          <label className="text-sm font-medium" htmlFor="almacenId">ID de almacén</label>
-          <input
+          <label className="text-sm font-medium" htmlFor="almacenId">Almacén</label>
+          <AlmacenSelect
             id="almacenId"
-            type="number"
-            className="rounded-md border border-input bg-background p-2"
             value={form.almacenId}
-            onChange={handleChange('almacenId')}
+            onChange={handleSelectAlmacen}
             disabled={isSubmitting}
-            required
+            placeholder="Selecciona un almacén"
+          />
+        </div>
+
+        <div className="grid gap-2">
+          <label className="text-sm font-medium" htmlFor="ubicacionId">Ubicación (opcional)</label>
+          <UbicacionSelect
+            id="ubicacionId"
+            almacenId={form.almacenId ? form.almacenId : null}
+            value={form.ubicacionId}
+            onChange={handleSelectUbicacion}
+            disabled={isSubmitting}
+            allowSinUbicacion
+            placeholder="Selecciona una ubicación"
           />
         </div>
 
