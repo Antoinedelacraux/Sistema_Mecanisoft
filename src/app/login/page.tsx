@@ -38,15 +38,22 @@ export default function LoginPage() {
           variant: "destructive",
         })
       } else {
-        // Login exitoso
-        toast(
-          "¡Bienvenido!",
-          { description: "Sesión iniciada correctamente" }
-        )
-        
-        // Redirigir al dashboard
-        router.push("/dashboard")
-        router.refresh()
+        const session = await getSession()
+        const requiereCambio = session?.user?.requiresPasswordChange
+
+        if (requiereCambio) {
+          toast("Contraseña temporal detectada", {
+            description: "Debes registrar una nueva contraseña para continuar"
+          })
+          router.push("/dashboard/cambio-password")
+        } else {
+          toast(
+            "¡Bienvenido!",
+            { description: "Sesión iniciada correctamente" }
+          )
+          router.push("/dashboard")
+          router.refresh()
+        }
       }
     } catch (error) {
       console.error("Error en login:", error)

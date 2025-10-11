@@ -66,6 +66,16 @@ const menuItems = [
     href: "/dashboard/trabajadores",
   },
   {
+    title: "Usuarios",
+    icon: Users,
+    href: "/dashboard/usuarios",
+  },
+  {
+    title: "Usuarios",
+    icon: Users,
+    href: "/dashboard/usuarios",
+  },
+  {
     title: "Tareas",
     icon: ClipboardList,
     href: "/dashboard/tareas",

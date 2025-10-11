@@ -19,24 +19,32 @@ export const authOptions: NextAuthOptions = {
 
         try {
           const rawUser = credentials.username
-          const username = rawUser.trim()
+          const username = rawUser.trim().toLowerCase()
           const password = credentials.password
           if (username !== rawUser) {
-            console.log('[AUTH] Username normalizado (trim):', JSON.stringify(rawUser), '->', JSON.stringify(username))
+            console.log('[AUTH] Username normalizado (trim+lowercase):', JSON.stringify(rawUser), '->', JSON.stringify(username))
           }
           if (!process.env.NEXTAUTH_SECRET) {
             console.warn('[AUTH] NEXTAUTH_SECRET no está definido. Configurar para producción.')
           }
           console.log('[AUTH] Intento de login:', username)
 
-          // Buscar usuario en la BD (solo activos)
-          const usuario = await prisma.usuario.findFirst({
+          // Buscar usuario en la BD (normalizando el usuario)
+          const usuario = await prisma.usuario.findUnique({
             where: {
-              nombre_usuario: username,
-              estado: true,
-              estatus: true
+              nombre_usuario: username
             },
-            include: { persona: true, rol: true }
+            include: {
+              persona: true,
+              rol: true,
+              trabajador: {
+                select: {
+                  id_trabajador: true,
+                  activo: true,
+                  eliminado: true
+                }
+              }
+            }
           })
 
           if (!usuario) {
@@ -56,15 +64,66 @@ export const authOptions: NextAuthOptions = {
             return null
           }
 
-          // Verificar password
-          const isPasswordValid = await bcrypt.compare(
-            password,
-            usuario.password
-          )
-
-          if (!isPasswordValid) {
-            console.log("❌ Contraseña incorrecta para usuario:", username)
+          if (!usuario.estatus) {
+            console.log('❌ Usuario dado de baja:', username)
             return null
+          }
+
+          if (!usuario.estado) {
+            console.log('❌ Usuario bloqueado/inactivo:', username, {
+              bloqueado_en: usuario.bloqueado_en,
+              motivo_bloqueo: usuario.motivo_bloqueo
+            })
+            return null
+          }
+
+          if (usuario.trabajador && (!usuario.trabajador.activo || usuario.trabajador.eliminado)) {
+            console.log('❌ Trabajador asociado no apto para login:', username, {
+              activo: usuario.trabajador.activo,
+              eliminado: usuario.trabajador.eliminado
+            })
+            return null
+          }
+
+          const ahora = new Date()
+          const tienePasswordTemporal = Boolean(usuario.password_temporal)
+          const expiracionTemporal = usuario.password_temporal_expira ? new Date(usuario.password_temporal_expira) : null
+          const temporalVigente = tienePasswordTemporal && (!expiracionTemporal || expiracionTemporal >= ahora)
+
+          let requiereCambioPassword = Boolean(usuario.requiere_cambio_password)
+          let passwordValido = false
+
+          if (requiereCambioPassword) {
+            if (!temporalVigente) {
+              console.log('❌ Contraseña temporal expirada o ausente para usuario que requiere cambio:', username)
+              if (!usuario.envio_credenciales_pendiente) {
+                await prisma.usuario.update({
+                  where: { id_usuario: usuario.id_usuario },
+                  data: { envio_credenciales_pendiente: true, ultimo_error_envio: 'Contraseña temporal expirada. Reenviar credenciales.' }
+                })
+              }
+              return null
+            }
+            passwordValido = await bcrypt.compare(password, usuario.password_temporal as string)
+            if (!passwordValido) {
+              console.log('❌ Contraseña temporal incorrecta para usuario:', username)
+              return null
+            }
+          } else {
+            passwordValido = await bcrypt.compare(password, usuario.password)
+
+            if (!passwordValido && temporalVigente) {
+              const passwordTemporalValido = await bcrypt.compare(password, usuario.password_temporal as string)
+              if (passwordTemporalValido) {
+                requiereCambioPassword = true
+                passwordValido = true
+              }
+            }
+
+            if (!passwordValido) {
+              console.log("❌ Contraseña incorrecta para usuario:", username)
+              return null
+            }
           }
 
           console.log("✅ Login exitoso para:", usuario.nombre_usuario)
@@ -86,7 +145,8 @@ export const authOptions: NextAuthOptions = {
             email: usuario.persona.correo || "",
             username: usuario.nombre_usuario,
             role: usuario.rol.nombre_rol,
-            image: usuario.imagen_usuario
+            image: usuario.imagen_usuario,
+            requiresPasswordChange: requiereCambioPassword
           }
         } catch (error) {
           console.error("❌ Error en autenticación:", error)
@@ -100,6 +160,7 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.username = user.username
         token.role = user.role
+        token.requiresPasswordChange = (user as unknown as { requiresPasswordChange?: boolean }).requiresPasswordChange ?? false
       }
       return token
     },
@@ -108,6 +169,7 @@ export const authOptions: NextAuthOptions = {
         session.user.id = token.sub || ""
         session.user.username = token.username as string
         session.user.role = token.role as string
+        session.user.requiresPasswordChange = Boolean(token.requiresPasswordChange)
       }
       return session
     }

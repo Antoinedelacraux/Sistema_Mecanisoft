@@ -219,10 +219,19 @@ model Usuario {
   id_rol         Int
   nombre_usuario String   @unique @db.VarChar(50)
   password       String   @db.VarChar(255)
+  password_temporal        String?   @db.VarChar(255)
+  password_temporal_expira DateTime?
+  requiere_cambio_password Boolean   @default(false)
+  ultimo_cambio_password   DateTime?
   imagen_usuario String?  @db.Text
   fecha_creacion DateTime @default(now())
   estado         Boolean  @default(true)
   estatus        Boolean  @default(true)
+  envio_credenciales_pendiente Boolean  @default(false)
+  ultimo_envio_credenciales    DateTime?
+  ultimo_error_envio          String?   @db.Text
+  bloqueado_en                DateTime?
+  motivo_bloqueo              String?   @db.Text
 
   persona                   Persona               @relation(fields: [id_persona], references: [id_persona], onDelete: Cascade)
   rol                       Rol                   @relation(fields: [id_rol], references: [id_rol])

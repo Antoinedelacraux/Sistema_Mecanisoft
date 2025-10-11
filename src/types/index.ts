@@ -106,6 +106,56 @@ export type UnidadCompleta = UnidadMedida & {
   estatus: boolean
 }
 
+export type UsuarioCompleto = Usuario & {
+  persona: PersonaConEmpresa
+  rol: Rol
+  trabajador?: (Trabajador & {
+    codigo_empleado: string
+    activo: boolean
+    eliminado: boolean
+    cargo: string
+  }) | null
+  requiere_cambio_password: boolean
+  password_temporal?: string | null
+  password_temporal_expira?: Date | string | null
+  ultimo_cambio_password?: Date | string | null
+  envio_credenciales_pendiente: boolean
+  ultimo_envio_credenciales?: Date | string | null
+  ultimo_error_envio?: string | null
+  bloqueado_en?: Date | string | null
+  motivo_bloqueo?: string | null
+}
+
+export type UsuarioListadoResponse = {
+  usuarios: UsuarioCompleto[]
+  pagination: {
+    total: number
+    limit: number
+    current: number
+    pages: number
+  }
+}
+
+export type UsuarioCrearFormData = {
+  id_trabajador: number
+  nombre_usuario: string
+  correo?: string
+  rol?: string | null
+  estado: boolean
+  enviar_correo: boolean
+  password?: string | null
+  confirmar_password?: string | null
+  password_expira_en_horas: number
+}
+
+export type UsuarioActualizarFormData = {
+  nombre_usuario: string
+  correo?: string | null
+  rol?: string | null
+  estado: boolean
+  motivo_bloqueo?: string | null
+}
+
 // Tipos para formularios
 export type ClienteFormData = {
   // Datos de persona

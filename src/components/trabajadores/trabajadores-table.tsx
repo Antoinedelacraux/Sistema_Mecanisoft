@@ -61,6 +61,23 @@ export function TrabajadoresTable({ onEdit, onView, onCreateNew, refreshTrigger 
     
     const persona = getPersona(trabajador)
 
+    let motivo: string | undefined
+    if (!newStatus) {
+      motivo = window.prompt(
+        `Indica el motivo para desactivar al trabajador ${persona.nombre}:`,
+        'Bloqueado desde trabajadores'
+      )?.trim()
+
+      if (!motivo) {
+        toast({
+          title: 'Acción cancelada',
+          description: 'Debes indicar un motivo para desactivar al trabajador.',
+          variant: 'warning'
+        })
+        return
+      }
+    }
+
     if (!confirm(`¿${newStatus ? 'Activar' : 'Desactivar'} al trabajador ${persona.nombre}?`)) {
       return
     }
@@ -71,7 +88,8 @@ export function TrabajadoresTable({ onEdit, onView, onCreateNew, refreshTrigger 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'toggle_status',
-          activo: newStatus
+          activo: newStatus,
+          motivo: motivo ?? undefined
         })
       })
 
