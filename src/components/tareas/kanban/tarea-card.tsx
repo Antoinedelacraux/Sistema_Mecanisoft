@@ -63,8 +63,11 @@ export function TareaCard({ tarea, isDragging = false, onUpdateTarea }: TareaCar
   const itemCodigo = itemServicio?.codigo_servicio ?? itemProducto?.codigo_producto ?? '—'
   const vehiculo = transaccion?.transaccion_vehiculos?.[0]?.vehiculo
   const cliente = transaccion?.persona
-  const trabajadorNombre = tarea.trabajador
-    ? `${tarea.trabajador.usuario.persona.nombre} ${tarea.trabajador.usuario.persona.apellido_paterno ?? ''}`.trim()
+  const personaTrabajador = tarea.trabajador
+    ? tarea.trabajador.usuario?.persona ?? tarea.trabajador.persona
+    : null
+  const trabajadorNombre = personaTrabajador
+    ? `${personaTrabajador.nombre} ${personaTrabajador.apellido_paterno ?? ''}`.trim()
     : null
   const codigoOrden = transaccion?.codigo_transaccion ?? '—'
   const prioridad = transaccion?.prioridad ?? 'media'

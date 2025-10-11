@@ -176,9 +176,14 @@ export default function OrdenesPage() {
                     <div>
                       <h4 className="font-semibold">Mecánico Responsable</h4>
                       <div className="mt-2 p-3 border rounded-lg">
-                        <p className="font-medium">
-                          {selectedOrden.trabajador_principal.usuario.persona.nombre} {selectedOrden.trabajador_principal.usuario.persona.apellido_paterno}
-                        </p>
+                        {(() => {
+                          const persona = selectedOrden.trabajador_principal?.usuario?.persona ?? selectedOrden.trabajador_principal?.persona
+                          return (
+                            <p className="font-medium">
+                              {persona ? `${persona.nombre} ${persona.apellido_paterno}` : 'Sin datos de contacto'}
+                            </p>
+                          )
+                        })()}
                         <p className="text-sm text-gray-600">{selectedOrden.trabajador_principal.codigo_empleado}</p>
                       </div>
                     </div>
@@ -521,7 +526,8 @@ interface OrdenEditSimpleProps {
 interface TrabajadorOption {
   id_trabajador: number
   codigo_empleado: string
-  usuario: { persona: { nombre: string; apellido_paterno: string } }
+  persona?: { nombre: string; apellido_paterno: string } | null
+  usuario?: { persona?: { nombre: string; apellido_paterno: string } | null } | null
 }
 
 function OrdenEditSimple({ orden, onSuccess, onCancel, onOrdenUpdated }: OrdenEditSimpleProps) {
@@ -599,11 +605,15 @@ function OrdenEditSimple({ orden, onSuccess, onCancel, onOrdenUpdated }: OrdenEd
               <SelectTrigger className="mt-1"><SelectValue placeholder="Sin asignar" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="NONE">Sin asignar</SelectItem>
-                {trabajadores.map(t => (
-                  <SelectItem key={t.id_trabajador} value={String(t.id_trabajador)}>
-                    {t.usuario.persona.nombre} {t.usuario.persona.apellido_paterno} ({t.codigo_empleado})
-                  </SelectItem>
-                ))}
+                {trabajadores.map(t => {
+                  const persona = t.usuario?.persona ?? t.persona
+                  const nombreCompleto = persona ? `${persona.nombre} ${persona.apellido_paterno}`.trim() : 'Sin datos'
+                  return (
+                    <SelectItem key={t.id_trabajador} value={String(t.id_trabajador)}>
+                      {nombreCompleto} ({t.codigo_empleado})
+                    </SelectItem>
+                  )
+                })}
               </SelectContent>
             </Select>
           </div>

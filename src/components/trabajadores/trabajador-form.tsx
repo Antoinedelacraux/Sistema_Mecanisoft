@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm, SubmitHandler } from 'react-hook-form'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { TrabajadorFormData, TrabajadorCompleto } from '@/types'
 import { useToast } from '@/components/ui/use-toast'
 import { User, Settings, DollarSign } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
 
 interface TrabajadorFormProps {
   trabajador?: TrabajadorCompleto
@@ -25,6 +26,41 @@ export function TrabajadorForm({ trabajador, onSuccess, onCancel }: TrabajadorFo
   
   const { toast } = useToast()
 
+  const personaBase = trabajador ? (trabajador.usuario?.persona ?? trabajador.persona) : undefined
+
+  const decimalToNumber = (value: unknown): number | undefined => {
+    if (value == null || value === '') return undefined
+    if (typeof value === 'number') return value
+    if (typeof value === 'string') {
+      const parsed = Number(value)
+      return Number.isNaN(parsed) ? undefined : parsed
+    }
+    if (typeof value === 'object') {
+      const obj = value as { toNumber?: () => number; toString?: () => string }
+      if (typeof obj?.toNumber === 'function') {
+        return obj.toNumber()
+      }
+      if (typeof obj?.toString === 'function') {
+        const parsed = Number(obj.toString())
+        return Number.isNaN(parsed) ? undefined : parsed
+      }
+    }
+    return undefined
+  }
+
+  const formatDateInput = (value?: Date | string | null) => {
+    if (!value) return ''
+    const date = value instanceof Date ? value : new Date(value)
+    if (Number.isNaN(date.getTime())) return ''
+    return date.toISOString().slice(0, 10)
+  }
+
+  const normalizeNumericInput = (value: unknown): number | undefined => {
+    if (value === undefined || value === null || value === '') return undefined
+    const numberValue = typeof value === 'number' ? value : Number(value)
+    return Number.isNaN(numberValue) ? undefined : numberValue
+  }
+
   const {
     register,
     handleSubmit,
@@ -34,34 +70,97 @@ export function TrabajadorForm({ trabajador, onSuccess, onCancel }: TrabajadorFo
   } = useForm<TrabajadorFormData>({
     defaultValues: trabajador
       ? {
-          nombre: trabajador.usuario.persona.nombre,
-          apellido_paterno: trabajador.usuario.persona.apellido_paterno,
-          apellido_materno: trabajador.usuario.persona.apellido_materno || '',
-          tipo_documento: trabajador.usuario.persona.tipo_documento,
-          numero_documento: trabajador.usuario.persona.numero_documento,
-          telefono: trabajador.usuario.persona.telefono || '',
-          correo: trabajador.usuario.persona.correo || '',
-          nombre_usuario: trabajador.usuario.nombre_usuario,
-          // password se deja vacío intencionalmente; definimos string vacío
+          nombre: personaBase?.nombre ?? '',
+          apellido_paterno: personaBase?.apellido_paterno ?? '',
+          apellido_materno: personaBase?.apellido_materno ?? '',
+          tipo_documento: personaBase?.tipo_documento ?? 'DNI',
+          numero_documento: personaBase?.numero_documento ?? '',
+          telefono: personaBase?.telefono ?? '',
+          correo: personaBase?.correo ?? '',
+          direccion: personaBase?.direccion ?? '',
+          fecha_nacimiento: formatDateInput(personaBase?.fecha_nacimiento ?? undefined),
+          nombre_usuario: trabajador.usuario?.nombre_usuario ?? '',
           password: '',
+          crear_usuario: Boolean(trabajador.usuario),
+          rol_usuario: trabajador.usuario?.rol?.nombre_rol ?? '',
+          cargo: trabajador.cargo,
           especialidad: trabajador.especialidad,
           nivel_experiencia: trabajador.nivel_experiencia,
-          tarifa_hora: typeof trabajador.tarifa_hora === 'number'
-            ? trabajador.tarifa_hora
-            : (typeof (trabajador.tarifa_hora as any)?.toNumber === 'function'
-                ? (trabajador.tarifa_hora as any).toNumber()
-                : Number(trabajador.tarifa_hora))
+          tarifa_hora: decimalToNumber(trabajador.tarifa_hora) ?? 0,
+          fecha_ingreso: formatDateInput(trabajador.fecha_ingreso),
+          sueldo_mensual: decimalToNumber(trabajador.sueldo_mensual),
         }
       : {
-          tarifa_hora: 0
+          nombre: '',
+          apellido_paterno: '',
+          apellido_materno: '',
+          tipo_documento: 'DNI',
+          numero_documento: '',
+          telefono: '',
+          correo: '',
+          direccion: '',
+          fecha_nacimiento: '',
+          crear_usuario: false,
+          nombre_usuario: '',
+          password: '',
+          rol_usuario: '',
+          cargo: '',
+          especialidad: '',
+          nivel_experiencia: '',
+          tarifa_hora: 0,
+          fecha_ingreso: '',
+          sueldo_mensual: undefined,
         }
   })
 
   const tipoDocumento = watch('tipo_documento')
+  const especialidadSeleccionada = watch('especialidad')
+  const nivelExperienciaSeleccionado = watch('nivel_experiencia')
+  const crearUsuario = watch('crear_usuario') || false
+  const tieneUsuario = Boolean(trabajador?.usuario)
+  const mostrarCamposUsuario = tieneUsuario || crearUsuario
+
+  useEffect(() => {
+    register('tipo_documento', { required: 'El tipo de documento es requerido' })
+    register('especialidad', { required: 'Selecciona una especialidad' })
+    register('nivel_experiencia', { required: 'Selecciona un nivel' })
+    register('crear_usuario')
+  }, [register])
+
+  useEffect(() => {
+    if (!crearUsuario && !tieneUsuario) {
+      setValue('nombre_usuario', '')
+      setValue('password', '')
+      setValue('rol_usuario', '')
+    }
+  }, [crearUsuario, setValue, tieneUsuario])
 
   const onSubmit: SubmitHandler<TrabajadorFormData> = async (data) => {
     try {
       setLoading(true)
+
+      const payload: TrabajadorFormData = {
+        ...data,
+        nombre: data.nombre.trim(),
+        apellido_paterno: data.apellido_paterno.trim(),
+        apellido_materno: data.apellido_materno?.trim() || undefined,
+        tipo_documento: data.tipo_documento,
+        numero_documento: data.numero_documento.trim(),
+        telefono: data.telefono?.trim() || undefined,
+        correo: data.correo?.trim() || undefined,
+        direccion: data.direccion?.trim() || undefined,
+        fecha_nacimiento: data.fecha_nacimiento || undefined,
+        cargo: data.cargo.trim(),
+        especialidad: data.especialidad.trim(),
+        nivel_experiencia: data.nivel_experiencia.trim(),
+        tarifa_hora: normalizeNumericInput(data.tarifa_hora),
+        fecha_ingreso: data.fecha_ingreso || undefined,
+        sueldo_mensual: normalizeNumericInput(data.sueldo_mensual),
+        crear_usuario: mostrarCamposUsuario,
+        nombre_usuario: mostrarCamposUsuario ? data.nombre_usuario?.trim() : undefined,
+        password: mostrarCamposUsuario && data.password ? data.password : undefined,
+        rol_usuario: mostrarCamposUsuario && data.rol_usuario ? data.rol_usuario.trim() : undefined,
+      }
 
       const url = trabajador 
         ? `/api/trabajadores/${trabajador.id_trabajador}`
@@ -74,7 +173,7 @@ export function TrabajadorForm({ trabajador, onSuccess, onCancel }: TrabajadorFo
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(data)
+        body: JSON.stringify(payload)
       })
 
       if (!response.ok) {
@@ -220,6 +319,27 @@ export function TrabajadorForm({ trabajador, onSuccess, onCancel }: TrabajadorFo
                   <p className="text-red-500 text-sm mt-1">{errors.correo.message}</p>
                 )}
               </div>
+
+              <div className="md:col-span-2">
+                <Label htmlFor="direccion">Dirección</Label>
+                <Input
+                  id="direccion"
+                  {...register('direccion')}
+                  placeholder="Dirección del trabajador"
+                />
+                {errors.direccion && (
+                  <p className="text-red-500 text-sm mt-1">{errors.direccion.message}</p>
+                )}
+              </div>
+
+              <div>
+                <Label htmlFor="fecha_nacimiento">Fecha de Nacimiento</Label>
+                <Input
+                  id="fecha_nacimiento"
+                  type="date"
+                  {...register('fecha_nacimiento')}
+                />
+              </div>
             </div>
           </div>
 
@@ -233,14 +353,15 @@ export function TrabajadorForm({ trabajador, onSuccess, onCancel }: TrabajadorFo
               <div>
                 <Label htmlFor="tipo_documento">Tipo de Documento *</Label>
                 <Select 
-                  onValueChange={(value) => setValue('tipo_documento', value)} 
-                  defaultValue={trabajador?.usuario.persona.tipo_documento || ''}
+                  value={tipoDocumento}
+                  onValueChange={(value) => setValue('tipo_documento', value, { shouldValidate: true })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccionar tipo" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="DNI">DNI</SelectItem>
+                    <SelectItem value="RUC">RUC</SelectItem>
                     <SelectItem value="CE">Carné de Extranjería</SelectItem>
                     <SelectItem value="PASAPORTE">Pasaporte</SelectItem>
                   </SelectContent>
@@ -283,17 +404,43 @@ export function TrabajadorForm({ trabajador, onSuccess, onCancel }: TrabajadorFo
               Acceso al Sistema
             </h3>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {!tieneUsuario && (
+              <div className="mb-4 flex items-center justify-between rounded-lg border border-dashed p-4">
+                <div>
+                  <p className="font-medium">Crear credenciales de acceso</p>
+                  <p className="text-sm text-muted-foreground">
+                    Habilita esta opción para que el trabajador pueda iniciar sesión en el panel.
+                  </p>
+                </div>
+                <Switch
+                  checked={crearUsuario}
+                  onCheckedChange={(value) => setValue('crear_usuario', value, { shouldDirty: true })}
+                />
+              </div>
+            )}
+
+            {tieneUsuario && (
+              <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+                Este trabajador ya cuenta con credenciales activas. Puedes actualizar su usuario, contraseña o rol.
+              </div>
+            )}
+
+            <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${!mostrarCamposUsuario ? 'opacity-50 pointer-events-none' : ''}`}>
               <div>
-                <Label htmlFor="nombre_usuario">Nombre de Usuario *</Label>
+                <Label htmlFor="nombre_usuario">Nombre de Usuario {mostrarCamposUsuario ? '*' : ''}</Label>
                 <Input
                   id="nombre_usuario"
-                  {...register('nombre_usuario', { 
-                    required: 'El nombre de usuario es requerido',
-                    minLength: { value: 3, message: 'Mínimo 3 caracteres' }
+                  {...register('nombre_usuario', {
+                    validate: (value) => {
+                      if (!mostrarCamposUsuario) return true
+                      const trimmed = value?.trim() ?? ''
+                      if (!trimmed) return 'El nombre de usuario es requerido'
+                      if (trimmed.length < 3) return 'Mínimo 3 caracteres'
+                      return true
+                    }
                   })}
                   placeholder="carlos.mecanico"
-                  disabled={!!trabajador} // No editable si ya existe
+                  disabled={!mostrarCamposUsuario}
                 />
                 {errors.nombre_usuario && (
                   <p className="text-red-500 text-sm mt-1">{errors.nombre_usuario.message}</p>
@@ -302,20 +449,38 @@ export function TrabajadorForm({ trabajador, onSuccess, onCancel }: TrabajadorFo
 
               <div>
                 <Label htmlFor="password">
-                  Contraseña {trabajador ? '(dejar vacío para mantener actual)' : '*'}
+                  Contraseña {tieneUsuario ? '(opcional)' : mostrarCamposUsuario ? '*' : ''}
                 </Label>
                 <Input
                   id="password"
                   type="password"
-                  {...register('password', trabajador ? {} : { 
-                    required: 'La contraseña es requerida',
-                    minLength: { value: 6, message: 'Mínimo 6 caracteres' }
+                  {...register('password', {
+                    validate: (value) => {
+                      if (!mostrarCamposUsuario) return true
+                      if (!tieneUsuario && !value) return 'La contraseña es requerida'
+                      if (value && value.length < 6) return 'Mínimo 6 caracteres'
+                      return true
+                    }
                   })}
-                  placeholder={trabajador ? 'Nueva contraseña' : 'Contraseña'}
+                  placeholder={tieneUsuario ? 'Nueva contraseña (opcional)' : 'Contraseña'}
+                  disabled={!mostrarCamposUsuario}
                 />
                 {errors.password && (
                   <p className="text-red-500 text-sm mt-1">{errors.password.message}</p>
                 )}
+              </div>
+
+              <div className="md:col-span-2">
+                <Label htmlFor="rol_usuario">Rol asignado (opcional)</Label>
+                <Input
+                  id="rol_usuario"
+                  {...register('rol_usuario')}
+                  placeholder="Ej. Mecánico, Recepcionista"
+                  disabled={!mostrarCamposUsuario}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Si lo dejas vacío, asignaremos un rol automáticamente según el cargo registrado.
+                </p>
               </div>
             </div>
           </div>
@@ -331,10 +496,25 @@ export function TrabajadorForm({ trabajador, onSuccess, onCancel }: TrabajadorFo
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
+                <Label htmlFor="cargo">Cargo *</Label>
+                <Input
+                  id="cargo"
+                  {...register('cargo', {
+                    required: 'El cargo es requerido',
+                    minLength: { value: 2, message: 'Mínimo 2 caracteres' }
+                  })}
+                  placeholder="Ej. Mecánico, Recepcionista"
+                />
+                {errors.cargo && (
+                  <p className="text-red-500 text-sm mt-1">{errors.cargo.message}</p>
+                )}
+              </div>
+
+              <div>
                 <Label htmlFor="especialidad">Especialidad *</Label>
                 <Select 
-                  onValueChange={(value) => setValue('especialidad', value)} 
-                  defaultValue={trabajador?.especialidad || ''}
+                  value={especialidadSeleccionada}
+                  onValueChange={(value) => setValue('especialidad', value, { shouldValidate: true })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccionar especialidad" />
@@ -358,8 +538,8 @@ export function TrabajadorForm({ trabajador, onSuccess, onCancel }: TrabajadorFo
               <div>
                 <Label htmlFor="nivel_experiencia">Nivel de Experiencia *</Label>
                 <Select 
-                  onValueChange={(value) => setValue('nivel_experiencia', value)} 
-                  defaultValue={trabajador?.nivel_experiencia || ''}
+                  value={nivelExperienciaSeleccionado}
+                  onValueChange={(value) => setValue('nivel_experiencia', value, { shouldValidate: true })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccionar nivel" />
@@ -391,6 +571,33 @@ export function TrabajadorForm({ trabajador, onSuccess, onCancel }: TrabajadorFo
                   <p className="text-red-500 text-sm mt-1">{errors.tarifa_hora.message}</p>
                 )}
               </div>
+
+              <div>
+                <Label htmlFor="fecha_ingreso">Fecha de Ingreso</Label>
+                <Input
+                  id="fecha_ingreso"
+                  type="date"
+                  {...register('fecha_ingreso')}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="sueldo_mensual">Sueldo Mensual (S/)</Label>
+                <Input
+                  id="sueldo_mensual"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  {...register('sueldo_mensual', {
+                    min: { value: 0, message: 'El sueldo no puede ser negativo' }
+                  })}
+                  placeholder="0.00"
+                />
+                {errors.sueldo_mensual && (
+                  <p className="text-red-500 text-sm mt-1">{errors.sueldo_mensual.message}</p>
+                )}
+              </div>
+
             </div>
 
             {/* Preview del código si es nuevo */}
@@ -422,9 +629,15 @@ export function TrabajadorForm({ trabajador, onSuccess, onCancel }: TrabajadorFo
                     </Badge>
                   </div>
                   <div>
-                    <Label>Fecha de Contrato</Label>
+                    <Label>Fecha de Ingreso</Label>
                     <p className="text-sm">
-                      {new Date(trabajador.fecha_contrato).toLocaleDateString('es-PE')}
+                      {trabajador.fecha_ingreso ? new Date(trabajador.fecha_ingreso).toLocaleDateString('es-PE') : '—'}
+                    </p>
+                  </div>
+                  <div>
+                    <Label>Sueldo Mensual</Label>
+                    <p className="text-sm">
+                      {trabajador.sueldo_mensual ? `S/ ${decimalToNumber(trabajador.sueldo_mensual)?.toFixed(2)}` : '—'}
                     </p>
                   </div>
                   <div>

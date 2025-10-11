@@ -216,11 +216,14 @@ export function TareasKanban({ trabajadorId, vistaPersonal = false }: TareasKanb
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value={ALL_TRABAJADORES}>Todos los mecánicos</SelectItem>
-                      {trabajadores.map((trabajador) => (
-                        <SelectItem key={trabajador.id_trabajador} value={trabajador.id_trabajador.toString()}>
-                          {trabajador.codigo_empleado} - {trabajador.usuario.persona.nombre}
-                        </SelectItem>
-                      ))}
+                      {trabajadores.map((trabajador) => {
+                        const persona = trabajador.usuario?.persona ?? trabajador.persona
+                        return (
+                          <SelectItem key={trabajador.id_trabajador} value={trabajador.id_trabajador.toString()}>
+                            {trabajador.codigo_empleado} - {persona.nombre}
+                          </SelectItem>
+                        )
+                      })}
                     </SelectContent>
                   </Select>
                 </div>

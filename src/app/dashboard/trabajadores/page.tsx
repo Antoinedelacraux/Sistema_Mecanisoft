@@ -64,6 +64,123 @@ export default function TrabajadoresPage() {
     return String(valor)
   }
 
+  const renderTrabajadorDetalle = (trabajador: TrabajadorCompleto) => {
+    const persona = trabajador.usuario?.persona ?? trabajador.persona
+    const fechaIngreso = trabajador.fecha_ingreso ? new Date(trabajador.fecha_ingreso) : null
+    const sueldo = trabajador.sueldo_mensual
+
+    return (
+      <div className="space-y-6">
+        <div>
+          <h3 className="text-2xl font-bold">Detalles del Trabajador</h3>
+          <p className="text-gray-600">Información completa del trabajador</p>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Información personal */}
+          <div className="space-y-4">
+            <h4 className="text-lg font-semibold border-b pb-2">Información Personal</h4>
+            <div className="space-y-2">
+              <div>
+                <p className="font-semibold">Nombre Completo</p>
+                <p>{persona.nombre} {persona.apellido_paterno ?? ''} {persona.apellido_materno ?? ''}</p>
+              </div>
+              <div>
+                <p className="font-semibold">Documento</p>
+                <p>{persona.tipo_documento}: {persona.numero_documento}</p>
+              </div>
+              {persona.telefono && (
+                <div>
+                  <p className="font-semibold">Teléfono</p>
+                  <p>{persona.telefono}</p>
+                </div>
+              )}
+              {persona.correo && (
+                <div>
+                  <p className="font-semibold">Correo</p>
+                  <p>{persona.correo}</p>
+                </div>
+              )}
+              {persona.direccion && (
+                <div>
+                  <p className="font-semibold">Dirección</p>
+                  <p>{persona.direccion}</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Información laboral */}
+          <div className="space-y-4">
+            <h4 className="text-lg font-semibold border-b pb-2">Información Laboral</h4>
+            <div className="space-y-2">
+              <div>
+                <p className="font-semibold">Código de Empleado</p>
+                <Badge variant="outline" className="font-mono text-lg">
+                  {trabajador.codigo_empleado ?? ''}
+                </Badge>
+              </div>
+              <div>
+                <p className="font-semibold">Especialidad</p>
+                <Badge className="bg-blue-100 text-blue-800">
+                  {trabajador.especialidad ?? ''}
+                </Badge>
+              </div>
+              <div>
+                <p className="font-semibold">Nivel</p>
+                <Badge className="bg-green-100 text-green-800">
+                  {trabajador.nivel_experiencia ?? ''}
+                </Badge>
+              </div>
+              <div>
+                <p className="font-semibold">Tarifa por Hora</p>
+                <p className="text-lg font-semibold">S/ {formatTarifa(trabajador.tarifa_hora)}</p>
+              </div>
+              <div>
+                <p className="font-semibold">Fecha de Ingreso</p>
+                <p>{fechaIngreso ? fechaIngreso.toLocaleDateString('es-PE') : '—'}</p>
+              </div>
+              <div>
+                <p className="font-semibold">Sueldo Mensual</p>
+                <p>{sueldo ? `S/ ${formatTarifa(sueldo)}` : '—'}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Estadísticas de trabajo */}
+          <div className="space-y-4">
+            <h4 className="text-lg font-semibold border-b pb-2">Estadísticas</h4>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="text-center p-3 bg-blue-50 rounded-lg">
+                <div className="text-2xl font-bold text-blue-600">
+                  {trabajador._count?.tareas_asignadas ?? 0}
+                </div>
+                <div className="text-sm text-blue-600">Tareas Asignadas</div>
+              </div>
+              <div className="text-center p-3 bg-green-50 rounded-lg">
+                <div className="text-2xl font-bold text-green-600">
+                  {trabajador._count?.ordenes_principales ?? 0}
+                </div>
+                <div className="text-sm text-green-600">Órdenes Principales</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Estado */}
+          <div className="space-y-4">
+            <h4 className="text-lg font-semibold border-b pb-2">Estado</h4>
+            <div className="flex items-center gap-2">
+              <div className={`w-3 h-3 rounded-full ${trabajador.activo ? 'bg-green-500' : 'bg-red-500'}`}></div>
+              <span className={trabajador.activo ? 'text-green-600' : 'text-red-600'}>
+                {trabajador.activo ? 'Activo' : 'Inactivo'}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -101,106 +218,7 @@ export default function TrabajadoresPage() {
             />
           )}
           
-          {modalState === 'view' && selectedTrabajador && (
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-2xl font-bold">Detalles del Trabajador</h3>
-                <p className="text-gray-600">Información completa del trabajador</p>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Información personal */}
-                <div className="space-y-4">
-                  <h4 className="text-lg font-semibold border-b pb-2">Información Personal</h4>
-                  <div className="space-y-2">
-                    <div>
-                      <p className="font-semibold">Nombre Completo</p>
-                      <p>{selectedTrabajador.usuario?.persona?.nombre ?? ''} {selectedTrabajador.usuario?.persona?.apellido_paterno ?? ''} {selectedTrabajador.usuario?.persona?.apellido_materno ?? ''}</p>
-                    </div>
-                    <div>
-                      <p className="font-semibold">Documento</p>
-                      <p>{selectedTrabajador.usuario?.persona?.tipo_documento}: {selectedTrabajador.usuario?.persona?.numero_documento}</p>
-                    </div>
-                    {selectedTrabajador.usuario?.persona?.telefono && (
-                      <div>
-                        <p className="font-semibold">Teléfono</p>
-                        <p>{selectedTrabajador.usuario.persona.telefono}</p>
-                      </div>
-                    )}
-                    {selectedTrabajador.usuario?.persona?.correo && (
-                      <div>
-                        <p className="font-semibold">Correo</p>
-                        <p>{selectedTrabajador.usuario.persona.correo}</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Información laboral */}
-                <div className="space-y-4">
-                  <h4 className="text-lg font-semibold border-b pb-2">Información Laboral</h4>
-                  <div className="space-y-2">
-                    <div>
-                      <p className="font-semibold">Código de Empleado</p>
-                      <Badge variant="outline" className="font-mono text-lg">
-                        {selectedTrabajador.codigo_empleado ?? ''}
-                      </Badge>
-                    </div>
-                    <div>
-                      <p className="font-semibold">Especialidad</p>
-                      <Badge className="bg-blue-100 text-blue-800">
-                        {selectedTrabajador.especialidad ?? ''}
-                      </Badge>
-                    </div>
-                    <div>
-                      <p className="font-semibold">Nivel</p>
-                      <Badge className="bg-green-100 text-green-800">
-                        {selectedTrabajador.nivel_experiencia ?? ''}
-                      </Badge>
-                    </div>
-                    <div>
-                      <p className="font-semibold">Tarifa por Hora</p>
-                      <p className="text-lg font-semibold">S/ {formatTarifa(selectedTrabajador.tarifa_hora)}</p>
-                    </div>
-                    <div>
-                      <p className="font-semibold">Fecha de Contrato</p>
-                      <p>{selectedTrabajador.fecha_contrato ? new Date(selectedTrabajador.fecha_contrato).toLocaleDateString('es-PE') : '—'}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Estadísticas de trabajo */}
-                <div className="space-y-4">
-                  <h4 className="text-lg font-semibold border-b pb-2">Estadísticas</h4>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="text-center p-3 bg-blue-50 rounded-lg">
-                      <div className="text-2xl font-bold text-blue-600">
-                        {selectedTrabajador._count?.tareas_asignadas ?? 0}
-                      </div>
-                      <div className="text-sm text-blue-600">Tareas Asignadas</div>
-                    </div>
-                    <div className="text-center p-3 bg-green-50 rounded-lg">
-                      <div className="text-2xl font-bold text-green-600">
-                        {selectedTrabajador._count?.ordenes_principales ?? 0}
-                      </div>
-                      <div className="text-sm text-green-600">Órdenes Principales</div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Estado */}
-                <div className="space-y-4">
-                  <h4 className="text-lg font-semibold border-b pb-2">Estado</h4>
-                  <div className="flex items-center gap-2">
-                    <div className={`w-3 h-3 rounded-full ${selectedTrabajador.activo ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                    <span className={selectedTrabajador.activo ? 'text-green-600' : 'text-red-600'}>
-                      {selectedTrabajador.activo ? 'Activo' : 'Inactivo'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+          {modalState === 'view' && selectedTrabajador && renderTrabajadorDetalle(selectedTrabajador)}
         </DialogContent>
       </Dialog>
     </div>

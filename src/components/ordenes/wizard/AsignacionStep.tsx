@@ -28,15 +28,26 @@ export function AsignacionStep({ trabajadores, trabajadorSeleccionado, setTrabaj
             <div>
               <Button variant="outline" onClick={() => setTrabajadorSeleccionado(null)} className={!trabajadorSeleccionado ? 'ring-2 ring-blue-500' : ''}>Sin asignar (asignar después)</Button>
             </div>
-            {trabajadores.map((trabajador) => (
-              <Card key={trabajador.id_trabajador} className={`cursor-pointer transition-colors ${trabajadorSeleccionado?.id_trabajador === trabajador.id_trabajador ? 'ring-2 ring-blue-500 bg-blue-50' : 'hover:bg-gray-50'}`} onClick={() => setTrabajadorSeleccionado(trabajador)}>
-                <CardContent className="p-4">
-                  <div className="font-medium">{trabajador.usuario.persona.nombre} {trabajador.usuario.persona.apellido_paterno}</div>
-                  <p className="text-sm text-gray-600">{trabajador.codigo_empleado}</p>
-                  <Badge variant="outline">{trabajador.especialidad}</Badge>
-                </CardContent>
-              </Card>
-            ))}
+            {trabajadores.map((trabajador) => {
+              const persona = trabajador.usuario?.persona ?? trabajador.persona ?? null
+              const nombreCompleto = persona ? `${persona.nombre} ${persona.apellido_paterno}`.trim() : 'Sin datos de contacto'
+              return (
+                <Card
+                  key={trabajador.id_trabajador}
+                  className={`cursor-pointer transition-colors ${trabajadorSeleccionado?.id_trabajador === trabajador.id_trabajador ? 'ring-2 ring-blue-500 bg-blue-50' : 'hover:bg-gray-50'}`}
+                  onClick={() => setTrabajadorSeleccionado(trabajador)}
+                >
+                  <CardContent className="p-4 space-y-1">
+                    <div className="font-medium">{nombreCompleto}</div>
+                    <p className="text-sm text-gray-600">{trabajador.codigo_empleado}</p>
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <Badge variant="outline">{trabajador.especialidad}</Badge>
+                      {trabajador.cargo && <span>{trabajador.cargo}</span>}
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
           </div>
         </div>
         <div className="space-y-4">

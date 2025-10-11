@@ -32,12 +32,16 @@ export interface OrdenCompleta {
   trabajador_principal?: {
     id_trabajador: number
     codigo_empleado: string
-    usuario: {
-      persona: {
+    persona?: {
+      nombre: string
+      apellido_paterno: string
+    } | null
+    usuario?: {
+      persona?: {
         nombre: string
         apellido_paterno: string
-      }
-    }
+      } | null
+    } | null
   }
   transaccion_vehiculos: Array<{
     vehiculo: {

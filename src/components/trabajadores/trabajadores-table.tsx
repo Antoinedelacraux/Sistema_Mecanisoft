@@ -54,10 +54,14 @@ export function TrabajadoresTable({ onEdit, onView, onCreateNew, refreshTrigger 
     }
   }, [refreshTrigger, fetchTrabajadores])
 
+  const getPersona = (trabajador: TrabajadorCompleto) => trabajador.usuario?.persona ?? trabajador.persona
+
   const handleToggleStatus = async (trabajador: TrabajadorCompleto) => {
     const newStatus = !trabajador.activo
     
-    if (!confirm(`¿${newStatus ? 'Activar' : 'Desactivar'} al trabajador ${trabajador.usuario.persona.nombre}?`)) {
+    const persona = getPersona(trabajador)
+
+    if (!confirm(`¿${newStatus ? 'Activar' : 'Desactivar'} al trabajador ${persona.nombre}?`)) {
       return
     }
 
@@ -75,7 +79,7 @@ export function TrabajadoresTable({ onEdit, onView, onCreateNew, refreshTrigger 
 
       toast({
         title: `Trabajador ${newStatus ? 'activado' : 'desactivado'}`,
-        description: `${trabajador.usuario.persona.nombre} ha sido ${newStatus ? 'activado' : 'desactivado'}`,
+        description: `${persona.nombre} ha sido ${newStatus ? 'activado' : 'desactivado'}`,
       })
 
       fetchTrabajadores()
@@ -89,8 +93,9 @@ export function TrabajadoresTable({ onEdit, onView, onCreateNew, refreshTrigger 
   }
 
   const filteredTrabajadores = trabajadores.filter((trabajador) => {
-    const nombre = (trabajador.usuario?.persona?.nombre ?? '').toLowerCase()
-    const apellido = (trabajador.usuario?.persona?.apellido_paterno ?? '').toLowerCase()
+    const persona = getPersona(trabajador)
+    const nombre = (persona?.nombre ?? '').toLowerCase()
+    const apellido = (persona?.apellido_paterno ?? '').toLowerCase()
     const codigo = (trabajador.codigo_empleado ?? '').toLowerCase()
     const especialidad = (trabajador.especialidad ?? '').toLowerCase()
     const q = search.toLowerCase()
@@ -218,19 +223,23 @@ export function TrabajadoresTable({ onEdit, onView, onCreateNew, refreshTrigger 
                     className={!trabajador.activo ? "bg-gray-50 opacity-75" : ""}
                   >
                     <TableCell className={!trabajador.activo ? "text-gray-500" : ""}>
-                      <div>
-                        <div className="font-medium">
-                          {trabajador.usuario?.persona?.nombre ?? ''} {trabajador.usuario?.persona?.apellido_paterno ?? ''}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          {trabajador.usuario?.nombre_usuario ?? ''}
-                        </div>
-                        {trabajador.usuario.persona.telefono && (
-                          <div className="text-sm text-gray-500">
-                            📞 {trabajador.usuario.persona.telefono}
+                      {(() => {
+                        const persona = getPersona(trabajador)
+                        const nombreUsuario = trabajador.usuario?.nombre_usuario
+                        return (
+                          <div>
+                            <div className="font-medium">
+                              {persona?.nombre ?? ''} {persona?.apellido_paterno ?? ''}
+                            </div>
+                            {nombreUsuario && (
+                              <div className="text-sm text-gray-500">{nombreUsuario}</div>
+                            )}
+                            {persona?.telefono && (
+                              <div className="text-sm text-gray-500">📞 {persona.telefono}</div>
+                            )}
                           </div>
-                        )}
-                      </div>
+                        )
+                      })()}
                     </TableCell>
                     
                     <TableCell>

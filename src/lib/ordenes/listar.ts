@@ -101,7 +101,7 @@ export async function listarOrdenes(prisma: PrismaClient, params: ListarOrdenesP
   const includeFull: IncludeLight = {
     persona: true,
     usuario: { include: { persona: true } },
-    trabajador_principal: { include: { usuario: { include: { persona: true } } } },
+    trabajador_principal: { include: { persona: true, usuario: { include: { persona: true } } } },
     transaccion_vehiculos: {
       include: {
         vehiculo: {
@@ -126,7 +126,13 @@ export async function listarOrdenes(prisma: PrismaClient, params: ListarOrdenesP
 
   const includeLight: IncludeLight = {
     persona: { select: { nombre: true, apellido_paterno: true } },
-    trabajador_principal: { select: { id_trabajador: true } },
+    trabajador_principal: {
+      select: {
+        id_trabajador: true,
+        codigo_empleado: true,
+        persona: { select: { nombre: true, apellido_paterno: true } }
+      }
+    },
     transaccion_vehiculos: { include: { vehiculo: { select: { placa: true } } } },
     _count: { select: { detalles_transaccion: true } }
   }

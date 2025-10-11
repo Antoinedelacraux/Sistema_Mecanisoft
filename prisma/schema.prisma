@@ -140,6 +140,7 @@ model Persona {
   nombre_comercial  String?         @db.VarChar(150)
   registrar_empresa Boolean         @default(false)
   fecha_nacimiento  DateTime?       @db.Date
+  direccion         String?         @db.VarChar(200)
   fecha_registro    DateTime        @default(now())
   estatus           Boolean         @default(true)
   empresa_persona   EmpresaPersona?
@@ -148,6 +149,7 @@ model Persona {
   cliente       Cliente?
   proveedor     Proveedor?
   usuario       Usuario?
+  trabajador    Trabajador?
   transacciones Transaccion[]
   comprobantes  Comprobante[]
 
@@ -242,17 +244,22 @@ model Usuario {
 
 model Trabajador {
   id_trabajador     Int      @id @default(autoincrement())
-  id_usuario        Int      @unique
+  id_usuario        Int?     @unique
+  id_persona        Int      @unique
   codigo_empleado   String   @unique
+  cargo             String   @db.VarChar(100)
   especialidad      String   @db.VarChar(100)
   nivel_experiencia String   @db.VarChar(20) // 'Junior', 'Senior', 'Especialista'
   tarifa_hora       Decimal  @default(0) @db.Decimal(8, 2)
-  fecha_contrato    DateTime @default(now())
+  fecha_ingreso     DateTime @default(now())
+  sueldo_mensual    Decimal? @db.Decimal(10, 2)
   activo            Boolean  @default(true)
+  eliminado         Boolean  @default(false)
   created_at        DateTime @default(now())
   updated_at        DateTime @updatedAt
 
-  usuario                      Usuario                 @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade)
+  usuario                      Usuario?                @relation(fields: [id_usuario], references: [id_usuario], onDelete: SetNull)
+  persona                      Persona                 @relation(fields: [id_persona], references: [id_persona], onDelete: Cascade)
   tareas_asignadas             Tarea[]
   ordenes_principales          TransaccionTrabajador[] @relation("Trabajador_Ordenes")
   ordenes_principales_directas Transaccion[]           @relation("TrabajadorPrincipal")

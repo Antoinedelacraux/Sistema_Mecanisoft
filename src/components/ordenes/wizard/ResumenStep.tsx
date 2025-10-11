@@ -83,11 +83,20 @@ export function ResumenStep({ clienteSeleccionado, vehiculoSeleccionado, trabaja
             <Card>
               <CardHeader><CardTitle className="text-base">Mecánico Asignado</CardTitle></CardHeader>
               <CardContent>
-                <div>
-                  <p className="font-medium">{trabajadorSeleccionado.usuario.persona.nombre} {trabajadorSeleccionado.usuario.persona.apellido_paterno}</p>
-                  <p className="text-sm text-gray-600">{trabajadorSeleccionado.codigo_empleado}</p>
-                  <Badge variant="outline">{trabajadorSeleccionado.especialidad}</Badge>
-                </div>
+                {(() => {
+                  const persona = trabajadorSeleccionado.usuario?.persona ?? trabajadorSeleccionado.persona ?? null
+                  const nombreCompleto = persona ? `${persona.nombre} ${persona.apellido_paterno}`.trim() : 'Sin datos de contacto'
+                  return (
+                    <div>
+                      <p className="font-medium">{nombreCompleto}</p>
+                      <p className="text-sm text-gray-600">{trabajadorSeleccionado.codigo_empleado}</p>
+                      <div className="flex flex-wrap gap-2 mt-1 text-xs text-muted-foreground">
+                        <Badge variant="outline">{trabajadorSeleccionado.especialidad}</Badge>
+                        {trabajadorSeleccionado.cargo && <span>{trabajadorSeleccionado.cargo}</span>}
+                      </div>
+                    </div>
+                  )
+                })()}
               </CardContent>
             </Card>
           )}

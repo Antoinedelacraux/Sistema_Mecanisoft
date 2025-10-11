@@ -17,6 +17,10 @@ export function OrdenesTableRow({ orden, onView, onEdit, onKanban, onFacturar, o
   const vehiculo = orden.transaccion_vehiculos[0]?.vehiculo
   const detallesCount = orden._count?.detalles_transaccion ?? orden.detalles_transaccion.length
   const progreso = orden.progreso?.porcentaje ?? 0
+  const progresoClamped = Math.max(0, Math.min(100, progreso))
+  const progresoColor = progresoClamped === 100 ? '#22c55e' : progresoClamped > 50 ? '#3b82f6' : '#9ca3af'
+  const personaOrden = orden.persona
+  const personaTrabajador = orden.trabajador_principal?.usuario?.persona ?? orden.trabajador_principal?.persona ?? null
 
   const estadoBadge = getEstadoBadgeData(orden.estado_orden)
   const prioridadBadge = getPrioridadBadgeData(orden.prioridad)
@@ -32,9 +36,9 @@ export function OrdenesTableRow({ orden, onView, onEdit, onKanban, onFacturar, o
         <div className="space-y-1">
           <div className="flex items-center justify-center gap-2">
             <User className="w-4 h-4 text-gray-400" />
-            <span className="font-medium">{orden.persona.nombre} {orden.persona.apellido_paterno}</span>
+            <span className="font-medium">{personaOrden.nombre} {personaOrden.apellido_paterno}</span>
           </div>
-          <div className="text-xs text-muted-foreground">{orden.persona.numero_documento}</div>
+          <div className="text-xs text-muted-foreground">{personaOrden.numero_documento}</div>
           {vehiculo && (
             <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
               <Car className="w-4 h-4 text-gray-400" />
@@ -46,7 +50,7 @@ export function OrdenesTableRow({ orden, onView, onEdit, onKanban, onFacturar, o
       <td className="align-middle">
         {orden.trabajador_principal ? (
           <div className="space-y-1">
-            <div className="font-medium text-sm">{orden.trabajador_principal.usuario.persona.nombre} {orden.trabajador_principal.usuario.persona.apellido_paterno}</div>
+            <div className="font-medium text-sm">{personaTrabajador?.nombre ?? ''} {personaTrabajador?.apellido_paterno ?? ''}</div>
             <Badge variant="outline" className="text-xs">{orden.trabajador_principal.codigo_empleado}</Badge>
           </div>
         ) : (
@@ -55,12 +59,11 @@ export function OrdenesTableRow({ orden, onView, onEdit, onKanban, onFacturar, o
       </td>
       <td className="align-middle">
         <div className="space-y-2">
-          <div className="text-sm font-medium">{progreso}%</div>
-          <div className="w-full bg-gray-200 rounded-full h-2">
-            <div
-              className={`h-2 rounded-full transition-all ${progreso === 100 ? 'bg-green-500' : progreso > 50 ? 'bg-blue-500' : 'bg-gray-400'}`}
-              style={{ width: `${progreso}%` }}
-            />
+          <div className="text-sm font-medium">{progresoClamped}%</div>
+          <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+            <svg viewBox="0 0 100 4" className="w-full h-full">
+              <rect width={progresoClamped} height="4" rx="2" fill={progresoColor} />
+            </svg>
           </div>
           <div className="text-xs text-muted-foreground">{detallesCount} item{detallesCount !== 1 ? 's' : ''}</div>
         </div>

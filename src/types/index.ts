@@ -204,13 +204,20 @@ export type TrabajadorFormData = {
   numero_documento: string
   telefono?: string
   correo?: string
+  direccion?: string
+  fecha_nacimiento?: string
   // Datos de usuario
-  nombre_usuario: string
-  password: string
+  nombre_usuario?: string
+  password?: string
+  crear_usuario?: boolean
+  rol_usuario?: string | null
   // Datos de trabajador
+  cargo: string
   especialidad: string
   nivel_experiencia: string
   tarifa_hora?: number
+  fecha_ingreso?: string
+  sueldo_mensual?: number
 }
 export type CotizacionFormData = {
   id_cliente: number
@@ -258,10 +265,11 @@ export type SelectOption = {
 
 // ✅ Tipos para trabajadores y relacionados
 export type TrabajadorCompleto = Trabajador & {
-  usuario: Usuario & {
+  persona: PersonaConEmpresa
+  usuario?: (Usuario & {
     persona: PersonaConEmpresa
     rol: Rol
-  }
+  }) | null
   _count: {
     tareas_asignadas: number
     ordenes_principales: number

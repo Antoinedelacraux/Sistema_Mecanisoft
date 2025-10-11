@@ -33,7 +33,7 @@ export function OrdenEditModal({ open, onClose, orden, onSave, loading, trabajad
   }, [orden])
 
   const options = useMemo(() => trabajadores.map((t) => {
-    const persona = t.usuario.persona
+    const persona = t.usuario?.persona ?? t.persona
     const apellidoMaterno = persona?.apellido_materno ? ` ${persona.apellido_materno}` : ''
     return {
       id: t.id_trabajador,

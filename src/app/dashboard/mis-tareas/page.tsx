@@ -63,6 +63,8 @@ export default function MisTareasPage() {
     )
   }
 
+  const persona = trabajador.usuario?.persona ?? trabajador.persona
+
   return (
     <div className="space-y-6">
       {/* Header personalizado */}
@@ -71,7 +73,7 @@ export default function MisTareasPage() {
           Mis Tareas - {trabajador.codigo_empleado}
         </h1>
         <p className="text-gray-600 mt-2">
-          Hola {trabajador.usuario.persona.nombre}, aquí están tus tareas asignadas
+          Hola {persona.nombre}, aquí están tus tareas asignadas
         </p>
         
         {/* Info del trabajador */}
