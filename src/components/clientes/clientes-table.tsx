@@ -43,8 +43,32 @@ export function ClientesTable({ onEdit, onView, onCreateNew, refreshTrigger }: C
         ...(search && { search })
       })
 
-      const response = await fetch(`/api/clientes?${params}`)
-      if (!response.ok) throw new Error('Error al cargar clientes')
+      const response = await fetch(`/api/clientes?${params}`, {
+        credentials: 'include',
+        cache: 'no-store'
+      })
+
+      if (!response.ok) {
+        let message = 'Error al cargar clientes'
+        try {
+          const errorBody = await response.json()
+          if (errorBody?.error) {
+            message = `${message}: ${errorBody.error}`
+          } else if (typeof errorBody === 'string' && errorBody.trim().length > 0) {
+            message = `${message}: ${errorBody}`
+          }
+        } catch {
+          const errorText = await response.text().catch(() => '')
+          if (errorText) {
+            message = `${message}: ${errorText}`
+          } else if (response.statusText) {
+            message = `${message}: ${response.statusText}`
+          }
+        }
+
+        message = `${message} (HTTP ${response.status})`
+        throw new Error(message)
+      }
 
       const data = await response.json()
       setClientes(data.clientes)
@@ -95,6 +119,7 @@ export function ClientesTable({ onEdit, onView, onCreateNew, refreshTrigger }: C
     try {
       const response = await fetch(`/api/clientes/${cliente.id_cliente}`, {
         method: 'PATCH',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json'
         },
@@ -125,7 +150,8 @@ export function ClientesTable({ onEdit, onView, onCreateNew, refreshTrigger }: C
 
     try {
       const response = await fetch(`/api/clientes/${cliente.id_cliente}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        credentials: 'include'
       })
 
       if (!response.ok) throw new Error('Error al eliminar cliente')

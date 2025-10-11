@@ -19,7 +19,9 @@ import {
   Wrench,
   ShoppingCart,
   ClipboardList,
-  Clock
+  Clock,
+  Receipt,
+  Boxes
 } from "lucide-react"
 
 const menuItems = [
@@ -47,6 +49,11 @@ const menuItems = [
     title: "Productos",
     icon: Package,
     href: "/dashboard/productos",
+  },
+  {
+    title: "Inventario",
+    icon: Boxes,
+    href: "/dashboard/inventario",
   },
   {
     title: "Servicios",
@@ -77,6 +84,11 @@ const menuItems = [
     title: "Cotizaciones",
     icon: ClipboardList,
     href: "/dashboard/cotizaciones",
+  },
+  {
+    title: "Facturación",
+    icon: Receipt,
+    href: "/dashboard/facturacion",
   },
   {
     title: "Ventas",

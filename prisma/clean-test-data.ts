@@ -1,6 +1,15 @@
 import { prisma } from '../src/lib/prisma'
 
 async function main() {
+  // Inventario
+  await prisma.reservaInventario.deleteMany({})
+  await prisma.bitacoraInventario.deleteMany({})
+  await prisma.movimientoTransferencia.deleteMany({})
+  await prisma.movimientoInventario.deleteMany({})
+  await prisma.inventarioProducto.deleteMany({})
+  await prisma.almacenUbicacion.deleteMany({})
+  await prisma.almacen.deleteMany({})
+
   // Eliminar tareas
   await prisma.tarea.deleteMany({})
 

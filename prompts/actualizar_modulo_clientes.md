@@ -1,135 +1,132 @@
-### CONTEXTO DEL MÓDULO
+## Actualización del módulo de clientes (Q4 2025)
 
-Módulo de **clientes (personas)** del sistema del taller mecánico.
-
-Actualmente, cada cliente se registra en la tabla `persona`, con los siguientes campos:
-- tipo_documento (DNI, RUC, CE, Pasaporte)
-- numero_documento
-- nombres
-- apellido_paterno
-- apellido_materno
-- sexo
-- telefono
-- correo
-- fecha_registro
-- estatus
-- registrar_empresa (opcional, tipo booleano)
-
-El campo `registrar_empresa` actualmente no tiene un comportamiento definido, por lo que se utilizará para **determinar si la persona desea registrar una empresa asociada**.  
-El sistema permite registrar solo **una identidad por persona**, pero ahora se requiere manejar **casos mixtos** donde una persona natural también pueda tener una **empresa asociada**, o registrar directamente una persona natural con RUC.  
-
-Además, se considera que más adelante se implementará un módulo de **proveedores**, por lo que la tabla de empresas asociadas a personas se llamará **`empresa_persona`**, evitando conflictos futuros con otras tablas como `empresa_proveedor`.
+Este documento resume el estado actual del módulo de clientes tras la refactorización completada en octubre de 2025. Incluye la arquitectura de datos, reglas de negocio, comportamiento del frontend, API disponibles, validaciones y pruebas.
 
 ---
 
-### NUEVOS REQUERIMIENTOS
+## Panorama general
 
-#### 1. Tipos de clientes a soportar
-El sistema debe manejar tres tipos de registros:
-
-1. **Persona natural (DNI / CE / Pasaporte)**
-   - Se registran nombres y apellidos normalmente.
-   - Solo puede emitir **boletas**.
-   - El campo `registrar_empresa` indica si desea asociar una empresa.
-     - Si se marca, se abre un formulario adicional (ver punto 2).
-
-2. **Persona natural con RUC (persona con negocio propio)**
-   - Tipo de documento: RUC.
-   - Campos: nombres, apellidos, RUC, opcional “nombre comercial”.
-   - Puede emitir **facturas directamente**, sin requerir una empresa asociada.
-   - No se utiliza el campo `registrar_empresa`.
-   - No se crea registro en `empresa_persona`.
-
-3. **Persona jurídica (empresa)**
-   - Cliente principal: persona natural (DNI, CE, Pasaporte) que actúa como representante.
-   - Si `registrar_empresa` es TRUE, se abre formulario para registrar:
-     - RUC
-     - Razón social
-     - Nombre comercial (opcional)
-     - Dirección fiscal
-   - Estos datos se guardan en la tabla `empresa_persona`, relacionada con `persona` mediante una FK `persona_id`.
-   - Esta empresa podrá emitir **facturas**.
+- **Tipos de cliente soportados**
+   1. **Persona natural** (DNI, CE o Pasaporte) con opción de asociar una empresa (persona jurídica).
+   2. **Persona natural con RUC** (emprendedor). Puede facturar directamente sin empresa asociada.
+   3. **Persona jurídica** registrada como empresa vinculada a una persona natural representante.
+- **Validaciones centralizadas** en `src/lib/clientes/validation.ts` usando Prisma y errores tipados (`ClienteValidationError`).
+- **Auditoría**: todas las operaciones de creación/actualización se registran en bitácora (ver API de clientes).
+- **Seeds**: `prisma/seed.ts` incluye clientes representativos para cada tipo.
 
 ---
 
-### 2. Cambios requeridos en el formulario
+## Modelo de datos
 
-- Mostrar selector `Tipo de documento`: [DNI, RUC, CE, Pasaporte].
-- Si selecciona **RUC**:
-  - Mostrar campo “Nombre comercial (opcional)”.
-  - Ocultar casilla de “Registrar empresa”.
-  - Ignorar el valor del campo `registrar_empresa`.
-- Si selecciona **DNI**, **CE** o **Pasaporte**:
-  - Mostrar casilla `[ ] Registrar empresa asociada`.
-  - Si se marca, mostrar subformulario con los campos de empresa.
-- Validar que no se repita el número de documento (RUC, DNI, etc.) en la base de datos.
-- Mostrar advertencia si el usuario intenta registrar una empresa cuando el tipo_documento sea RUC.
+### `Persona`
+- Campos principales: `nombre`, `apellido_paterno`, `apellido_materno`, `tipo_documento`, `numero_documento` (único), `fecha_nacimiento`, `sexo`, `telefono`, `correo`, `nombre_comercial` (solo personas con RUC), `registrar_empresa` y `estatus`.
+- Nuevos atributos:
+   - `nombre_comercial` (hasta 150 caracteres) para personas con tipo RUC.
+   - `fecha_nacimiento` obligatoria, se valida mayoría de edad (≥ 18).
+- Relaciones con `Cliente`, `Proveedor`, `Usuario` y `EmpresaPersona` con `onDelete: Cascade` para mantener consistencia referencial.
+
+### `EmpresaPersona`
+- Tabla exclusiva para empresas de clientes: `persona_id` único, `ruc` único, `razon_social`, `nombre_comercial`, `direccion_fiscal`.
+- Solo se crea cuando `registrar_empresa` es verdadero y el documento base no es un RUC.
+
+### `Cliente`
+- Relaciona una persona con el dominio comercial del taller.
+- Mantiene `estatus` y `fecha_registro` para integridad con otros módulos (cotizaciones, órdenes, facturación).
 
 ---
 
-### 3. Cambios en la base de datos
+## Validaciones clave
 
-1. **Tabla `persona`:**
-   - Mantener estructura actual.
-   - Confirmar que `registrar_empresa` sea tipo `BOOLEAN` o `TINYINT(1)` (0 = no, 1 = sí).
-   - Asegurar que `tipo_documento` acepte valores `'DNI'`, `'RUC'`, `'CE'`, `'PASAPORTE'`.
+Todas las reglas viven en `validateClientePayload`:
 
-2. **Nueva tabla `empresa_persona`:**
-   ```sql
-   CREATE TABLE empresa_persona (
-       id INT AUTO_INCREMENT PRIMARY KEY,
-       persona_id INT NOT NULL,
-       ruc VARCHAR(11) UNIQUE NOT NULL,
-       razon_social VARCHAR(150) NOT NULL,
-       nombre_comercial VARCHAR(100) NULL,
-       direccion_fiscal VARCHAR(200) NULL,
-       FOREIGN KEY (persona_id) REFERENCES persona(id)
-   );
+- **Documento:**
+   - `DNI` → 8 dígitos numéricos.
+   - `RUC` → 11 dígitos numéricos.
+   - Unicidad global por persona, y chequeo cruzado con `empresa_persona`.
+- **Edad mínima:** se calcula en el servidor; error si `< 18` años.
+- **Empresa asociada:**
+   - Solo permitida para documentos distintos a RUC.
+   - Requiere RUC válido, razón social obligatoria, y unicidad de RUC.
+   - Si el usuario intenta asociar empresa con tipo RUC se muestra mensaje: “Ya estás registrando una persona con RUC, no es necesario asociar una empresa adicional.”
+- **Nombre comercial:**
+   - Personas con RUC pueden guardar `nombre_comercial` (≤ 150 chars).
+   - Empresas asociadas también admiten nombre comercial opcional.
+- **Contacto:** formato de teléfono (6-15 dígitos) y correo válido.
 
-### 4. Validación de edades de clintes 
-1. Registrar personas mayores de 18 años, implementar calendario para elegir fecha de nacimiento.
-Agregar campo a tabla persona
+Los errores se devuelven con mensajes localizados y códigos HTTP apropiados.
 
-Validaciones
+---
 
-Si el tipo_documento es RUC y el usuario marca o intenta registrar empresa → mostrar mensaje:
+## Endpoints relevantes
 
-“Ya estás registrando una persona con RUC, no es necesario asociar una empresa adicional.”
+| Método | Ruta | Descripción |
+| --- | --- | --- |
+| `GET` | `/api/clientes` | Listado paginado con filtros por búsqueda, clasificación y estado. Devuelve estructura `ClienteCompleto`. |
+| `POST` | `/api/clientes` | Crea cliente. Usa `validateClientePayload`, persiste persona, cliente y empresa asociada cuando aplica, y registra evento en bitácora. |
+| `GET` | `/api/clientes/[id]` | Recupera cliente completo para edición, incluyendo empresa asociada. |
+| `PUT` | `/api/clientes/[id]` | Actualiza cliente existente, sincronizando persona y empresa. Mantiene transacciones en una única operación Prisma. |
+| `POST` | `/api/clientes/validar-documento` | Valida disponibilidad de DNI/RUC. Respuestas:
+   - `{ disponible: true, mensaje: 'Documento disponible' }`
+   - `{ disponible: false, mensaje: 'Este documento ya está registrado por …' }`
+      (el sufijo indica si lo posee un cliente, proveedor o usuario)
 
-Si el tipo_documento es DNI/CE/Pasaporte y el campo registrar_empresa es false, registrar solo la persona.
+Todos los endpoints requieren sesión válida vía `getServerSession(authOptions)`.
 
-Si registrar_empresa es true, crear registro en empresa_persona vinculado a la persona.
+---
 
-Validar que el RUC no se repita en empresa_persona.
+## Comportamiento del frontend (`src/components/clientes/cliente-form.tsx`)
 
-Si se elimina una persona, eliminar también su empresa asociada (ON DELETE CASCADE).
+- **Selector de tipo de documento** controla el formulario dinámico:
+   - RUC: oculta “Registrar empresa” y habilita campo `nombre_comercial` de la persona.
+   - Otros documentos: muestra checkbox “Registrar empresa” y, si se activa, despliega subformulario con RUC/razón social/dirección.
+- **Validaciones en vivo** integradas con React Hook Form + Zod (adaptadas a los mensajes del backend).
+- **Chequeo asíncrono de documento** usando `/api/clientes/validar-documento` para mostrar disponibilidad en tiempo real.
+- **Reglas de UX**:
+   - Bloquea fecha de nacimiento futura y muestra error si la edad calculada es menor a 18.
+   - Advierte si se intenta registrar empresa con tipo RUC.
+   - Normaliza espacios y mayúsculas en nombres.
 
-Si la persona no tiene 18 años o mas no se registra.
+La tabla de clientes (`src/components/clientes/clientes-table.tsx`) incorpora filtros combinables por clasificación (natural, con RUC, con empresa), estado comercial y capacidad de facturación.
 
-5. RESULTADO ESPERADO
+---
 
-Refactorizar el módulo de clientes para:
+## Semillas y datos de prueba
 
-Soportar tres tipos de registro: persona natural, persona natural con RUC y persona jurídica.
+- `prisma/seed.ts` genera:
+   - Persona natural con DNI.
+   - Persona natural con RUC (incluye nombre comercial).
+   - Persona natural + empresa asociada.
+- Permiten validar filtros, disponibilidad de documentos y comportamiento de facturación.
 
-Utilizar el campo registrar_empresa como bandera para mostrar o no el subformulario de empresa.
+---
 
-Crear automáticamente los registros en empresa_persona cuando corresponda.
+## Pruebas automatizadas
 
-Evitar registros duplicados de RUC o número de documento.
+- **Unitarias / API**: `tests/api/clientesIdApi.test.ts` y `tests/api/clientesValidarDocumentoApi.test.ts` mockean Prisma y next-auth para validar flujos de edición y verificación de documentos.
+- **Typecheck**: ejecutar `npm run lint` y `npx tsc --noEmit` antes de subir cambios.
 
-Mantener compatibilidad con los módulos de órdenes, cotizaciones y facturación.
+### Comando recomendado
 
-Adaptar la interfaz para que sea dinámica según tipo de documento.
-
-Preparar el sistema para integrar un futuro módulo de proveedores con su propia tabla empresa_proveedor.
-
-Registrar personas a partir de los 18 años.
-
-6. NOTA FINAL
-
-Después de aplicar los cambios, ejecutar:
-
+```bash
+npm exec -- jest tests/api/clientesValidarDocumentoApi.test.ts
 npx tsc --noEmit
+```
 
-para verificar que no existan errores de tipado ni conflictos con los módulos actuales.
+---
+
+## Checklist de verificación manual
+
+1. Crear cliente natural con DNI → sin empresa.
+2. Crear cliente natural con DNI + empresa asociada → verificar creación de `empresa_persona` y que la empresa aparece en la tabla.
+3. Crear cliente con RUC → confirmar que no se muestra subformulario de empresa y que se guarda `nombre_comercial`.
+4. Editar cliente existente cambiando de DNI a RUC → validar reglas de unicidad y mensajes.
+5. Eliminar cliente → asegurar cascada que remueve empresa vinculada.
+6. Probar endpoint de validación con documento repetido → recibir mensaje contextual.
+
+---
+
+## Próximos pasos sugeridos
+
+- Integrar módulo de proveedores reutilizando `empresa_persona` como referencia.
+- Añadir pruebas E2E con Playwright para cubrir el flujo completo de creación/edición.
+- Conectar la clasificación de clientes con reglas de facturación y reportes.

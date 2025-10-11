@@ -18,6 +18,12 @@ import type {
   Fabricante,
   UnidadMedida,
   EmpresaPersona,
+  Comprobante,
+  ComprobanteDetalle,
+  ComprobanteBitacora,
+  FacturacionSerie,
+  FacturacionConfig,
+  Servicio,
 } from '@prisma/client'
 
 export type PersonaConEmpresa = Persona & {
@@ -304,4 +310,38 @@ export type PagoCompleto = Pago & {
   usuario_registro: Usuario & {
     persona: PersonaConEmpresa
   }
+}
+
+export type ComprobanteDetalleCompleto = ComprobanteDetalle & {
+  producto?: Producto | null
+  servicio?: Servicio | null
+}
+
+export type ComprobanteBitacoraEvento = ComprobanteBitacora & {
+  usuario: Usuario & {
+    persona: PersonaConEmpresa
+  }
+}
+
+export type ComprobanteCompleto = Comprobante & {
+  cliente: Cliente & {
+    persona: PersonaConEmpresa
+  }
+  persona: PersonaConEmpresa
+  empresa?: EmpresaPersona | null
+  serie_rel?: FacturacionSerie | null
+  cotizacion?: CotizacionCompleta | null
+  transaccion?: Transaccion | null
+  detalles: ComprobanteDetalleCompleto[]
+  creado_por_usuario: Usuario & {
+    persona: PersonaConEmpresa
+  }
+  actualizado_por_usuario?: (Usuario & {
+    persona: PersonaConEmpresa
+  }) | null
+  bitacoras: ComprobanteBitacoraEvento[]
+}
+
+export type FacturacionConfigCompleta = FacturacionConfig & {
+  series: FacturacionSerie[]
 }

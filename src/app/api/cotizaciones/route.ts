@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { randomBytes } from 'crypto'
+import { Prisma } from '@prisma/client'
 import { cotizacionBodySchema, CotizacionValidationError, validarCotizacionPayload } from './validation'
 
 // Función para generar código de cotización basado en año y correlativo
@@ -31,15 +32,25 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
-    const page = parseInt(searchParams.get('page') || '1')
-    const limit = parseInt(searchParams.get('limit') || '10')
-    const search = searchParams.get('search') || ''
-    const estado = searchParams.get('estado')
+
+    const parsePositiveInt = (value: string | null, fallback: number) => {
+      const parsed = Number.parseInt(value ?? '', 10)
+      if (!Number.isFinite(parsed) || parsed < 1) return fallback
+      return parsed
+    }
+
+    const page = parsePositiveInt(searchParams.get('page'), 1)
+    const limit = Math.min(parsePositiveInt(searchParams.get('limit'), 10), 100)
+    const search = searchParams.get('search')?.trim() ?? ''
+    const estadoRaw = searchParams.get('estado')?.trim()
+
+    const estadosPermitidos = new Set(['borrador', 'enviada', 'aprobada', 'rechazada', 'vencida'])
+    const estado = estadoRaw && estadosPermitidos.has(estadoRaw) ? estadoRaw : undefined
 
     const skip = (page - 1) * limit
 
     // Construir filtro
-    const whereCondition: Record<string, unknown> = {}
+  const whereCondition: Prisma.CotizacionWhereInput = {}
 
     // Filtro por estado
     if (estado) {

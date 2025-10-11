@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
+import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { validateClientePayload, ClienteValidationError } from '@/lib/clientes/validation'
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '10')
     const search = searchParams.get('search') || ''
-    const includeInactive = searchParams.get('includeInactive') === 'true' // ✅ Nuevo parámetro
+  // Nota: includeInactive no es necesario porque mostramos todos
 
     const skip = (page - 1) * limit
 
@@ -49,10 +49,7 @@ export async function GET(request: NextRequest) {
             select: { vehiculos: true }
           }
         },
-        orderBy: [
-          { estatus: 'desc' }, // ✅ Activos primero
-          { fecha_registro: 'desc' }
-        ],
+        orderBy: { fecha_registro: 'desc' },
         skip,
         take: limit
       }),

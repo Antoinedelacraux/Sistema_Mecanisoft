@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
+import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
     if (persona) {
       // Si estamos editando y es el mismo cliente, está disponible
       if (clienteId !== null && persona.cliente?.id_cliente === clienteId) {
-        return NextResponse.json({ disponible: true })
+        return NextResponse.json({ disponible: true, mensaje: 'Documento disponible' })
       }
 
       let tipo = 'persona'
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
         })
 
         if (clienteAsociado?.id_cliente === clienteId) {
-          return NextResponse.json({ disponible: true })
+          return NextResponse.json({ disponible: true, mensaje: 'Documento disponible' })
         }
       }
 
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    return NextResponse.json({ disponible: true })
+    return NextResponse.json({ disponible: true, mensaje: 'Documento disponible' })
 
   } catch (error) {
     console.error('Error validando documento:', error)

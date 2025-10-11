@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient, TipoComprobante } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 
 const prisma = new PrismaClient()
@@ -149,6 +149,106 @@ async function main() {
   })
   
   console.log('✅ Configuración inicial creada')
+
+  // Configuración de facturación
+  await prisma.facturacionConfig.upsert({
+    where: { id_config: 1 },
+    update: {},
+    create: {
+      afecta_igv: true,
+      igv_porcentaje: 0.18,
+      serie_boleta_default: 'B001',
+      serie_factura_default: 'F001',
+      precios_incluyen_igv_default: true,
+      moneda_default: 'PEN'
+    }
+  })
+
+  await prisma.facturacionSerie.upsert({
+    where: {
+      tipo_serie: {
+        tipo: TipoComprobante.BOLETA,
+        serie: 'B001'
+      }
+    },
+    update: {},
+    create: {
+      tipo: TipoComprobante.BOLETA,
+      serie: 'B001',
+      correlativo_actual: 0,
+      descripcion: 'Serie por defecto para boletas'
+    }
+  })
+
+  await prisma.facturacionSerie.upsert({
+    where: {
+      tipo_serie: {
+        tipo: TipoComprobante.BOLETA,
+        serie: 'B001'
+      }
+    },
+    update: {},
+    create: {
+      tipo: TipoComprobante.BOLETA,
+      serie: 'B001',
+      correlativo_actual: 0,
+      descripcion: 'Serie por defecto para boletas'
+    }
+  })
+
+  await prisma.facturacionSerie.upsert({
+    where: {
+      tipo_serie: {
+        tipo: TipoComprobante.FACTURA,
+        serie: 'F001'
+      }
+    },
+    update: {},
+    create: {
+      tipo: TipoComprobante.FACTURA,
+      serie: 'F001',
+      correlativo_actual: 0,
+      descripcion: 'Serie por defecto para facturas'
+    }
+  })
+
+  console.log('✅ Configuración de facturación lista')
+
+  // Crear almacén y ubicaciones base para inventario
+  let almacenCentral = await prisma.almacen.findFirst({ where: { nombre: 'Almacén Central' } })
+
+  if (!almacenCentral) {
+    almacenCentral = await prisma.almacen.create({
+      data: {
+        nombre: 'Almacén Central',
+        descripcion: 'Almacén principal del taller',
+        direccion: 'Av. Principal 123, Lima'
+      }
+    })
+  }
+
+  const ubicaciones = [
+    { codigo: 'EST-001', descripcion: 'Estantería principal' },
+    { codigo: 'PISO-001', descripcion: 'Área de recepción de mercadería' }
+  ]
+
+  for (const ubicacion of ubicaciones) {
+    const existente = await prisma.almacenUbicacion.findFirst({
+      where: { codigo: ubicacion.codigo }
+    })
+
+    if (!existente) {
+      await prisma.almacenUbicacion.create({
+        data: {
+          codigo: ubicacion.codigo,
+          descripcion: ubicacion.descripcion,
+          id_almacen: almacenCentral.id_almacen
+        }
+      })
+    }
+  }
+
+  console.log('✅ Inventario base configurado')
 
   // ✅ Agregar al final del seed existente, antes de console.log('🎉 Seed completado exitosamente!')
 
