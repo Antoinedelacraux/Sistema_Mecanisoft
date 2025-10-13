@@ -13,9 +13,10 @@ interface ServiciosTableProps {
   onCreate?: () => void
   onEdit?: (servicio: ServicioCompleto) => void
   refreshKey?: number
+  canManage?: boolean
 }
 
-export function ServiciosTable({ onCreate, onEdit, refreshKey }: ServiciosTableProps) {
+export function ServiciosTable({ onCreate, onEdit, refreshKey, canManage = true }: ServiciosTableProps) {
   const [servicios, setServicios] = useState<ServicioCompleto[]>([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
@@ -61,6 +62,16 @@ export function ServiciosTable({ onCreate, onEdit, refreshKey }: ServiciosTableP
       if (marcaId) params.set('id_marca', String(marcaId))
       if (modeloId) params.set('id_modelo', String(modeloId))
       const res = await fetch(`/api/servicios?${params.toString()}`)
+      if (!res.ok) {
+        let mensaje = 'Error al cargar servicios'
+        try {
+          const err = await res.json()
+          if (err?.error) mensaje = err.error
+        } catch (parseError) {
+          console.warn('No se pudo parsear respuesta de servicios', parseError)
+        }
+        throw new Error(mensaje)
+      }
       const data = await res.json()
       setServicios(data.servicios || [])
     } catch (e:any) {
@@ -80,6 +91,7 @@ export function ServiciosTable({ onCreate, onEdit, refreshKey }: ServiciosTableP
   }, [search])
 
   const toggleStatus = async (s: ServicioCompleto) => {
+    if (!canManage) return
     try {
       const res = await fetch(`/api/servicios/${s.id_servicio}`, {
         method: 'PATCH',
@@ -132,7 +144,7 @@ export function ServiciosTable({ onCreate, onEdit, refreshKey }: ServiciosTableP
           </Select>
           <Button onClick={clearFilters} variant="secondary" disabled={loading}>Limpiar</Button>
           <Button onClick={loadServicios} disabled={loading}>Actualizar</Button>
-          {onCreate && <Button variant="outline" onClick={onCreate}>Nuevo</Button>}
+          {canManage && onCreate && <Button variant="outline" onClick={onCreate}>Nuevo</Button>}
         </div>
       </CardHeader>
       <CardContent>
@@ -158,10 +170,12 @@ export function ServiciosTable({ onCreate, onEdit, refreshKey }: ServiciosTableP
                 </div>
               </div>
               <div className="text-xs text-gray-500">Estado: {s.estatus ? 'Activo' : 'Inactivo'}</div>
-              <div className="flex gap-2 mt-2">
-                {onEdit && <Button size="sm" variant="outline" onClick={()=>onEdit(s)}>Editar</Button>}
-                <Button size="sm" variant="ghost" onClick={()=>toggleStatus(s)}>{s.estatus ? 'Desactivar' : 'Activar'}</Button>
-              </div>
+              {canManage && (
+                <div className="flex gap-2 mt-2">
+                  {onEdit && <Button size="sm" variant="outline" onClick={()=>onEdit(s)}>Editar</Button>}
+                  <Button size="sm" variant="ghost" onClick={()=>toggleStatus(s)}>{s.estatus ? 'Desactivar' : 'Activar'}</Button>
+                </div>
+              )}
             </div>
           ))}
         </div>

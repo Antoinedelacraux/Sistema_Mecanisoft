@@ -1,5 +1,5 @@
 import { TipoComprobante, Prisma } from '@prisma/client'
-import PDFDocument from 'pdfkit'
+import PDFDocument from 'pdfkit/js/pdfkit.standalone.js'
 import path from 'path'
 import { promises as fs, createWriteStream } from 'fs'
 

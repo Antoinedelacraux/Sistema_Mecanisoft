@@ -209,6 +209,7 @@ model Rol {
   fecha_registro DateTime @default(now())
 
   usuarios Usuario[]
+  permisos RolPermiso[]
 
   @@map("rol")
 }
@@ -247,8 +248,53 @@ model Usuario {
   bitacoras_comprobantes    ComprobanteBitacora[]
   movimientos_inventario    MovimientoInventario[]
   bitacoras_inventario      BitacoraInventario[]
+  permisos                  UsuarioPermiso[]
 
   @@map("usuario")
+}
+
+model Permiso {
+  id_permiso    Int      @id @default(autoincrement())
+  codigo        String   @unique @db.VarChar(100)
+  nombre        String   @db.VarChar(150)
+  descripcion   String?  @db.Text
+  modulo        String   @db.VarChar(100)
+  agrupador     String?  @db.VarChar(100)
+  activo        Boolean  @default(true)
+  creado_en     DateTime @default(now())
+  actualizado_en DateTime @updatedAt
+
+  roles    RolPermiso[]
+  usuarios UsuarioPermiso[]
+
+  @@map("permiso")
+}
+
+model RolPermiso {
+  id_rol     Int
+  id_permiso Int
+  creado_en  DateTime @default(now())
+
+  rol     Rol     @relation(fields: [id_rol], references: [id_rol], onDelete: Cascade)
+  permiso Permiso @relation(fields: [id_permiso], references: [id_permiso], onDelete: Cascade)
+
+  @@id([id_rol, id_permiso])
+  @@map("rol_permiso")
+}
+
+model UsuarioPermiso {
+  id_usuario Int
+  id_permiso Int
+  concedido  Boolean @default(true)
+  origen     String  @db.VarChar(20) // EXTRA, REVOCADO
+  comentario String? @db.Text
+  actualizado_en DateTime @default(now()) @updatedAt
+
+  usuario Usuario @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade)
+  permiso Permiso @relation(fields: [id_permiso], references: [id_permiso], onDelete: Cascade)
+
+  @@id([id_usuario, id_permiso])
+  @@map("usuario_permiso")
 }
 
 model Trabajador {

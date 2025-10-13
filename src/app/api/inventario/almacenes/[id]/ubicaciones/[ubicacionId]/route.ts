@@ -5,8 +5,9 @@ import { z } from 'zod';
 
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { getInventoryGuardMessage, hasInventoryPermission } from '@/lib/inventario/permissions';
+import { getInventoryGuardMessage, requireInventoryPermission } from '@/lib/inventario/permissions';
 import type { InventoryPermissionLevel } from '@/lib/inventario/permissions';
+import { PermisoDenegadoError, SesionInvalidaError } from '@/lib/permisos/guards';
 
 const paramsSchema = z.object({
   id: z.coerce.number().int().positive(),
@@ -36,16 +37,19 @@ const serializeUbicacion = (ubicacion: {
 });
 
 const withSessionGuard = async (level: InventoryPermissionLevel) => {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return { error: NextResponse.json({ error: 'No autorizado' }, { status: 401 }) } as const;
+  const session = await getServerSession(authOptions)
+  try {
+    await requireInventoryPermission(session, level, { prismaClient: prisma })
+    return { session } as const
+  } catch (error) {
+    if (error instanceof SesionInvalidaError) {
+      return { error: NextResponse.json({ error: 'No autorizado' }, { status: 401 }) } as const
+    }
+    if (error instanceof PermisoDenegadoError) {
+      return { error: NextResponse.json({ error: getInventoryGuardMessage(level) }, { status: 403 }) } as const
+    }
+    throw error
   }
-
-  if (!hasInventoryPermission(session.user.role, level)) {
-    return { error: NextResponse.json({ error: getInventoryGuardMessage(level) }, { status: 403 }) } as const;
-  }
-
-  return { session } as const;
 };
 
 const loadUbicacion = async (almacenId: number, ubicacionId: number) => prisma.almacenUbicacion.findFirst({

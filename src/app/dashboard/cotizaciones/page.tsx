@@ -1,24 +1,34 @@
 'use client'
 
 import { useState } from 'react'
+import { ShieldAlert } from 'lucide-react'
+
 import { CotizacionesTable } from '@/components/cotizaciones/cotizaciones-table'
 import { CotizacionWizard } from '@/components/cotizaciones/cotizacion-wizard'
+import { PermisoGate } from '@/components/permisos/permiso-gate'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { usePermisos } from '@/hooks/use-permisos'
 import { CotizacionCompleta } from '@/types'
 
 type ModalState = 'closed' | 'create' | 'edit' | 'view'
 
 export default function CotizacionesPage() {
+  const { puede } = usePermisos()
+  const canManage = puede('cotizaciones.gestionar')
+
   const [modalState, setModalState] = useState<ModalState>('closed')
   const [selectedCotizacion, setSelectedCotizacion] = useState<CotizacionCompleta | undefined>()
   const [refreshTrigger, setRefreshTrigger] = useState(0)
 
   const handleCreateNew = () => {
+    if (!canManage) return
     setSelectedCotizacion(undefined)
     setModalState('create')
   }
 
   const handleEdit = (cotizacion: CotizacionCompleta) => {
+    if (!canManage) return
     setSelectedCotizacion(cotizacion)
     setModalState('edit')
   }
@@ -59,12 +69,33 @@ export default function CotizacionesPage() {
         </p>
       </div>
 
-      <CotizacionesTable
-        onCreateNew={handleCreateNew}
-        onEdit={handleEdit}
-        onView={handleView}
-        refreshTrigger={refreshTrigger}
-      />
+      <PermisoGate
+        permiso="cotizaciones.listar"
+        loadingFallback={
+          <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+            Cargando permisos...
+          </div>
+        }
+        fallback={
+          <Alert className="flex items-start gap-3">
+            <ShieldAlert className="h-5 w-5 text-orange-500" />
+            <div>
+              <AlertTitle>Acceso restringido</AlertTitle>
+              <AlertDescription>
+                Necesitas el permiso <span className="font-semibold">cotizaciones.listar</span> para visualizar este módulo.
+                Contacta a un administrador si requieres acceso.
+              </AlertDescription>
+            </div>
+          </Alert>
+        }
+      >
+        <CotizacionesTable
+          onCreateNew={handleCreateNew}
+          onEdit={handleEdit}
+          onView={handleView}
+          refreshTrigger={refreshTrigger}
+          canManage={canManage}
+        />
 
       <Dialog
         open={modalState !== 'closed'}
@@ -82,14 +113,14 @@ export default function CotizacionesPage() {
               {modalState === 'view' && (selectedCotizacion ? `Detalle Cotización ${selectedCotizacion.codigo_cotizacion}` : 'Detalle Cotización')}
             </DialogTitle>
           </DialogHeader>
-          {modalState === 'create' && (
+          {modalState === 'create' && canManage && (
             <CotizacionWizard
               onSuccess={handleSuccess}
               onCancel={handleCancel}
             />
           )}
 
-          {modalState === 'edit' && selectedCotizacion && (
+          {modalState === 'edit' && selectedCotizacion && canManage && (
             <CotizacionWizard
               cotizacion={selectedCotizacion}
               onSuccess={handleSuccess}
@@ -132,6 +163,7 @@ export default function CotizacionesPage() {
           )}
         </DialogContent>
       </Dialog>
+      </PermisoGate>
     </div>
   )
 }

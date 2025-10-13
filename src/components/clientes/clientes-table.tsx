@@ -16,9 +16,10 @@ interface ClientesTableProps {
   onView: (cliente: ClienteCompleto) => void
   onCreateNew: () => void
   refreshTrigger?: number
+  canManage?: boolean
 }
 
-export function ClientesTable({ onEdit, onView, onCreateNew, refreshTrigger }: ClientesTableProps) {
+export function ClientesTable({ onEdit, onView, onCreateNew, refreshTrigger, canManage = true }: ClientesTableProps) {
   const [clientes, setClientes] = useState<ClienteCompleto[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -105,6 +106,7 @@ export function ClientesTable({ onEdit, onView, onCreateNew, refreshTrigger }: C
   }, [refreshTrigger, fetchClientes])
 
   const handleToggleStatus = async (cliente: ClienteCompleto) => {
+    if (!canManage) return
     const newStatus = !cliente.estatus
     const action = newStatus ? 'activar' : 'desactivar'
     
@@ -144,6 +146,7 @@ export function ClientesTable({ onEdit, onView, onCreateNew, refreshTrigger }: C
   }
 
   const handleDelete = async (cliente: ClienteCompleto) => {
+    if (!canManage) return
     if (!confirm(`¿Estás seguro de eliminar al cliente ${cliente.persona.nombre} ${cliente.persona.apellido_paterno}?`)) {
       return
     }
@@ -202,10 +205,12 @@ export function ClientesTable({ onEdit, onView, onCreateNew, refreshTrigger }: C
               Administra la información de tus clientes
             </CardDescription>
           </div>
-          <Button onClick={onCreateNew}>
-            <Plus className="w-4 h-4 mr-2" />
-            Nuevo Cliente
-          </Button>
+          {canManage && (
+            <Button onClick={onCreateNew}>
+              <Plus className="w-4 h-4 mr-2" />
+              Nuevo Cliente
+            </Button>
+          )}
         </div>
       </CardHeader>
       
@@ -433,38 +438,42 @@ export function ClientesTable({ onEdit, onView, onCreateNew, refreshTrigger }: C
                               <Eye className="w-4 h-4" />
                             </Button>
 
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => onEdit(cliente)}
-                              disabled={!cliente.estatus}
-                              className={!cliente.estatus ? 'opacity-50 cursor-not-allowed' : ''}
-                            >
-                              <Edit className="w-4 h-4" />
-                            </Button>
+                            {canManage && (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => onEdit(cliente)}
+                                  disabled={!cliente.estatus}
+                                  className={!cliente.estatus ? 'opacity-50 cursor-not-allowed' : ''}
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </Button>
 
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleToggleStatus(cliente)}
-                              className={cliente.estatus ? 'text-orange-600 hover:text-orange-700' : 'text-green-600 hover:text-green-700'}
-                              title={cliente.estatus ? 'Desactivar cliente' : 'Activar cliente'}
-                            >
-                              {cliente.estatus ? <ToggleLeft className="w-4 h-4" /> : <ToggleRight className="w-4 h-4" />}
-                            </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleToggleStatus(cliente)}
+                                  className={cliente.estatus ? 'text-orange-600 hover:text-orange-700' : 'text-green-600 hover:text-green-700'}
+                                  title={cliente.estatus ? 'Desactivar cliente' : 'Activar cliente'}
+                                >
+                                  {cliente.estatus ? <ToggleLeft className="w-4 h-4" /> : <ToggleRight className="w-4 h-4" />}
+                                </Button>
 
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDelete(cliente)}
-                              disabled={cliente.estatus}
-                              className={cliente.estatus
-                                ? 'opacity-50 cursor-not-allowed'
-                                : 'text-red-600 hover:text-red-700'}
-                              title={cliente.estatus ? 'Desactiva el cliente antes de eliminarlo' : 'Eliminar cliente'}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDelete(cliente)}
+                                  disabled={cliente.estatus}
+                                  className={cliente.estatus
+                                    ? 'opacity-50 cursor-not-allowed'
+                                    : 'text-red-600 hover:text-red-700'}
+                                  title={cliente.estatus ? 'Desactiva el cliente antes de eliminarlo' : 'Eliminar cliente'}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>

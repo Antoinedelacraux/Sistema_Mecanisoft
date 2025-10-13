@@ -615,13 +615,18 @@ export async function enviarComprobantePorCorreo({
     pdfUrl: comprobante.pdf_url ?? undefined
   })
 
-  await sendMail({
-    to: correoDestino,
-    subject: `${tipoLegible} ${numeroFormateado} - ${comprobante.receptor_nombre}`,
-    html,
-    text,
-    attachments
-  })
+  try {
+    await sendMail({
+      to: correoDestino,
+      subject: `${tipoLegible} ${numeroFormateado} - ${comprobante.receptor_nombre}`,
+      html,
+      text,
+      attachments
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'No se pudo enviar el correo'
+    throw new FacturacionError(message, 500)
+  }
 
   await prisma.comprobanteBitacora.create({
     data: {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { asegurarPermiso, PermisoDenegadoError, SesionInvalidaError } from '@/lib/permisos/guards'
 
 // Nota: Ajustamos la firma para que coincida con el validador de Next (params puede ser Promise)
 export async function POST(
@@ -13,8 +14,23 @@ export async function POST(
     const id = parseInt(idParam)
 
     const session = await getServerSession(authOptions)
-    if (!session) {
+    try {
+      await asegurarPermiso(session, 'cotizaciones.gestionar', { prismaClient: prisma })
+    } catch (error) {
+      if (error instanceof SesionInvalidaError || !session) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+      }
+      if (error instanceof PermisoDenegadoError) {
+        return NextResponse.json({ error: 'No cuentas con permisos para gestionar cotizaciones' }, { status: 403 })
+      }
+      throw error
+    }
+    if (!session?.user?.id) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+    }
+    const usuarioId = Number.parseInt(session.user.id, 10)
+    if (!Number.isFinite(usuarioId)) {
+      return NextResponse.json({ error: 'Identificador de usuario inválido' }, { status: 401 })
     }
     if (isNaN(id)) {
       return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
@@ -89,7 +105,7 @@ export async function POST(
       const transaccion = await tx.transaccion.create({
         data: {
           id_persona: cotizacion.cliente.id_persona,
-          id_usuario: parseInt(session.user.id),
+          id_usuario: usuarioId,
           id_trabajador_principal: id_trabajador_principal ? parseInt(id_trabajador_principal) : null,
           tipo_transaccion: 'orden',
           tipo_comprobante: 'orden_trabajo',
@@ -111,7 +127,7 @@ export async function POST(
         data: {
           id_transaccion: transaccion.id_transaccion,
           id_vehiculo: cotizacion.id_vehiculo,
-          id_usuario: parseInt(session.user.id),
+          id_usuario: usuarioId,
           descripcion: `Orden generada desde cotización ${cotizacion.codigo_cotizacion}`
         }
       })
@@ -189,7 +205,7 @@ export async function POST(
     // Registrar en bitácora
     await prisma.bitacora.create({
       data: {
-        id_usuario: parseInt(session.user.id),
+        id_usuario: usuarioId,
         accion: 'CONVERT_COTIZACION_ORDEN',
         descripcion: `Cotización ${cotizacion.codigo_cotizacion} convertida a orden ${codigoOrden}`,
         tabla: 'cotizacion'

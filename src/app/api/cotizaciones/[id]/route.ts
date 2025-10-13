@@ -4,6 +4,26 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { cotizacionBodySchema, CotizacionValidationError, validarCotizacionPayload } from '../validation'
+import { asegurarPermiso, PermisoDenegadoError, SesionInvalidaError } from '@/lib/permisos/guards'
+
+async function withPermiso(codigoPermiso: string, mensaje403: string) {
+  const session = await getServerSession(authOptions)
+  try {
+    await asegurarPermiso(session, codigoPermiso, { prismaClient: prisma })
+    if (!session) {
+      return { error: NextResponse.json({ error: 'No autorizado' }, { status: 401 }) } as const
+    }
+    return { session } as const
+  } catch (error) {
+    if (error instanceof SesionInvalidaError) {
+      return { error: NextResponse.json({ error: 'No autorizado' }, { status: 401 }) } as const
+    }
+    if (error instanceof PermisoDenegadoError) {
+      return { error: NextResponse.json({ error: mensaje403 }, { status: 403 }) } as const
+    }
+    throw error
+  }
+}
 
 // Reutilizable include (similar al usado en el listado) por consistencia
 const cotizacionInclude = {
@@ -18,10 +38,8 @@ export async function GET(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
-    }
+    const guard = await withPermiso('cotizaciones.listar', 'No cuentas con permisos para visualizar cotizaciones')
+    if ('error' in guard) return guard.error
     const { id: idRaw } = await context.params
     const id = parseInt(idRaw)
     if (isNaN(id)) {
@@ -75,10 +93,9 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
-    }
+    const guard = await withPermiso('cotizaciones.gestionar', 'No cuentas con permisos para gestionar cotizaciones')
+    if ('error' in guard) return guard.error
+    const session = guard.session
     const { id: idRaw } = await context.params
     const id = parseInt(idRaw)
     if (isNaN(id)) {
@@ -268,10 +285,9 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
-    }
+    const guard = await withPermiso('cotizaciones.gestionar', 'No cuentas con permisos para gestionar cotizaciones')
+    if ('error' in guard) return guard.error
+    const session = guard.session
 
     const { id: idRaw } = await context.params
     const id = parseInt(idRaw)

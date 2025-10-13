@@ -1,6 +1,11 @@
 import { prisma } from '../src/lib/prisma'
 
 async function main() {
+  // Permisos y seguridad
+  await prisma.usuarioPermiso.deleteMany({})
+  await prisma.rolPermiso.deleteMany({})
+  await prisma.permiso.deleteMany({})
+
   // Inventario
   await prisma.reservaInventario.deleteMany({})
   await prisma.bitacoraInventario.deleteMany({})

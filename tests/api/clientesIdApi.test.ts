@@ -46,6 +46,13 @@ jest.mock('@/lib/prisma', () => {
   return { prisma: prismaMock }
 })
 
+const ensureResponse = <T extends Response>(response: T | undefined): T => {
+  if (!response) {
+    throw new Error('La ruta devolvió una respuesta indefinida')
+  }
+  return response
+}
+
 describe('PUT /api/clientes/[id]', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -56,7 +63,7 @@ describe('PUT /api/clientes/[id]', () => {
     mockedGetServerSession.mockResolvedValue(null);
     
     const req = new NextRequest('http://localhost/api/clientes/2', { method: 'PUT' });
-    const response = await PUT(req, { params: { id: '2' } });
+  const response = ensureResponse(await PUT(req, { params: { id: '2' } }));
     expect(response.status).toBe(401);
     const json = await response.json();
     expect(json.error).toBe('No autorizado');
@@ -67,7 +74,7 @@ describe('PUT /api/clientes/[id]', () => {
     mockedGetServerSession.mockResolvedValue({ user: { id: '1' } });
     
     const req = new NextRequest('http://localhost/api/clientes/NaN', { method: 'PUT' });
-    const response = await PUT(req, { params: { id: 'NaN' } });
+  const response = ensureResponse(await PUT(req, { params: { id: 'NaN' } }));
     expect(response.status).toBe(400);
     const json = await response.json();
     expect(json.error).toBe('ID inválido');
@@ -133,8 +140,8 @@ describe('PUT /api/clientes/[id]', () => {
       telefono: '123456789',
       correo: 'test@example.com',
       fecha_nacimiento: '1990-01-01',
-  registrar_empresa: false,
-  nombre_comercial: ''
+      registrar_empresa: false,
+      nombre_comercial: ''
     };
 
     const req = new NextRequest('http://localhost/api/clientes/2', {
@@ -142,7 +149,7 @@ describe('PUT /api/clientes/[id]', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
-    const response = await PUT(req, { params: { id: '2' } });
+    const response = ensureResponse(await PUT(req, { params: { id: '2' } }));
     const json = await response.json();
     expect(response.status).toBe(200);
     expect(json.persona.nombre).toBe('NuevoNombre');

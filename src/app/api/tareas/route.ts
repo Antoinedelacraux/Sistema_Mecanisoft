@@ -3,12 +3,21 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import type { Prisma } from '@prisma/client'
+import { asegurarPermiso, PermisoDenegadoError, SesionInvalidaError } from '@/lib/permisos/guards'
 
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+    try {
+      await asegurarPermiso(session, 'tareas.ver', { prismaClient: prisma })
+    } catch (error) {
+      if (error instanceof SesionInvalidaError || !session) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+      }
+      if (error instanceof PermisoDenegadoError) {
+        return NextResponse.json({ error: 'No cuentas con permisos para visualizar tareas' }, { status: 403 })
+      }
+      throw error
     }
 
     const { searchParams } = new URL(request.url)

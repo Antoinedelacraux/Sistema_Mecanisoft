@@ -3,6 +3,7 @@ import CredentialsProvider from "next-auth/providers/credentials"
 import bcrypt from "bcryptjs"
 // Usar el cliente Prisma compartido para evitar múltiples conexiones en dev
 import { prisma } from '@/lib/prisma'
+import { obtenerPermisosResueltosDeUsuario } from '@/lib/permisos/service'
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -128,6 +129,11 @@ export const authOptions: NextAuthOptions = {
 
           console.log("✅ Login exitoso para:", usuario.nombre_usuario)
 
+          const permisosResueltos = await obtenerPermisosResueltosDeUsuario(usuario.id_usuario, prisma)
+          const permisosActivos = permisosResueltos
+            .filter((permiso) => permiso.concedido)
+            .map((permiso) => permiso.codigo)
+
           // Registrar en bitácora
           await prisma.bitacora.create({
             data: {
@@ -146,7 +152,8 @@ export const authOptions: NextAuthOptions = {
             username: usuario.nombre_usuario,
             role: usuario.rol.nombre_rol,
             image: usuario.imagen_usuario,
-            requiresPasswordChange: requiereCambioPassword
+            requiresPasswordChange: requiereCambioPassword,
+            permisos: permisosActivos
           }
         } catch (error) {
           console.error("❌ Error en autenticación:", error)
@@ -161,6 +168,7 @@ export const authOptions: NextAuthOptions = {
         token.username = user.username
         token.role = user.role
         token.requiresPasswordChange = (user as unknown as { requiresPasswordChange?: boolean }).requiresPasswordChange ?? false
+        token.permisos = (user as unknown as { permisos?: string[] }).permisos ?? []
       }
       return token
     },
@@ -170,6 +178,7 @@ export const authOptions: NextAuthOptions = {
         session.user.username = token.username as string
         session.user.role = token.role as string
         session.user.requiresPasswordChange = Boolean(token.requiresPasswordChange)
+        session.user.permisos = Array.isArray(token.permisos) ? token.permisos : []
       }
       return session
     }

@@ -9,6 +9,7 @@ import { changeEstadoUsuario, deleteUsuario } from '../controllers/status-contro
 import { resetPasswordUsuario } from '../controllers/reset-password-controller'
 import { registrarEnvioCredenciales } from '../controllers/notifications-controller'
 import { enviarCredencialesUsuario } from '../controllers/send-credentials-controller'
+import { asegurarPermiso, PermisoDenegadoError, SesionInvalidaError } from '@/lib/permisos/guards'
 
 const handleError = (error: unknown) => {
   if (error instanceof ApiError) {
@@ -27,12 +28,29 @@ const parseContextId = async (context: { params: Promise<RouteParams> }) => {
   return Number(id)
 }
 
+const withUsuariosAdmin = async () => {
+  const session = await getServerSession(authOptions)
+  try {
+    await asegurarPermiso(session, 'usuarios.administrar')
+    if (!session) {
+      return { error: NextResponse.json({ error: 'No autorizado' }, { status: 401 }) } as const
+    }
+    return { session } as const
+  } catch (error) {
+    if (error instanceof SesionInvalidaError) {
+      return { error: NextResponse.json({ error: 'No autorizado' }, { status: 401 }) } as const
+    }
+    if (error instanceof PermisoDenegadoError) {
+      return { error: NextResponse.json({ error: 'No cuentas con permisos para administrar usuarios' }, { status: 403 }) } as const
+    }
+    throw error
+  }
+}
+
 export async function GET(_request: NextRequest, context: { params: Promise<RouteParams> }) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
-    }
+    const guard = await withUsuariosAdmin()
+    if ('error' in guard) return guard.error
 
     const id = await parseContextId(context)
     const usuario = await getUsuarioOrThrow(id)
@@ -47,10 +65,9 @@ export async function PATCH(
   context: { params: Promise<RouteParams> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
-    }
+    const guard = await withUsuariosAdmin()
+    if ('error' in guard) return guard.error
+    const session = guard.session
 
     const id = await parseContextId(context)
     const payload = await request.json()
@@ -107,10 +124,9 @@ export async function DELETE(
   context: { params: Promise<RouteParams> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
-    }
+    const guard = await withUsuariosAdmin()
+    if ('error' in guard) return guard.error
+    const session = guard.session
 
     const id = await parseContextId(context)
     const resultado = await deleteUsuario(id, Number(session.user.id))

@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { randomBytes } from 'crypto'
 import { Prisma } from '@prisma/client'
 import { cotizacionBodySchema, CotizacionValidationError, validarCotizacionPayload } from './validation'
+import { asegurarPermiso, PermisoDenegadoError, SesionInvalidaError } from '@/lib/permisos/guards'
 
 // Función para generar código de cotización basado en año y correlativo
 async function generateCodigoCotizacion() {
@@ -27,8 +28,16 @@ function generateApprovalToken() {
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+    try {
+      await asegurarPermiso(session, 'cotizaciones.listar', { prismaClient: prisma })
+    } catch (error) {
+      if (error instanceof SesionInvalidaError || !session) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+      }
+      if (error instanceof PermisoDenegadoError) {
+        return NextResponse.json({ error: 'No cuentas con permisos para visualizar cotizaciones' }, { status: 403 })
+      }
+      throw error
     }
 
     const { searchParams } = new URL(request.url)
@@ -43,6 +52,10 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parsePositiveInt(searchParams.get('limit'), 10), 100)
     const search = searchParams.get('search')?.trim() ?? ''
     const estadoRaw = searchParams.get('estado')?.trim()
+    const modoRaw = searchParams.get('modo')?.trim()
+
+    const modosPermitidos = new Set(['solo_servicios', 'solo_productos', 'servicios_y_productos'])
+    const modo = modoRaw && modosPermitidos.has(modoRaw) ? modoRaw as 'solo_servicios' | 'solo_productos' | 'servicios_y_productos' : undefined
 
     const estadosPermitidos = new Set(['borrador', 'enviada', 'aprobada', 'rechazada', 'vencida'])
     const estado = estadoRaw && estadosPermitidos.has(estadoRaw) ? estadoRaw : undefined
@@ -50,11 +63,39 @@ export async function GET(request: NextRequest) {
     const skip = (page - 1) * limit
 
     // Construir filtro
-  const whereCondition: Prisma.CotizacionWhereInput = {}
+    const whereCondition: Prisma.CotizacionWhereInput = {}
+    const andConditions: Prisma.CotizacionWhereInput[] = []
 
     // Filtro por estado
     if (estado) {
       whereCondition.estado = estado
+    }
+
+    if (modo === 'solo_servicios') {
+      andConditions.push({
+        detalle_cotizacion: {
+          some: { servicio: { isNot: null } },
+          every: { producto: { is: null } }
+        }
+      })
+    } else if (modo === 'solo_productos') {
+      andConditions.push({
+        detalle_cotizacion: {
+          some: { producto: { isNot: null } },
+          every: { servicio: { is: null } }
+        }
+      })
+    } else if (modo === 'servicios_y_productos') {
+      andConditions.push({
+        detalle_cotizacion: {
+          some: { servicio: { isNot: null } }
+        }
+      })
+      andConditions.push({
+        detalle_cotizacion: {
+          some: { producto: { isNot: null } }
+        }
+      })
     }
 
     // Filtro de búsqueda
@@ -66,6 +107,20 @@ export async function GET(request: NextRequest) {
         { cliente: { persona: { numero_documento: { contains: search, mode: 'insensitive' as const } } } },
         { vehiculo: { placa: { contains: search, mode: 'insensitive' as const } } }
       ]
+    }
+
+    if (andConditions.length > 0) {
+      const existingAnd = Array.isArray(whereCondition.AND)
+        ? whereCondition.AND as Prisma.CotizacionWhereInput[]
+        : whereCondition.AND
+
+      if (existingAnd) {
+        whereCondition.AND = Array.isArray(existingAnd)
+          ? [...existingAnd, ...andConditions]
+          : [existingAnd, ...andConditions]
+      } else {
+        whereCondition.AND = andConditions
+      }
     }
 
     // Obtener cotizaciones con paginación
@@ -128,8 +183,24 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session) {
+    try {
+      await asegurarPermiso(session, 'cotizaciones.gestionar', { prismaClient: prisma })
+    } catch (error) {
+      if (error instanceof SesionInvalidaError || !session) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+      }
+      if (error instanceof PermisoDenegadoError) {
+        return NextResponse.json({ error: 'No cuentas con permisos para gestionar cotizaciones' }, { status: 403 })
+      }
+      throw error
+    }
+
+    if (!session?.user?.id) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+    }
+    const usuarioId = Number.parseInt(session.user.id, 10)
+    if (!Number.isFinite(usuarioId)) {
+      return NextResponse.json({ error: 'Identificador de usuario inválido' }, { status: 401 })
     }
 
     const json = await request.json()
@@ -175,7 +246,7 @@ export async function POST(request: NextRequest) {
               codigo_cotizacion: codigo,
               id_cliente,
               id_vehiculo,
-              id_usuario: parseInt(session.user.id),
+              id_usuario: usuarioId,
               estado: 'borrador',
               vigencia_hasta: vigenciaHasta,
               approval_token: approvalToken,
@@ -219,7 +290,7 @@ export async function POST(request: NextRequest) {
 
     await prisma.bitacora.create({
       data: {
-        id_usuario: parseInt(session.user.id),
+  id_usuario: usuarioId,
         accion: 'CREATE_COTIZACION',
         descripcion: `Cotización creada: ${cotizacionCreada.codigo_cotizacion} - Cliente: ${cliente.persona.nombre} ${cliente.persona.apellido_paterno}`,
         tabla: 'cotizacion'

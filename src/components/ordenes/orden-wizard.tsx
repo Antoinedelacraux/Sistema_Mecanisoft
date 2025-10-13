@@ -56,7 +56,7 @@ export function OrdenWizard({ onSuccess, onCancel }: OrdenWizardProps) {
           fetch('/api/servicios'),
           fetch('/api/trabajadores?solo_activos=true')
         ])
-        const productosRes = await fetch('/api/productos?tipo=producto&limit=100')
+  const productosRes = await fetch('/api/productos?tipo=producto&limit=100&estatus=activos')
         const [clientesData, serviciosData, trabajadoresData, productosData] = await Promise.all([
           clientesRes.json(),
           serviciosRes.json(),

@@ -225,10 +225,18 @@ export default function FacturacionComprobantes() {
 
       try {
         setEmittingId(comprobante.id_comprobante)
+        const payload: { descripcion?: string; notas?: string } = {}
+        if (typeof comprobante.descripcion === "string" && comprobante.descripcion.trim()) {
+          payload.descripcion = comprobante.descripcion
+        }
+        if (typeof comprobante.notas === "string" && comprobante.notas.trim()) {
+          payload.notas = comprobante.notas
+        }
+
         const response = await fetch(`/api/facturacion/comprobantes/${comprobante.id_comprobante}/emitir`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ descripcion: comprobante.descripcion ?? null, notas: comprobante.notas ?? null }),
+          body: JSON.stringify(payload)
         })
         if (!response.ok) {
           const body = await response.json().catch(() => ({}))
@@ -299,9 +307,9 @@ export default function FacturacionComprobantes() {
   const handleConfirmSendEmail = useCallback(async () => {
     if (!emailDialog.comprobante) return
 
-    const destinatario = emailDialog.destinatario.trim()
+    const destinatario = emailDialog.destinatario.trim() || emailDialog.comprobante.persona?.correo?.trim() || ""
     if (!destinatario) {
-      setEmailDialog((prev) => ({ ...prev, error: "Ingresa al menos un correo destinatario." }))
+      setEmailDialog((prev) => ({ ...prev, destinatario: emailDialog.comprobante.persona?.correo?.trim() ?? "", error: "Ingresa al menos un correo destinatario." }))
       return
     }
 

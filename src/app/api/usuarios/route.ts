@@ -5,6 +5,7 @@ import { authOptions } from '@/lib/auth'
 import { listUsuarios } from './controllers/list-controller'
 import { createUsuario } from './controllers/create-controller'
 import { ApiError } from './controllers/errors'
+import { asegurarPermiso, PermisoDenegadoError, SesionInvalidaError } from '@/lib/permisos/guards'
 
 const parseBoolean = (value: string | null) => {
   if (!value) return undefined
@@ -39,6 +40,18 @@ const handleError = (error: unknown) => {
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
+    try {
+      await asegurarPermiso(session, 'usuarios.administrar')
+    } catch (error) {
+      if (error instanceof SesionInvalidaError) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+      }
+      if (error instanceof PermisoDenegadoError) {
+        return NextResponse.json({ error: 'No cuentas con permisos para administrar usuarios' }, { status: 403 })
+      }
+      throw error
+    }
+
     if (!session) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
@@ -66,6 +79,18 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
+    try {
+      await asegurarPermiso(session, 'usuarios.administrar')
+    } catch (error) {
+      if (error instanceof SesionInvalidaError) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+      }
+      if (error instanceof PermisoDenegadoError) {
+        return NextResponse.json({ error: 'No cuentas con permisos para administrar usuarios' }, { status: 403 })
+      }
+      throw error
+    }
+
     if (!session) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }

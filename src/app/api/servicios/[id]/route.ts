@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { asegurarPermiso, PermisoDenegadoError, SesionInvalidaError } from '@/lib/permisos/guards'
 
 type ParamsInput = { params: { id: string } } | { params: Promise<{ id: string }> }
 function isPromise<T>(v: T | Promise<T>): v is Promise<T> {
@@ -15,7 +16,17 @@ async function resolveParams(ctx: ParamsInput): Promise<{ id: string }> {
 export async function GET(request: NextRequest, ctx: ParamsInput) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+    try {
+      await asegurarPermiso(session, 'servicios.listar', { prismaClient: prisma })
+    } catch (error) {
+      if (error instanceof SesionInvalidaError || !session) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+      }
+      if (error instanceof PermisoDenegadoError) {
+        return NextResponse.json({ error: 'No cuentas con permisos para ver servicios' }, { status: 403 })
+      }
+      throw error
+    }
     const { id } = await resolveParams(ctx)
     const idNum = parseInt(id)
     if (!Number.isFinite(idNum)) return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
@@ -35,7 +46,24 @@ export async function GET(request: NextRequest, ctx: ParamsInput) {
 export async function PUT(request: NextRequest, ctx: ParamsInput) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+    try {
+      await asegurarPermiso(session, 'servicios.gestionar', { prismaClient: prisma })
+    } catch (error) {
+      if (error instanceof SesionInvalidaError || !session) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+      }
+      if (error instanceof PermisoDenegadoError) {
+        return NextResponse.json({ error: 'No cuentas con permisos para gestionar servicios' }, { status: 403 })
+      }
+      throw error
+    }
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+    }
+    const usuarioId = Number.parseInt(session.user.id, 10)
+    if (!Number.isFinite(usuarioId)) {
+      return NextResponse.json({ error: 'Identificador de usuario inválido' }, { status: 401 })
+    }
     const { id } = await resolveParams(ctx)
     const idNum = parseInt(id)
     if (!Number.isFinite(idNum)) return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
@@ -116,7 +144,7 @@ export async function PUT(request: NextRequest, ctx: ParamsInput) {
 
     await prisma.bitacora.create({
       data: {
-        id_usuario: parseInt(session.user.id),
+        id_usuario: usuarioId,
         accion: 'UPDATE_SERVICIO',
         descripcion: `Servicio actualizado: ${updated.codigo_servicio} - ${updated.nombre}`,
         tabla: 'servicio'
@@ -133,7 +161,24 @@ export async function PUT(request: NextRequest, ctx: ParamsInput) {
 export async function PATCH(request: NextRequest, ctx: ParamsInput) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+    try {
+      await asegurarPermiso(session, 'servicios.gestionar', { prismaClient: prisma })
+    } catch (error) {
+      if (error instanceof SesionInvalidaError || !session) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+      }
+      if (error instanceof PermisoDenegadoError) {
+        return NextResponse.json({ error: 'No cuentas con permisos para gestionar servicios' }, { status: 403 })
+      }
+      throw error
+    }
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+    }
+    const usuarioId = Number.parseInt(session.user.id, 10)
+    if (!Number.isFinite(usuarioId)) {
+      return NextResponse.json({ error: 'Identificador de usuario inválido' }, { status: 401 })
+    }
     const { id } = await resolveParams(ctx)
     const idNum = parseInt(id)
     if (!Number.isFinite(idNum)) return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
@@ -152,7 +197,7 @@ export async function PATCH(request: NextRequest, ctx: ParamsInput) {
 
     await prisma.bitacora.create({
       data: {
-        id_usuario: parseInt(session.user.id),
+        id_usuario: usuarioId,
         accion: 'TOGGLE_STATUS_SERVICIO',
         descripcion: `Servicio ${estatus ? 'activado' : 'desactivado'}: ${servicio.nombre}`,
         tabla: 'servicio'

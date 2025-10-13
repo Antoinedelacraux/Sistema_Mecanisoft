@@ -40,6 +40,13 @@ jest.mock('@/app/api/usuarios/controllers/send-credentials-controller', () => ({
   enviarCredencialesUsuario: jest.fn()
 }))
 
+const ensureResponse = <T extends Response>(response: T | undefined): T => {
+  if (!response) {
+    throw new Error('La ruta devolvió una respuesta indefinida')
+  }
+  return response
+}
+
 describe('API /api/usuarios/[id]', () => {
   const getSessionMock = () => getServerSession as jest.Mock
   const getDetailMock = () => getUsuarioOrThrow as jest.Mock
@@ -64,7 +71,7 @@ describe('API /api/usuarios/[id]', () => {
     it('responde 401 cuando no hay sesión', async () => {
       getSessionMock().mockResolvedValue(null)
 
-  const response = await GET({} as NextRequest, buildContext())
+        const response = ensureResponse(await GET({} as NextRequest, buildContext()))
 
       expect(response.status).toBe(401)
       expect(getDetailMock()).not.toHaveBeenCalled()
@@ -75,7 +82,7 @@ describe('API /api/usuarios/[id]', () => {
       getSessionMock().mockResolvedValue({ user: { id: '7' } })
       getDetailMock().mockResolvedValue(usuario)
 
-  const response = await GET({} as NextRequest, buildContext())
+        const response = ensureResponse(await GET({} as NextRequest, buildContext()))
 
       expect(response.status).toBe(200)
       expect(getDetailMock()).toHaveBeenCalledWith(42)
@@ -87,7 +94,7 @@ describe('API /api/usuarios/[id]', () => {
       getSessionMock().mockResolvedValue({ user: { id: '7' } })
       getDetailMock().mockRejectedValue(new ApiError(404, 'Usuario no encontrado'))
 
-  const response = await GET({} as NextRequest, buildContext())
+        const response = ensureResponse(await GET({} as NextRequest, buildContext()))
 
       expect(response.status).toBe(404)
       const json = await response.json()
@@ -99,7 +106,7 @@ describe('API /api/usuarios/[id]', () => {
     it('responde 401 cuando no hay sesión', async () => {
       getSessionMock().mockResolvedValue(null)
 
-  const response = await PATCH(buildRequest({}) as unknown as NextRequest, buildContext())
+        const response = ensureResponse(await PATCH(buildRequest({}) as unknown as NextRequest, buildContext()))
 
       expect(response.status).toBe(401)
       expect(getUpdateMock()).not.toHaveBeenCalled()
@@ -112,7 +119,7 @@ describe('API /api/usuarios/[id]', () => {
       getSessionMock().mockResolvedValue({ user: { id: '3' } })
       getUpdateMock().mockResolvedValue(resultado)
 
-  const response = await PATCH(buildRequest(payload) as unknown as NextRequest, buildContext())
+      const response = ensureResponse(await PATCH(buildRequest(payload) as unknown as NextRequest, buildContext()))
 
       expect(getUpdateMock()).toHaveBeenCalledWith(42, payload, 3)
       expect(response.status).toBe(200)
@@ -127,7 +134,7 @@ describe('API /api/usuarios/[id]', () => {
       getSessionMock().mockResolvedValue({ user: { id: '12' } })
       getChangeEstadoMock().mockResolvedValue(resultado)
 
-  const response = await PATCH(buildRequest(payload) as unknown as NextRequest, buildContext())
+      const response = ensureResponse(await PATCH(buildRequest(payload) as unknown as NextRequest, buildContext()))
 
       expect(getChangeEstadoMock()).toHaveBeenCalledWith({
         id: 42,
@@ -145,7 +152,7 @@ describe('API /api/usuarios/[id]', () => {
 
       getSessionMock().mockResolvedValue({ user: { id: '9' } })
 
-  const response = await PATCH(buildRequest(payload) as unknown as NextRequest, buildContext())
+      const response = ensureResponse(await PATCH(buildRequest(payload) as unknown as NextRequest, buildContext()))
 
       expect(response.status).toBe(400)
       const json = await response.json()
@@ -160,7 +167,7 @@ describe('API /api/usuarios/[id]', () => {
       getSessionMock().mockResolvedValue({ user: { id: '15' } })
       getResetPasswordMock().mockResolvedValue(resultado)
 
-  const response = await PATCH(buildRequest(payload) as unknown as NextRequest, buildContext())
+      const response = ensureResponse(await PATCH(buildRequest(payload) as unknown as NextRequest, buildContext()))
 
       expect(getResetPasswordMock()).toHaveBeenCalledWith(42, payload, 15)
       expect(response.status).toBe(200)
@@ -175,7 +182,7 @@ describe('API /api/usuarios/[id]', () => {
       getSessionMock().mockResolvedValue({ user: { id: '33' } })
       getRegistrarEnvioMock().mockResolvedValue(resultado)
 
-  const response = await PATCH(buildRequest(payload) as unknown as NextRequest, buildContext())
+      const response = ensureResponse(await PATCH(buildRequest(payload) as unknown as NextRequest, buildContext()))
 
       expect(getRegistrarEnvioMock()).toHaveBeenCalledWith({
         id: 42,
@@ -195,7 +202,7 @@ describe('API /api/usuarios/[id]', () => {
       getSessionMock().mockResolvedValue({ user: { id: '44' } })
       getEnviarCredencialesMock().mockResolvedValue(resultado)
 
-  const response = await PATCH(buildRequest(payload) as unknown as NextRequest, buildContext())
+      const response = ensureResponse(await PATCH(buildRequest(payload) as unknown as NextRequest, buildContext()))
 
       expect(getEnviarCredencialesMock()).toHaveBeenCalledWith(42, payload, 44)
       expect(response.status).toBe(200)
@@ -209,7 +216,7 @@ describe('API /api/usuarios/[id]', () => {
       getSessionMock().mockResolvedValue({ user: { id: '44' } })
       getEnviarCredencialesMock().mockRejectedValue(new ApiError(500, 'SMTP caído'))
 
-  const response = await PATCH(buildRequest(payload) as unknown as NextRequest, buildContext())
+  const response = ensureResponse(await PATCH(buildRequest(payload) as unknown as NextRequest, buildContext()))
 
       expect(response.status).toBe(500)
       const json = await response.json()
@@ -221,7 +228,7 @@ describe('API /api/usuarios/[id]', () => {
     it('responde 401 cuando no hay sesión', async () => {
       getSessionMock().mockResolvedValue(null)
 
-  const response = await DELETE({} as NextRequest, buildContext())
+      const response = ensureResponse(await DELETE({} as NextRequest, buildContext()))
 
       expect(response.status).toBe(401)
       expect(getDeleteMock()).not.toHaveBeenCalled()
@@ -233,7 +240,7 @@ describe('API /api/usuarios/[id]', () => {
       getSessionMock().mockResolvedValue({ user: { id: '18' } })
       getDeleteMock().mockResolvedValue(resultado)
 
-  const response = await DELETE({} as NextRequest, buildContext())
+        const response = ensureResponse(await DELETE({} as NextRequest, buildContext()))
 
       expect(getDeleteMock()).toHaveBeenCalledWith(42, 18)
       expect(response.status).toBe(200)
@@ -245,7 +252,7 @@ describe('API /api/usuarios/[id]', () => {
       getSessionMock().mockResolvedValue({ user: { id: '18' } })
       getDeleteMock().mockRejectedValue(new ApiError(400, 'Ya está dado de baja'))
 
-  const response = await DELETE({} as NextRequest, buildContext())
+          const response = ensureResponse(await DELETE({} as NextRequest, buildContext()))
 
       expect(response.status).toBe(400)
       const json = await response.json()

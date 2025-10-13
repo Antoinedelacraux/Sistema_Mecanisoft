@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { signOut, useSession } from "next-auth/react"
@@ -24,16 +24,27 @@ import {
   Boxes
 } from "lucide-react"
 
-const menuItems = [
+import { usePermisos } from '@/hooks/use-permisos'
+
+type MenuItem = {
+  title: string
+  icon: typeof Home
+  href: string
+  permiso?: string
+}
+
+const menuItems: MenuItem[] = [
   {
     title: "Dashboard",
     icon: Home,
     href: "/dashboard",
+    permiso: 'dashboard.ver'
   },
   {
     title: "Clientes",
     icon: Users,
     href: "/dashboard/clientes",
+    permiso: 'clientes.listar'
   },
   {
     title: "Vehículos", 
@@ -54,11 +65,13 @@ const menuItems = [
     title: "Inventario",
     icon: Boxes,
     href: "/dashboard/inventario",
+    permiso: 'inventario.ver'
   },
   {
     title: "Servicios",
     icon: Wrench,
     href: "/dashboard/servicios",
+    permiso: 'servicios.listar'
   },
   {
     title: "Trabajadores",
@@ -69,16 +82,13 @@ const menuItems = [
     title: "Usuarios",
     icon: Users,
     href: "/dashboard/usuarios",
-  },
-  {
-    title: "Usuarios",
-    icon: Users,
-    href: "/dashboard/usuarios",
+    permiso: 'usuarios.administrar'
   },
   {
     title: "Tareas",
     icon: ClipboardList,
     href: "/dashboard/tareas",
+    permiso: 'tareas.ver'
   },
   {
     title: "Mis Tareas",
@@ -94,11 +104,13 @@ const menuItems = [
     title: "Cotizaciones",
     icon: ClipboardList,
     href: "/dashboard/cotizaciones",
+    permiso: 'cotizaciones.listar'
   },
   {
     title: "Facturación",
     icon: Receipt,
     href: "/dashboard/facturacion",
+    permiso: 'facturacion.emitir'
   },
   {
     title: "Ventas",
@@ -109,6 +121,7 @@ const menuItems = [
     title: "Reportes",
     icon: FileText,
     href: "/dashboard/reportes",
+    permiso: 'reportes.ver'
   },
   {
     title: "Configuración",
@@ -121,6 +134,11 @@ export function Sidebar() {
   const [isOpen, setIsOpen] = useState(false)
   const pathname = usePathname()
   const { data: session } = useSession()
+  const { puede } = usePermisos()
+
+  const visibleItems = useMemo<MenuItem[]>(() => (
+    menuItems.filter((item) => !item.permiso || puede(item.permiso))
+  ), [puede])
 
   const handleLogout = () => {
     signOut({ callbackUrl: "/login" })
@@ -179,7 +197,7 @@ export function Sidebar() {
         {/* Navigation */}
         <nav className="flex-1 p-4">
           <ul className="space-y-1">
-            {menuItems.map((item) => {
+            {visibleItems.map((item) => {
               const isActive = pathname === item.href
               const Icon = item.icon
               

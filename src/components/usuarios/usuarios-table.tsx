@@ -73,7 +73,7 @@ export function UsuariosTable({ roles, onCreateNew, onEdit, onView, refreshTrigg
   })
   const [search, setSearch] = useState('')
   const [estado, setEstado] = useState<'todos' | 'activos' | 'inactivos'>('todos')
-  const [rolFilter, setRolFilter] = useState<string>('')
+  const [rolFilter, setRolFilter] = useState<string>('todos')
   const [requiereCambio, setRequiereCambio] = useState<'todos' | 'si' | 'no'>('todos')
   const [pendientesEnvio, setPendientesEnvio] = useState<'todos' | 'si' | 'no'>('todos')
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null)
@@ -89,7 +89,7 @@ export function UsuariosTable({ roles, onCreateNew, onEdit, onView, refreshTrigg
         limit: pagination.limit,
         search: search.trim() || undefined,
         estado: estado === 'todos' ? undefined : estado,
-        rol: rolFilter || undefined,
+  rol: rolFilter === 'todos' ? undefined : rolFilter,
         requiere_cambio: requiereCambio === 'todos' ? undefined : (requiereCambio === 'si'),
         pendientes_envio: pendientesEnvio === 'todos' ? undefined : (pendientesEnvio === 'si')
       })
@@ -411,7 +411,7 @@ export function UsuariosTable({ roles, onCreateNew, onEdit, onView, refreshTrigg
               label="Rol"
               value={rolFilter}
               onChange={handleRolChange}
-              options={[{ value: '', label: 'Todos' }, ...roles.map((rol) => ({ value: rol.nombre_rol, label: rol.nombre_rol }))]}
+              options={[{ value: 'todos', label: 'Todos' }, ...roles.map((rol) => ({ value: rol.nombre_rol, label: rol.nombre_rol }))]}
             />
           </div>
         </div>

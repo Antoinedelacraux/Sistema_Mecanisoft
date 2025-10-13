@@ -2,11 +2,24 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { asegurarPermiso, PermisoDenegadoError, SesionInvalidaError } from '@/lib/permisos/guards'
 
 // ✅ Endpoint que otros módulos usarán para obtener solo clientes activos
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
+    try {
+      await asegurarPermiso(session, 'clientes.listar', { prismaClient: prisma })
+    } catch (error) {
+      if (error instanceof SesionInvalidaError) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+      }
+      if (error instanceof PermisoDenegadoError) {
+        return NextResponse.json({ error: 'No cuentas con permisos para listar clientes' }, { status: 403 })
+      }
+      throw error
+    }
+
     if (!session) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }

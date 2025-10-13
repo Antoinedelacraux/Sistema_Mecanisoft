@@ -225,7 +225,7 @@ export function UsuarioCreateForm({ roles, onSuccess, onCancel, onPasswordGenera
                 </SelectTrigger>
                 <SelectContent>
                   {trabajadores.length === 0 && !trabajadoresLoading && (
-                    <SelectItem value="" disabled>
+                    <SelectItem value="__no_disponible__" disabled>
                       No hay trabajadores disponibles
                     </SelectItem>
                   )}

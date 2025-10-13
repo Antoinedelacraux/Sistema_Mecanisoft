@@ -121,8 +121,8 @@ const InventarioAlmacenesPage = async () => {
     redirect('/login');
   }
 
-  const canRead = hasInventoryPermission(session.user.role, 'read');
-  const canManage = hasInventoryPermission(session.user.role, 'write');
+  const canRead = hasInventoryPermission(session, 'read');
+  const canManage = hasInventoryPermission(session, 'write');
 
   if (!canRead) {
     return (

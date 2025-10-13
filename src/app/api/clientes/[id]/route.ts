@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { validateClientePayload, ClienteValidationError } from '@/lib/clientes/validation'
+import { asegurarPermiso, PermisoDenegadoError, SesionInvalidaError } from '@/lib/permisos/guards'
 
 // Tipado flexible para compatibilidad con el validador de rutas de Next 15
 type ParamsInput = { params: { id: string } } | { params: Promise<{ id: string }> }
@@ -14,15 +15,32 @@ async function resolveParams(ctx: ParamsInput): Promise<{ id: string }> {
   return isPromise(raw) ? await raw : raw
 }
 
+const withPermiso = async (codigoPermiso: string, mensaje403: string) => {
+  const session = await getServerSession(authOptions)
+  try {
+    await asegurarPermiso(session, codigoPermiso, { prismaClient: prisma })
+    if (!session) {
+      return { error: NextResponse.json({ error: 'No autorizado' }, { status: 401 }) } as const
+    }
+    return { session } as const
+  } catch (error) {
+    if (error instanceof SesionInvalidaError) {
+      return { error: NextResponse.json({ error: 'No autorizado' }, { status: 401 }) } as const
+    }
+    if (error instanceof PermisoDenegadoError) {
+      return { error: NextResponse.json({ error: mensaje403 }, { status: 403 }) } as const
+    }
+    throw error
+  }
+}
+
 export async function GET(
   request: NextRequest,
   ctx: ParamsInput
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    }
+    const guard = await withPermiso('clientes.listar', 'No cuentas con permisos para visualizar clientes')
+    if ('error' in guard) return guard.error
 
     const { id: rawId } = await resolveParams(ctx)
     const id = parseInt(rawId, 10);
@@ -71,10 +89,9 @@ export async function PATCH(
   ctx: ParamsInput
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
-    }
+    const guard = await withPermiso('clientes.editar', 'No cuentas con permisos para gestionar clientes')
+    if ('error' in guard) return guard.error
+    const session = guard.session
     const { id: rawId } = await resolveParams(ctx)
     const id = parseInt(rawId, 10)
     if (isNaN(id)) {
@@ -134,10 +151,9 @@ export async function PUT(
   ctx: ParamsInput
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    }
+    const guard = await withPermiso('clientes.editar', 'No cuentas con permisos para gestionar clientes')
+    if ('error' in guard) return guard.error
+    const session = guard.session
     const { id: rawId } = await resolveParams(ctx)
     const id = parseInt(rawId, 10)
     if (Number.isNaN(id)) {
@@ -263,10 +279,9 @@ export async function DELETE(
   ctx: ParamsInput
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
-    }
+    const guard = await withPermiso('clientes.editar', 'No cuentas con permisos para gestionar clientes')
+    if ('error' in guard) return guard.error
+    const session = guard.session
     const { id: rawId } = await resolveParams(ctx)
     const id = parseInt(rawId, 10);
     if (isNaN(id)) {

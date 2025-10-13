@@ -1,11 +1,16 @@
 import Link from 'next/link';
 import { Prisma } from '@prisma/client';
+import { ShieldAlert } from 'lucide-react';
+import { getServerSession } from 'next-auth';
 
 import MovimientoQuickForm from '@/components/inventario/movimiento-quick-form';
 import TransferenciaWizard from '@/components/inventario/transferencia-wizard';
 import TransferenciasTable, { type TransferenciaResumen } from '@/components/inventario/transferencias-table';
 import { obtenerResumenInventario } from '@/lib/inventario/reportes';
 import { prisma } from '@/lib/prisma';
+import { authOptions } from '@/lib/auth';
+import { asegurarPermiso, PermisoDenegadoError, SesionInvalidaError } from '@/lib/permisos/guards';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 export const revalidate = 0;
 
@@ -149,6 +154,37 @@ const getInventarioSnapshot = async () => {
 };
 
 const InventarioDashboardPage = async () => {
+  const session = await getServerSession(authOptions);
+  try {
+    await asegurarPermiso(session, 'reportes.ver', { prismaClient: prisma });
+  } catch (error) {
+    if (error instanceof SesionInvalidaError) {
+      return (
+        <Alert className="mt-6">
+          <ShieldAlert className="h-5 w-5 text-orange-500" />
+          <AlertTitle>Sesión requerida</AlertTitle>
+          <AlertDescription>
+            Debes iniciar sesión nuevamente para consultar los reportes de inventario.
+          </AlertDescription>
+        </Alert>
+      );
+    }
+
+    if (error instanceof PermisoDenegadoError) {
+      return (
+        <Alert className="mt-6">
+          <ShieldAlert className="h-5 w-5 text-orange-500" />
+          <AlertTitle>Acceso restringido</AlertTitle>
+          <AlertDescription>
+            No cuentas con permisos para visualizar los reportes de inventario.
+          </AlertDescription>
+        </Alert>
+      );
+    }
+
+    throw error;
+  }
+
   const [snapshot, resumenInventario] = await Promise.all([
     getInventarioSnapshot(),
     obtenerResumenInventario(),

@@ -44,3 +44,33 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 ```powershell
 npx jest tests/lib/ordenes
 ```
+
+## Permisos y verificación rápida
+
+- El seed (`npm run seed`) ahora crea también los permisos `servicios.*`, `cotizaciones.*`, `tareas.*` y `reportes.ver`. Después de reseed recuerda volver a iniciar sesión para que la sesión consuma los permisos actualizados.
+- Agregamos un set de pruebas enfocadas en los guardas de permisos:
+	- API servicios: `tests/api/serviciosApi.test.ts` y `tests/api/serviciosIdApi.test.ts`
+	- API reportes de inventario: `tests/api/inventarioReportesApi.test.ts`
+	- UI `ServiciosTable`: `tests/ui/serviciosTable.test.tsx`
+
+Para ejecutar todas ellas en bloque:
+
+```powershell
+npx jest tests/api/serviciosApi.test.ts tests/api/serviciosIdApi.test.ts tests/api/inventarioReportesApi.test.ts tests/ui/serviciosTable.test.tsx
+```
+
+## Script DX `npm run verify`
+
+Se añadió un script de verificación básica que encadena linting, chequeo de tipos y el paquete de pruebas anteriores:
+
+```powershell
+npm run verify
+```
+
+Internamente ejecuta:
+
+1. `npm run lint`
+2. `npm run typecheck`
+3. `npm run test:critical`
+
+⚠️ El chequeo de tipos (`tsc --noEmit`) expone deuda técnica previa (principalmente sesiones opcionales) y hoy rompe la cadena. Mantuvimos ese comportamiento para visibilizar los pendientes; corrige los errores reportados antes de abrir PRs.

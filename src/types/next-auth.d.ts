@@ -5,6 +5,7 @@ declare module "next-auth" {
     username: string
     role: string
     requiresPasswordChange?: boolean
+    permisos: string[]
   }
 
   interface Session {
@@ -16,6 +17,7 @@ declare module "next-auth" {
       username: string
       role: string
       requiresPasswordChange: boolean
+      permisos: string[]
     }
   }
 }
@@ -25,5 +27,6 @@ declare module "next-auth/jwt" {
     username?: string
     role?: string
     requiresPasswordChange?: boolean
+    permisos?: string[]
   }
 }

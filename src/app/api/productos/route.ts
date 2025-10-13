@@ -16,19 +16,26 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '10')
     const search = searchParams.get('search') || ''
     const categoria = searchParams.get('categoria')
-  const tipo = searchParams.get('tipo') // 'producto'
+    const tipo = searchParams.get('tipo') // 'producto'
     const stockBajo = searchParams.get('stock_bajo') === 'true'
-  const includeInactive = searchParams.get('include_inactive') === 'true' // conservado por compatibilidad (ya no necesario)
+    const includeInactive = searchParams.get('include_inactive') === 'true' // conservado por compatibilidad (ya no necesario)
+    const estatusFilter = searchParams.get('estatus') // 'activos' | 'inactivos'
 
     const skip = (page - 1) * limit
 
-    // Siempre mostraremos productos independientemente de su estatus.
-    // Si en el futuro se requiere filtrar solo activos, se podría añadir un query param ?only_active=true
-    // De momento ignoramos includeInactive y no filtramos por estatus.
     let whereCondition: Prisma.ProductoWhereInput = {}
 
     // Siempre devolver solo productos en este módulo
     whereCondition = { ...whereCondition, tipo: 'producto' }
+
+    if (estatusFilter === 'activos') {
+      whereCondition = { ...whereCondition, estatus: true }
+    } else if (estatusFilter === 'inactivos') {
+      whereCondition = { ...whereCondition, estatus: false }
+    } else if (!includeInactive) {
+      // Compatibilidad: si no se solicita explícitamente incluir inactivos, devolver solo activos para consumo operativo
+      whereCondition = { ...whereCondition, estatus: true }
+    }
 
     // Filtro por categoría
     if (categoria) {

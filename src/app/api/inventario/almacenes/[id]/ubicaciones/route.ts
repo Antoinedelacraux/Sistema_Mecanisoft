@@ -4,7 +4,8 @@ import { z } from 'zod';
 
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { getInventoryGuardMessage, hasInventoryPermission } from '@/lib/inventario/permissions';
+import { getInventoryGuardMessage, requireInventoryPermission } from '@/lib/inventario/permissions';
+import { PermisoDenegadoError, SesionInvalidaError } from '@/lib/permisos/guards';
 
 const paramsSchema = z.object({
   id: z.coerce.number().int().positive(),
@@ -51,12 +52,16 @@ const ensureAlmacenExists = async (id: number) => {
 export const GET = async (request: NextRequest, context: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    }
-
-    if (!hasInventoryPermission(session.user.role, 'read')) {
-      return NextResponse.json({ error: getInventoryGuardMessage('read') }, { status: 403 });
+    try {
+      await requireInventoryPermission(session, 'read', { prismaClient: prisma })
+    } catch (error) {
+      if (error instanceof SesionInvalidaError) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+      }
+      if (error instanceof PermisoDenegadoError) {
+        return NextResponse.json({ error: getInventoryGuardMessage('read') }, { status: 403 })
+      }
+      throw error
     }
 
     const params = await context.params;
@@ -125,12 +130,16 @@ export const GET = async (request: NextRequest, context: { params: Promise<{ id:
 export const POST = async (request: NextRequest, context: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    }
-
-    if (!hasInventoryPermission(session.user.role, 'write')) {
-      return NextResponse.json({ error: getInventoryGuardMessage('write') }, { status: 403 });
+    try {
+      await requireInventoryPermission(session, 'write', { prismaClient: prisma })
+    } catch (error) {
+      if (error instanceof SesionInvalidaError) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+      }
+      if (error instanceof PermisoDenegadoError) {
+        return NextResponse.json({ error: getInventoryGuardMessage('write') }, { status: 403 })
+      }
+      throw error
     }
 
     const params = await context.params;

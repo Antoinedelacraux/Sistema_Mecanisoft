@@ -1,9 +1,10 @@
 /// <reference types="jest" />
 
-import { POST } from '../../src/app/api/cotizaciones/route'
+type CotizacionesRouteModule = typeof import('../../src/app/api/cotizaciones/route')
 import { getServerSession } from 'next-auth/next'
 import { prisma } from '@/lib/prisma'
 import type { NextRequest } from 'next/server'
+import { asegurarPermiso } from '@/lib/permisos/guards'
 
 jest.mock('next-auth/next', () => ({
   getServerSession: jest.fn()
@@ -42,6 +43,12 @@ jest.mock('@/lib/prisma', () => {
   return { prisma: prismaMock }
 })
 
+jest.mock('@/lib/permisos/guards', () => ({
+  asegurarPermiso: jest.fn(),
+  PermisoDenegadoError: class extends Error {},
+  SesionInvalidaError: class extends Error {}
+}))
+
 type MockFn = jest.Mock<any, any>
 
 type PrismaMock = {
@@ -63,6 +70,43 @@ type PrismaMock = {
 
 const prismaMock = prisma as unknown as PrismaMock
 const mockedGetServerSession = getServerSession as jest.Mock
+const mockedAsegurarPermiso = asegurarPermiso as jest.Mock
+
+let POST!: CotizacionesRouteModule['POST']
+let GET!: CotizacionesRouteModule['GET']
+
+jest.mock('next/server', () => {
+  return {
+    NextResponse: {
+      json: (body: any, init?: { status?: number; headers?: Record<string, string> }) => {
+        const headers = new Map<string, string>()
+        if (init?.headers) {
+          Object.entries(init.headers).forEach(([key, value]) => {
+            headers.set(key.toLowerCase(), value)
+          })
+        }
+
+        return {
+          status: init?.status ?? 200,
+          headers: {
+            get: (key: string) => headers.get(key.toLowerCase()) ?? null,
+            set: (key: string, value: string) => headers.set(key.toLowerCase(), value)
+          },
+          body,
+          async json() {
+            return body
+          }
+        }
+      }
+    }
+  }
+})
+
+beforeAll(async () => {
+  const module = await import('../../src/app/api/cotizaciones/route')
+  POST = module.POST
+  GET = module.GET
+})
 
 function buildRequest(body: Record<string, unknown>): NextRequest {
   return { json: async () => body } as unknown as NextRequest
@@ -72,6 +116,7 @@ describe('POST /api/cotizaciones', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     mockedGetServerSession.mockReset()
+    mockedAsegurarPermiso.mockReset()
 
     prismaMock.$transaction.mockImplementation(async (cb: (tx: { cotizacion: { create: MockFn }; detalleCotizacion: { create: MockFn } }) => Promise<any>) => {
       return cb({
@@ -255,5 +300,70 @@ describe('POST /api/cotizaciones', () => {
     const serviceCall = calls.find(([args]) => args.data.id_servicio === 20)
     expect(serviceCall).toBeDefined()
     expect(serviceCall?.[0].data.servicio_ref).toBeNull()
+  })
+})
+
+describe('GET /api/cotizaciones', () => {
+  const buildRequest = (query = ''): NextRequest => ({
+    url: `http://localhost/api/cotizaciones${query}`
+  } as unknown as NextRequest)
+
+  beforeEach(() => {
+    jest.clearAllMocks()
+    mockedGetServerSession.mockReset()
+    mockedAsegurarPermiso.mockReset()
+    mockedGetServerSession.mockResolvedValue({ user: { id: '99' } })
+    mockedAsegurarPermiso.mockResolvedValue(true)
+    prismaMock.cotizacion.findMany.mockResolvedValue([])
+    prismaMock.cotizacion.count.mockResolvedValue(0)
+  })
+
+  it('filters solo servicios cotizaciones', async () => {
+    const response = await GET(buildRequest('?modo=solo_servicios'))
+
+    expect(response.status).toBe(200)
+    const findManyArgs = prismaMock.cotizacion.findMany.mock.calls[0]?.[0]
+    expect(findManyArgs?.where?.AND).toEqual([
+      {
+        detalle_cotizacion: {
+          some: { servicio: { isNot: null } },
+          every: { producto: { is: null } }
+        }
+      }
+    ])
+  })
+
+  it('filters solo productos cotizaciones', async () => {
+    const response = await GET(buildRequest('?modo=solo_productos'))
+
+    expect(response.status).toBe(200)
+    const findManyArgs = prismaMock.cotizacion.findMany.mock.calls[0]?.[0]
+    expect(findManyArgs?.where?.AND).toEqual([
+      {
+        detalle_cotizacion: {
+          some: { producto: { isNot: null } },
+          every: { servicio: { is: null } }
+        }
+      }
+    ])
+  })
+
+  it('filters mixed cotizaciones', async () => {
+    const response = await GET(buildRequest('?modo=servicios_y_productos'))
+
+    expect(response.status).toBe(200)
+    const findManyArgs = prismaMock.cotizacion.findMany.mock.calls[0]?.[0]
+    expect(findManyArgs?.where?.AND).toEqual([
+      {
+        detalle_cotizacion: {
+          some: { servicio: { isNot: null } }
+        }
+      },
+      {
+        detalle_cotizacion: {
+          some: { producto: { isNot: null } }
+        }
+      }
+    ])
   })
 })

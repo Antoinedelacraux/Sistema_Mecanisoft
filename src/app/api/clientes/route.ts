@@ -3,10 +3,23 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { validateClientePayload, ClienteValidationError } from '@/lib/clientes/validation'
+import { asegurarPermiso, PermisoDenegadoError, SesionInvalidaError } from '@/lib/permisos/guards'
 
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
+    try {
+      await asegurarPermiso(session, 'clientes.listar', { prismaClient: prisma })
+    } catch (error) {
+      if (error instanceof SesionInvalidaError) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+      }
+      if (error instanceof PermisoDenegadoError) {
+        return NextResponse.json({ error: 'No cuentas con permisos para listar clientes' }, { status: 403 })
+      }
+      throw error
+    }
+
     if (!session) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
@@ -80,6 +93,18 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
+    try {
+      await asegurarPermiso(session, 'clientes.editar', { prismaClient: prisma })
+    } catch (error) {
+      if (error instanceof SesionInvalidaError) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+      }
+      if (error instanceof PermisoDenegadoError) {
+        return NextResponse.json({ error: 'No cuentas con permisos para gestionar clientes' }, { status: 403 })
+      }
+      throw error
+    }
+
     if (!session) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }

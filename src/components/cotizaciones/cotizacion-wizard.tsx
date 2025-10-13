@@ -151,7 +151,7 @@ export function CotizacionWizard({ onSuccess, onCancel, cotizacion }: Cotizacion
       try {
         const [clientesRes, productosRes, serviciosRes] = await Promise.all([
           fetch('/api/clientes/activos'),
-          fetch('/api/productos'),
+          fetch('/api/productos?estatus=activos'),
           fetch('/api/servicios?estado=activos&limit=1000')
         ])
 
@@ -492,14 +492,17 @@ export function CotizacionWizard({ onSuccess, onCancel, cotizacion }: Cotizacion
         id_vehiculo: vehiculoSeleccionado.id_vehiculo,
         vigencia_dias: vigenciaDias,
         modo_cotizacion: modoCotizacion,
-        items: items.map((item) => ({
-          id_producto: item.id_referencia,
-          cantidad: Number.isFinite(item.cantidad) && item.cantidad > 0 ? item.cantidad : 1,
-          precio_unitario: Number.isFinite(item.precio_unitario) && item.precio_unitario >= 0 ? item.precio_unitario : 0,
-          descuento: Number.isFinite(item.descuento) && item.descuento >= 0 ? item.descuento : 0,
-          tipo: item.tipo,
-          ...(item.tipo === 'producto' ? { servicio_ref: item.servicio_ref ?? null } : {})
-        }))
+        items: items.map((item) => {
+          // Asegurar tipos y valores válidos para Zod
+          return {
+            id_producto: Number.isFinite(item.id_referencia) ? Number(item.id_referencia) : 0,
+            cantidad: Number.isFinite(item.cantidad) && item.cantidad > 0 ? Number(item.cantidad) : 1,
+            precio_unitario: Number.isFinite(item.precio_unitario) && item.precio_unitario >= 0 ? Number(item.precio_unitario) : 0,
+            descuento: Number.isFinite(item.descuento) && item.descuento >= 0 ? Number(item.descuento) : 0,
+            tipo: item.tipo === 'servicio' ? 'servicio' : 'producto',
+            servicio_ref: item.tipo === 'producto' && item.servicio_ref ? Number(item.servicio_ref) : null
+          }
+        })
       }
 
       const endpoint = isEditing && cotizacion

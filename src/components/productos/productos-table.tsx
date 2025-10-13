@@ -51,6 +51,8 @@ export function ProductosTable({ onEdit, onView, onCreateNew, onManageCategories
         ...(stockBajo && { stock_bajo: 'true' })
       })
 
+      params.set('include_inactive', 'true')
+
       const response = await fetch(`/api/productos?${params}`)
       if (!response.ok) throw new Error('Error al cargar productos')
 

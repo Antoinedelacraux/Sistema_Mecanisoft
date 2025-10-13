@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { asegurarPermiso, PermisoDenegadoError, SesionInvalidaError } from '@/lib/permisos/guards'
 
 // Asegura evaluación de cookies/sesión en cada request (evita cache estática accidental)
 export const dynamic = 'force-dynamic'
@@ -15,6 +16,18 @@ import { actualizarOrden } from '@/lib/ordenes/actualizar'
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
+    try {
+      await asegurarPermiso(session, 'ordenes.crear', { prismaClient: prisma })
+    } catch (error) {
+      if (error instanceof SesionInvalidaError) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+      }
+      if (error instanceof PermisoDenegadoError) {
+        return NextResponse.json({ error: 'No cuentas con permisos para gestionar órdenes' }, { status: 403 })
+      }
+      throw error
+    }
+
     if (!session) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
@@ -80,6 +93,18 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
+    try {
+      await asegurarPermiso(session, 'ordenes.crear', { prismaClient: prisma })
+    } catch (error) {
+      if (error instanceof SesionInvalidaError) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+      }
+      if (error instanceof PermisoDenegadoError) {
+        return NextResponse.json({ error: 'No cuentas con permisos para crear órdenes' }, { status: 403 })
+      }
+      throw error
+    }
+
     if (!session) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
@@ -117,6 +142,18 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
+    try {
+      await asegurarPermiso(session, 'ordenes.crear', { prismaClient: prisma })
+    } catch (error) {
+      if (error instanceof SesionInvalidaError) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+      }
+      if (error instanceof PermisoDenegadoError) {
+        return NextResponse.json({ error: 'No cuentas con permisos para editar órdenes' }, { status: 403 })
+      }
+      throw error
+    }
+
     if (!session) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
@@ -128,6 +165,20 @@ export async function PATCH(request: NextRequest) {
 
     const body = await request.json().catch(() => null)
     if (!body) return NextResponse.json({ error: 'JSON inválido' }, { status: 400 })
+
+    if (typeof body.nuevo_estado === 'string' && ['completado', 'entregado'].includes(body.nuevo_estado)) {
+      try {
+        await asegurarPermiso(session, 'ordenes.cerrar', { prismaClient: prisma })
+      } catch (error) {
+        if (error instanceof PermisoDenegadoError) {
+          return NextResponse.json({ error: 'No cuentas con permisos para cerrar órdenes' }, { status: 403 })
+        }
+        if (error instanceof SesionInvalidaError) {
+          return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+        }
+        throw error
+      }
+    }
 
     const resultado = await actualizarOrden(prisma, body, usuarioId)
     return NextResponse.json(resultado.body, { status: resultado.status })

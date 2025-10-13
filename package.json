@@ -7,6 +7,9 @@
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test:critical": "jest tests/api/serviciosApi.test.ts tests/api/serviciosIdApi.test.ts tests/api/inventarioReportesApi.test.ts tests/ui/serviciosTable.test.tsx",
+    "verify": "npm run lint && npm run typecheck && npm run test:critical",
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {

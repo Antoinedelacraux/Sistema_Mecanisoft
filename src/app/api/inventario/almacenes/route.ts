@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
+import type { Session } from 'next-auth';
 import { z } from 'zod';
 
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { getInventoryGuardMessage, hasInventoryPermission } from '@/lib/inventario/permissions';
+import { getInventoryGuardMessage, requireInventoryPermission } from '@/lib/inventario/permissions';
+import type { InventoryPermissionLevel } from '@/lib/inventario/permissions';
+import { PermisoDenegadoError, SesionInvalidaError } from '@/lib/permisos/guards';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,16 +48,33 @@ const serializeAlmacen = (almacen: {
   },
 });
 
+const ensurePermission = async (
+  session: Session | null,
+  level: InventoryPermissionLevel
+) => {
+  if (!session) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+  }
+
+  try {
+    await requireInventoryPermission(session, level, { prismaClient: prisma })
+    return null
+  } catch (error) {
+    if (error instanceof SesionInvalidaError) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+    }
+    if (error instanceof PermisoDenegadoError) {
+      return NextResponse.json({ error: getInventoryGuardMessage(level) }, { status: 403 })
+    }
+    throw error
+  }
+}
+
 export const GET = async (request: NextRequest) => {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    }
-
-    if (!hasInventoryPermission(session.user.role, 'read')) {
-      return NextResponse.json({ error: getInventoryGuardMessage('read') }, { status: 403 });
-    }
+    const guardResponse = await ensurePermission(session, 'read')
+    if (guardResponse) return guardResponse
 
     const rawParams = Object.fromEntries(request.nextUrl.searchParams.entries());
     const { page, limit, search, activo } = querySchema.parse(rawParams);
@@ -121,13 +141,8 @@ export const GET = async (request: NextRequest) => {
 export const POST = async (request: NextRequest) => {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    }
-
-    if (!hasInventoryPermission(session.user.role, 'write')) {
-      return NextResponse.json({ error: getInventoryGuardMessage('write') }, { status: 403 });
-    }
+    const guardResponse = await ensurePermission(session, 'write')
+    if (guardResponse) return guardResponse
 
     const body = createSchema.parse(await request.json());
 

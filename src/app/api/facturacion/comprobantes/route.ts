@@ -6,6 +6,7 @@ import { FacturacionError } from '@/lib/facturacion/errors'
 import { prepararCotizacionParaFacturacion } from '@/lib/facturacion/cotizaciones'
 import { prepararOrdenParaFacturacion } from '@/lib/facturacion/ordenes'
 import { crearBorradorDesdePayload, listarComprobantes, serializeComprobante } from '@/lib/facturacion/comprobantes'
+import { asegurarPermiso, PermisoDenegadoError, SesionInvalidaError } from '@/lib/permisos/guards'
 
 const querySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
@@ -37,6 +38,18 @@ const toNumber = (value: number | string): number => {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
+    try {
+      await asegurarPermiso(session, 'facturacion.emitir')
+    } catch (error) {
+      if (error instanceof SesionInvalidaError) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+      }
+      if (error instanceof PermisoDenegadoError) {
+        return NextResponse.json({ error: 'No cuentas con permisos para emitir comprobantes' }, { status: 403 })
+      }
+      throw error
+    }
+
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
@@ -96,6 +109,18 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
+    try {
+      await asegurarPermiso(session, 'facturacion.emitir')
+    } catch (error) {
+      if (error instanceof SesionInvalidaError) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+      }
+      if (error instanceof PermisoDenegadoError) {
+        return NextResponse.json({ error: 'No cuentas con permisos para visualizar comprobantes' }, { status: 403 })
+      }
+      throw error
+    }
+
     if (!session) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }

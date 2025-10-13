@@ -1,23 +1,35 @@
-export type InventoryPermissionLevel = 'read' | 'write';
+import type { PrismaClient } from '@prisma/client'
+import type { Session } from 'next-auth'
 
-const NORMALIZED_WRITE_ROLES = ['administrador', 'supervisor', 'almacenero'];
-const NORMALIZED_READ_ROLES = [...NORMALIZED_WRITE_ROLES, 'analista'];
+import { asegurarPermiso, sessionTienePermiso } from '@/lib/permisos/guards'
 
-const normalizeRole = (role: string | null | undefined) => role?.trim().toLowerCase() ?? '';
+export type InventoryPermissionLevel = 'read' | 'write'
 
-export const hasInventoryPermission = (role: string | null | undefined, level: InventoryPermissionLevel) => {
-  const normalized = normalizeRole(role);
-  if (!normalized) return false;
+const PERMISOS: Record<InventoryPermissionLevel, string> = {
+  read: 'inventario.ver',
+  write: 'inventario.movimientos'
+}
 
-  if (level === 'write') {
-    return NORMALIZED_WRITE_ROLES.includes(normalized);
-  }
+export const getPermisoPorNivel = (level: InventoryPermissionLevel) => PERMISOS[level]
 
-  return NORMALIZED_READ_ROLES.includes(normalized);
-};
+export const hasInventoryPermission = (session: Session | null, level: InventoryPermissionLevel) => {
+  const codigo = getPermisoPorNivel(level)
+  return sessionTienePermiso(session, codigo)
+}
 
-export const getInventoryGuardMessage = (level: InventoryPermissionLevel) => (
+export const requireInventoryPermission = async (
+  session: Session | null,
+  level: InventoryPermissionLevel,
+  opts: { prismaClient?: PrismaClient; mensaje?: string } = {}
+) => {
+  const codigo = getPermisoPorNivel(level)
+  return asegurarPermiso(session, codigo, {
+    prismaClient: opts.prismaClient,
+    mensaje: opts.mensaje
+  })
+}
+
+export const getInventoryGuardMessage = (level: InventoryPermissionLevel) =>
   level === 'write'
     ? 'No cuentas con permisos para modificar el inventario.'
     : 'No cuentas con permisos para visualizar el inventario.'
-);

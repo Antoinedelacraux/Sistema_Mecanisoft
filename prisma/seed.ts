@@ -32,6 +32,152 @@ async function main() {
   })
   
   console.log('✅ Roles creados')
+
+  // Crear catálogo base de permisos
+  const permisosBase = [
+    {
+      codigo: 'dashboard.ver',
+      nombre: 'Ver dashboard',
+      descripcion: 'Acceso al panel principal con indicadores del taller',
+      modulo: 'dashboard',
+      agrupador: 'general'
+    },
+    {
+      codigo: 'clientes.listar',
+      nombre: 'Listar clientes',
+      descripcion: 'Puede ver el listado de clientes y sus datos asociados',
+      modulo: 'clientes',
+      agrupador: 'gestion_clientes'
+    },
+    {
+      codigo: 'clientes.editar',
+      nombre: 'Crear y editar clientes',
+      descripcion: 'Permite registrar y actualizar información de clientes',
+      modulo: 'clientes',
+      agrupador: 'gestion_clientes'
+    },
+    {
+      codigo: 'inventario.ver',
+      nombre: 'Ver inventario',
+      descripcion: 'Consulta stock y movimientos de inventario',
+      modulo: 'inventario',
+      agrupador: 'gestion_inventario'
+    },
+    {
+      codigo: 'inventario.movimientos',
+      nombre: 'Registrar movimientos de inventario',
+      descripcion: 'Autoriza ingresos, salidas y ajustes de inventario',
+      modulo: 'inventario',
+      agrupador: 'gestion_inventario'
+    },
+    {
+      codigo: 'ordenes.crear',
+      nombre: 'Crear órdenes de trabajo',
+      descripcion: 'Genera nuevas órdenes y asigna responsables',
+      modulo: 'ordenes',
+      agrupador: 'gestion_ordenes'
+    },
+    {
+      codigo: 'ordenes.cerrar',
+      nombre: 'Cerrar órdenes de trabajo',
+      descripcion: 'Permite marcar órdenes como completadas y registrar cierre',
+      modulo: 'ordenes',
+      agrupador: 'gestion_ordenes'
+    },
+    {
+      codigo: 'facturacion.emitir',
+      nombre: 'Emitir comprobantes',
+      descripcion: 'Genera boletas y facturas desde órdenes o cotizaciones',
+      modulo: 'facturacion',
+      agrupador: 'gestion_facturacion'
+    },
+    {
+      codigo: 'usuarios.administrar',
+      nombre: 'Administrar usuarios',
+      descripcion: 'Gestiona cuentas de usuarios y reset de credenciales',
+      modulo: 'usuarios',
+      agrupador: 'seguridad'
+    },
+    {
+      codigo: 'permisos.asignar',
+      nombre: 'Asignar permisos',
+      descripcion: 'Puede asignar o revocar permisos adicionales a usuarios',
+      modulo: 'usuarios',
+      agrupador: 'seguridad'
+    },
+    {
+      codigo: 'cotizaciones.listar',
+      nombre: 'Listar cotizaciones',
+      descripcion: 'Permite visualizar el módulo y listado de cotizaciones',
+      modulo: 'cotizaciones',
+      agrupador: 'gestion_cotizaciones'
+    },
+    {
+      codigo: 'cotizaciones.gestionar',
+      nombre: 'Gestionar cotizaciones',
+      descripcion: 'Autoriza crear, editar, convertir y eliminar cotizaciones',
+      modulo: 'cotizaciones',
+      agrupador: 'gestion_cotizaciones'
+    },
+    {
+      codigo: 'servicios.listar',
+      nombre: 'Listar servicios',
+      descripcion: 'Permite acceder al catálogo de servicios del taller',
+      modulo: 'servicios',
+      agrupador: 'gestion_servicios'
+    },
+    {
+      codigo: 'servicios.gestionar',
+      nombre: 'Gestionar servicios',
+      descripcion: 'Autoriza la creación, actualización y desactivación de servicios',
+      modulo: 'servicios',
+      agrupador: 'gestion_servicios'
+    },
+    {
+      codigo: 'tareas.ver',
+      nombre: 'Ver tablero de tareas',
+      descripcion: 'Permite acceder al tablero general de tareas del taller',
+      modulo: 'tareas',
+      agrupador: 'gestion_tareas'
+    },
+    {
+      codigo: 'tareas.gestionar',
+      nombre: 'Gestionar tareas',
+      descripcion: 'Autoriza actualizar estados y asignaciones de tareas',
+      modulo: 'tareas',
+      agrupador: 'gestion_tareas'
+    },
+    {
+      codigo: 'reportes.ver',
+      nombre: 'Ver reportes',
+      descripcion: 'Permite acceder al módulo de reportes e indicadores avanzados',
+      modulo: 'reportes',
+      agrupador: 'analitica'
+    }
+  ]
+
+  await prisma.permiso.createMany({ data: permisosBase, skipDuplicates: true })
+
+  const permisosRegistrados = await prisma.permiso.findMany({
+    where: {
+      codigo: {
+        in: permisosBase.map((permiso) => permiso.codigo)
+      }
+    },
+    select: {
+      id_permiso: true
+    }
+  })
+
+  await prisma.rolPermiso.createMany({
+    data: permisosRegistrados.map((permisoItem: { id_permiso: number }) => ({
+      id_rol: rolAdmin.id_rol,
+      id_permiso: permisoItem.id_permiso
+    })),
+    skipDuplicates: true
+  })
+
+  console.log('✅ Permisos base configurados')
   
   // Crear persona administrador
   const personaAdmin = await prisma.persona.upsert({

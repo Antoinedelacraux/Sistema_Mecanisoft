@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { asegurarPermiso, PermisoDenegadoError, SesionInvalidaError } from '@/lib/permisos/guards'
 
 type ParamsMaybePromise = { params: { id: string } } | { params: Promise<{ id: string }> }
 
@@ -16,9 +17,24 @@ export async function PATCH(
   try {
     const { id: idParam } = await resolveParams(ctx.params)
     const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+    try {
+      await asegurarPermiso(session, 'tareas.gestionar', { prismaClient: prisma })
+    } catch (error) {
+      if (error instanceof SesionInvalidaError || !session) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+      }
+      if (error instanceof PermisoDenegadoError) {
+        return NextResponse.json({ error: 'No cuentas con permisos para gestionar tareas' }, { status: 403 })
+      }
+      throw error
     }
+      if (!session?.user?.id) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+      }
+      const usuarioId = Number.parseInt(session.user.id, 10)
+      if (!Number.isFinite(usuarioId)) {
+        return NextResponse.json({ error: 'Identificador de usuario inválido' }, { status: 401 })
+      }
 
     const id = parseInt(idParam)
     if (isNaN(id)) {
@@ -145,7 +161,7 @@ export async function PATCH(
     // Bitácora
     await prisma.bitacora.create({
       data: {
-        id_usuario: parseInt(session.user.id),
+          id_usuario: usuarioId,
         accion: 'UPDATE_TAREA',
         descripcion: bitacoraDescripcion || 'Actualización de tarea',
         tabla: 'tarea'

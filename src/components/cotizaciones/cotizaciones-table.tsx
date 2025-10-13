@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import { Search, Plus, Edit, Eye, FileText, Check, X, ArrowRight, Trash2 } from 'lucide-react'
+import { Search, Plus, Edit, Eye, FileText, Check, X, ArrowRight, Trash2, Loader2 } from 'lucide-react'
 import { CotizacionCompleta } from '@/types'
 // Nota: evitamos importar Decimal del runtime de Prisma en componentes cliente para no romper el bundling
 import { useToast } from '@/components/ui/use-toast'
@@ -49,16 +49,19 @@ interface CotizacionesTableProps {
   onView: (cotizacion: CotizacionCompleta) => void
   onCreateNew: () => void
   refreshTrigger?: number
+  canManage?: boolean
 }
 
-export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger }: CotizacionesTableProps) {
+export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger, canManage = true }: CotizacionesTableProps) {
   const [cotizaciones, setCotizaciones] = useState<CotizacionCompleta[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   // Valores centinela para evitar usar value="" en SelectItem (Radix lo reserva para limpiar selección)
   const ALL_ESTADOS = '__ALL_ESTADOS__'
+  const ALL_MODOS = '__ALL_MODOS__'
   const NO_TRABAJADOR = '__NO_TRABAJADOR__'
   const [estadoFilter, setEstadoFilter] = useState(ALL_ESTADOS)
+  const [modoFilter, setModoFilter] = useState(ALL_MODOS)
   const [showApprovalModal, setShowApprovalModal] = useState(false)
   const [showConvertModal, setShowConvertModal] = useState(false)
   const [selectedCotizacion, setSelectedCotizacion] = useState<CotizacionCompleta | null>(null)
@@ -70,6 +73,7 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger 
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [cotizacionToDelete, setCotizacionToDelete] = useState<CotizacionCompleta | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [facturacionLoadingId, setFacturacionLoadingId] = useState<number | null>(null)
   
   const { toast } = useToast()
 
@@ -80,7 +84,8 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger 
         page: '1',
         limit: '50',
         ...(search && { search }),
-        ...(estadoFilter !== ALL_ESTADOS && { estado: estadoFilter })
+        ...(estadoFilter !== ALL_ESTADOS && { estado: estadoFilter }),
+        ...(modoFilter !== ALL_MODOS && { modo: modoFilter })
       })
 
       const response = await fetch(`/api/cotizaciones?${params}`)
@@ -98,7 +103,7 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger 
     } finally {
       setLoading(false)
     }
-  }, [search, estadoFilter, toast])
+  }, [search, estadoFilter, modoFilter, toast])
 
   useEffect(() => {
     fetchCotizaciones()
@@ -126,6 +131,7 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger 
   }
 
   const handleAprobar = (cotizacion: CotizacionCompleta) => {
+    if (!canManage) return
     setSelectedCotizacion(cotizacion)
     setComentarios('')
     setRazonRechazo(null) // asegurar modo aprobar
@@ -133,6 +139,7 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger 
   }
 
   const handleRechazar = (cotizacion: CotizacionCompleta) => {
+    if (!canManage) return
     setSelectedCotizacion(cotizacion)
     setComentarios('')
     setRazonRechazo('') // cualquier string indica modo rechazar
@@ -140,6 +147,7 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger 
   }
 
   const handleConvertirOrden = (cotizacion: CotizacionCompleta) => {
+    if (!canManage) return
     setSelectedCotizacion(cotizacion)
     setTrabajadorAsignado('')
     setPrioridadOrden('media')
@@ -147,13 +155,14 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger 
   }
 
   const handleEliminar = (cotizacion: CotizacionCompleta) => {
+    if (!canManage) return
     setCotizacionToDelete(cotizacion)
     setDeleteLoading(false)
     setShowDeleteModal(true)
   }
 
   const confirmarEliminacion = async () => {
-    if (!cotizacionToDelete) return
+    if (!canManage || !cotizacionToDelete) return
     try {
       setDeleteLoading(true)
       const response = await fetch(`/api/cotizaciones/${cotizacionToDelete.id_cotizacion}`, { method: 'DELETE' })
@@ -187,40 +196,64 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger 
   }
 
   const handleEnviarFacturacion = async (cotizacion: CotizacionCompleta) => {
+    if (!canManage) return
     try {
-      const response = await fetch('/api/facturacion/cotizaciones', {
+      setFacturacionLoadingId(cotizacion.id_cotizacion)
+      const response = await fetch('/api/facturacion/comprobantes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id_cotizacion: cotizacion.id_cotizacion })
+        body: JSON.stringify({
+          origen_tipo: 'COTIZACION',
+          origen_id: cotizacion.id_cotizacion,
+          usar_empresa: Boolean(cotizacion.cliente.persona.empresa_persona)
+        })
       })
 
-      if (!response.ok) {
-        let description = 'No se pudo enviar la cotización a facturación.'
-        try {
-          const errorBody = await response.json()
-          if (errorBody?.error) description = errorBody.error
-        } catch (parseError) {
-          console.warn('Respuesta inesperada al enviar cotización a facturación', parseError)
-        }
-        throw new Error(description)
+      let data: any = null
+      try {
+        data = await response.json()
+      } catch (error) {
+        data = null
       }
 
-      const data = await response.json()
+      if (!response.ok || !data?.data) {
+        let description = 'No se pudo enviar la cotización a facturación.'
+        if (data?.error) description = data.error
+        toast({
+          title: 'Error',
+          description,
+          variant: 'destructive'
+        })
+        return
+      }
+
+      const borrador = data.data
+      const numeroSerie = borrador?.serie && borrador?.numero
+        ? `${borrador.serie}-${String(borrador.numero).padStart(8, '0')}`
+        : null
+
       toast({
         title: 'Cotización enviada a facturación',
-        description: data?.message || `Cotización ${cotizacion.codigo_cotizacion} lista para facturación.`
+        description:
+          numeroSerie
+            ? `Se creó el borrador ${numeroSerie} a partir de ${cotizacion.codigo_cotizacion}.`
+            : data?.message || `Cotización ${cotizacion.codigo_cotizacion} lista para facturación.`
       })
+
+      await fetchCotizaciones()
     } catch (error) {
       toast({
         title: 'Error',
         description: error instanceof Error ? error.message : 'No se pudo preparar la cotización para facturación.',
         variant: 'destructive'
       })
+    } finally {
+      setFacturacionLoadingId(null)
     }
   }
 
   const confirmarAprobacion = async (accion: 'aprobar' | 'rechazar') => {
-    if (!selectedCotizacion) return
+    if (!canManage || !selectedCotizacion) return
     try {
       const body: any = { action: accion, comentarios }
       if (accion === 'rechazar') body.razon_rechazo = razonRechazo
@@ -242,6 +275,7 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger 
   }
 
   const enviarCotizacion = async (cotizacion: CotizacionCompleta) => {
+    if (!canManage) return
     try {
       const response = await fetch(`/api/cotizaciones/${cotizacion.id_cotizacion}`, {
         method: 'PATCH',
@@ -257,7 +291,7 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger 
   }
 
   const confirmarConversion = async () => {
-    if (!selectedCotizacion) return
+    if (!canManage || !selectedCotizacion) return
 
     try {
       const response = await fetch(`/api/cotizaciones/${selectedCotizacion.id_cotizacion}/convertir-orden`, {
@@ -326,16 +360,18 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger 
                 Gestiona las cotizaciones y convierte a órdenes de trabajo
               </CardDescription>
             </div>
-            <Button onClick={onCreateNew}>
-              <Plus className="w-4 h-4 mr-2" />
-              Nueva Cotización
-            </Button>
+            {canManage && (
+              <Button onClick={onCreateNew}>
+                <Plus className="w-4 h-4 mr-2" />
+                Nueva Cotización
+              </Button>
+            )}
           </div>
         </CardHeader>
         
         <CardContent>
           {/* Filtros */}
-          <div className="flex items-center gap-4 mb-6">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:gap-4 mb-6">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               <Input
@@ -347,7 +383,7 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger 
             </div>
             
             <Select value={estadoFilter} onValueChange={setEstadoFilter}>
-              <SelectTrigger className="w-40">
+              <SelectTrigger className="w-full md:w-40">
                 <SelectValue placeholder="Estado" />
               </SelectTrigger>
               <SelectContent>
@@ -357,6 +393,18 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger 
                 <SelectItem value="aprobada">Aprobada</SelectItem>
                 <SelectItem value="rechazada">Rechazada</SelectItem>
                 <SelectItem value="vencida">Vencida</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={modoFilter} onValueChange={setModoFilter}>
+              <SelectTrigger className="w-full md:w-48">
+                <SelectValue placeholder="Tipo de cotización" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_MODOS}>Todos los tipos</SelectItem>
+                <SelectItem value="solo_servicios">Solo servicios</SelectItem>
+                <SelectItem value="solo_productos">Solo productos</SelectItem>
+                <SelectItem value="servicios_y_productos">Servicios + productos</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -489,7 +537,7 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger 
                             <Eye className="w-4 h-4" />
                           </Button>
                           
-                          {cotizacion.estado === 'borrador' && (
+                          {canManage && cotizacion.estado === 'borrador' && (
                             <Button
                               variant="ghost"
                               size="sm"
@@ -499,7 +547,7 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger 
                               <ArrowRight className="w-4 h-4" />
                             </Button>
                           )}
-                          {cotizacion.estado === 'enviada' && (
+                          {canManage && cotizacion.estado === 'enviada' && (
                             <>
                               <Button
                                 variant="ghost"
@@ -520,7 +568,7 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger 
                             </>
                           )}
                           
-                          {(() => {
+                          {canManage && (() => {
                             if (cotizacion.estado !== 'aprobada') return null
                             const modoCotizacion = getModoCotizacion(cotizacion)
 
@@ -531,8 +579,13 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger 
                                   size="sm"
                                   onClick={() => handleEnviarFacturacion(cotizacion)}
                                   className="text-purple-600 hover:text-purple-700"
+                                  disabled={facturacionLoadingId === cotizacion.id_cotizacion}
                                 >
-                                  <FileText className="w-4 h-4" />
+                                  {facturacionLoadingId === cotizacion.id_cotizacion ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <FileText className="w-4 h-4" />
+                                  )}
                                 </Button>
                               )
                             }
@@ -549,7 +602,7 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger 
                             )
                           })()}
                           
-                          {cotizacion.estado === 'borrador' && (
+                          {canManage && cotizacion.estado === 'borrador' && (
                             <Button
                               variant="ghost"
                               size="sm"
@@ -559,7 +612,7 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger 
                             </Button>
                           )}
 
-                          {['borrador', 'rechazada', 'vencida'].includes(cotizacion.estado) && (
+                          {canManage && ['borrador', 'rechazada', 'vencida'].includes(cotizacion.estado) && (
                             <Button
                               variant="ghost"
                               size="sm"

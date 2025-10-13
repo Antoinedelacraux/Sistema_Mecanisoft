@@ -315,7 +315,7 @@ function OrdenItemsEditor({ orden, onSuccess, onCancel }: OrdenItemsEditorProps)
       try {
         const [srvRes, prodRes] = await Promise.all([
           fetch('/api/servicios'),
-          fetch('/api/productos?tipo=producto&limit=100')
+          fetch('/api/productos?tipo=producto&limit=100&estatus=activos')
         ])
         const [srvData, prodData] = await Promise.all([srvRes.json(), prodRes.json()])
         setServicios(srvData.servicios || [])
