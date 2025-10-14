@@ -4,6 +4,18 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
 
+// Función para generar código de producto basado en año y correlativo
+async function generateCodigoProducto() {
+  const year = new Date().getFullYear()
+  const last = await prisma.producto.findFirst({
+    where: { codigo_producto: { startsWith: `PROD-${year}-` } },
+    orderBy: { id_producto: 'desc' },
+    select: { codigo_producto: true }
+  })
+  const nextNumber = last ? parseInt(last.codigo_producto.split('-')[2]) + 1 : 1
+  return `PROD-${year}-${nextNumber.toString().padStart(3, '0')}`
+}
+
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -139,11 +151,17 @@ export async function POST(request: NextRequest) {
       foto
     } = data
 
+    // Generar código si no se proporciona
+    let finalCodigoProducto = codigo_producto
+    if (!finalCodigoProducto) {
+      finalCodigoProducto = await generateCodigoProducto()
+    }
+
     // Validar campos requeridos
     if (id_categoria === undefined || id_categoria === null ||
         id_fabricante === undefined || id_fabricante === null ||
         id_unidad === undefined || id_unidad === null ||
-        !tipo || !codigo_producto || !nombre ||
+        !tipo || !finalCodigoProducto || !nombre ||
         precio_compra === undefined || precio_compra === null ||
         precio_venta === undefined || precio_venta === null) {
       return NextResponse.json(
@@ -162,7 +180,7 @@ export async function POST(request: NextRequest) {
       )
     }
     const existeCodigo = await prisma.producto.findUnique({
-      where: { codigo_producto }
+      where: { codigo_producto: finalCodigoProducto }
     })
 
     if (existeCodigo) {
@@ -204,7 +222,7 @@ export async function POST(request: NextRequest) {
         id_fabricante: idFabricanteNum,
         id_unidad: idUnidadNum,
         tipo,
-        codigo_producto,
+        codigo_producto: finalCodigoProducto,
         nombre,
         descripcion,
         stock: parseInt(stock) || 0,
@@ -227,7 +245,7 @@ export async function POST(request: NextRequest) {
       data: {
         id_usuario: parseInt(session.user.id),
         accion: 'CREATE_PRODUCTO',
-        descripcion: `Producto creado: ${codigo_producto} - ${nombre}`,
+        descripcion: `Producto creado: ${finalCodigoProducto} - ${nombre}`,
         tabla: 'producto'
       }
     })

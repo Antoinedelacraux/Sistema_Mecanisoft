@@ -294,10 +294,7 @@ export async function crearOrden(prisma: PrismaClient, data: CrearOrdenInput, us
               id_detalle_servicio_asociado: item.servicio_ref ? mapaDetalleServicio.get(item.servicio_ref) ?? null : null
             }
           })
-          await tx.producto.update({
-            where: { id_producto: item.id_producto! },
-            data: { stock: { decrement: item.cantidad } }
-          })
+          // Nota: Stock se decrementa al confirmar reserva cuando orden va a kanban
           await reservarStockEnTx(tx, {
             productoId: item.id_producto!,
             almacenId: item.almacenId ?? almacenReservaId,

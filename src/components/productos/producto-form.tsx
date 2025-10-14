@@ -39,8 +39,8 @@ export function ProductoForm({ producto, onSuccess, onCancel }: ProductoFormProp
     id_categoria: z.number().int().positive(),
     id_fabricante: z.number().int().positive(),
     id_unidad: z.number().int().positive(),
-  tipo: z.enum(['producto']),
-    codigo_producto: z.string().min(1).max(50),
+    tipo: z.enum(['producto']),
+    codigo_producto: z.string().max(50).optional(),
     nombre: z.string().min(1).max(120),
     descripcion: z.string().max(500).optional(),
     stock: z.number().min(0),
@@ -49,6 +49,10 @@ export function ProductoForm({ producto, onSuccess, onCancel }: ProductoFormProp
     precio_venta: z.number().min(0),
     descuento: z.number().min(0).max(100).optional(),
     oferta: z.boolean().optional()
+  }).superRefine((data, ctx) => {
+    if (producto && !data.codigo_producto) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'El código es obligatorio para productos existentes', path: ['codigo_producto'] })
+    }
   })
   type SchemaType = z.infer<typeof schema>
 
@@ -65,7 +69,7 @@ export function ProductoForm({ producto, onSuccess, onCancel }: ProductoFormProp
       id_categoria: producto.id_categoria,
       id_fabricante: producto.id_fabricante,
       id_unidad: producto.id_unidad,
-  tipo: 'producto',
+      tipo: 'producto',
       codigo_producto: producto.codigo_producto,
       nombre: producto.nombre,
       descripcion: producto.descripcion || '',
@@ -76,11 +80,11 @@ export function ProductoForm({ producto, onSuccess, onCancel }: ProductoFormProp
       descuento: Number(producto.descuento) || 0,
       oferta: Boolean(producto.oferta)
     } : {
-  id_categoria: undefined as unknown as number,
-  id_fabricante: undefined as unknown as number,
-  id_unidad: undefined as unknown as number,
-  tipo: 'producto',
-      codigo_producto: '',
+      id_categoria: undefined as unknown as number,
+      id_fabricante: undefined as unknown as number,
+      id_unidad: undefined as unknown as number,
+      tipo: 'producto',
+      codigo_producto: undefined,
       nombre: '',
       descripcion: '',
       stock: 0,
@@ -259,7 +263,12 @@ export function ProductoForm({ producto, onSuccess, onCancel }: ProductoFormProp
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="flex flex-col gap-2">
               <Label>Código *</Label>
-              <Input placeholder="COD-001" {...register('codigo_producto')} />
+              <Input
+                placeholder={producto ? 'COD-001' : 'Se generará automáticamente'}
+                readOnly={!producto}
+                disabled={!producto}
+                {...register('codigo_producto')}
+              />
               {errors.codigo_producto && <p className="text-sm text-red-600">{errors.codigo_producto.message}</p>}
             </div>
             <div className="flex flex-col gap-2 md:col-span-2">

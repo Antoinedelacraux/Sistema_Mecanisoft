@@ -459,7 +459,7 @@ export async function actualizarOrden(
     }
   }
 
-  if (nuevoEstado && (nuevoEstado === 'completado' || nuevoEstado === 'entregado')) {
+  if (nuevoEstado === 'por_hacer') {
     await prisma.$transaction(async (tx) => {
       const reservasPendientes = await tx.reservaInventario.findMany({
         where: {
@@ -471,11 +471,11 @@ export async function actualizarOrden(
         await confirmarReservaEnTx(tx, {
           reservaId: reserva.id_reserva_inventario,
           usuarioId,
-          motivo: `Confirmación de reserva por orden ${updated.codigo_transaccion}`,
+          motivo: `Confirmación de reserva por orden enviada a kanban ${updated.codigo_transaccion}`,
           metadata: {
             origen: 'orden_trabajo',
             codigo_transaccion: updated.codigo_transaccion,
-            motivo: `confirmacion_por_${nuevoEstado}`,
+            motivo: 'confirmacion_por_kanban',
           },
         })
       }

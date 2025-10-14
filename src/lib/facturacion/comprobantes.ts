@@ -1,4 +1,4 @@
-import { Prisma, TipoComprobante, EstadoComprobante, OrigenComprobante } from '@prisma/client'
+import { Prisma, TipoComprobante, EstadoComprobante, OrigenComprobante, EstadoPagoVenta } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { sendMail } from '@/lib/mailer'
 import { FacturacionError } from './errors'
@@ -100,6 +100,13 @@ const comprobanteInclude = {
     include: {
       persona: true
     }
+  },
+  venta: {
+    include: {
+      pagos: {
+        orderBy: { fecha_pago: 'asc' as const }
+      }
+    }
   }
 } satisfies Prisma.ComprobanteInclude
 
@@ -164,6 +171,7 @@ type PayloadOpciones = {
   serie?: string
   overrideTipo?: TipoComprobante | null
   motivoOverride?: string | null
+  prismaClient?: Prisma.TransactionClient
 }
 
 export async function crearBorradorDesdePayload({
@@ -172,8 +180,14 @@ export async function crearBorradorDesdePayload({
   serie,
   overrideTipo,
   motivoOverride
+  , prismaClient
 }: PayloadOpciones): Promise<ComprobanteConRelaciones> {
-  const config = await prisma.facturacionConfig.findUnique({ where: { id_config: FACTURACION_CONFIG_ID } })
+  // Use provided transaction client when available so callers can compose this
+  // operation inside an outer transaction. Otherwise fall back to the global
+  // prisma client and create an internal transaction.
+  const db = prismaClient ?? prisma
+
+  const config = await db.facturacionConfig.findUnique({ where: { id_config: FACTURACION_CONFIG_ID } })
 
   const preciosIncluyenIgv = payload.totales.precios_incluyen_igv
   const afectaIgv = config?.afecta_igv ?? true
@@ -193,7 +207,7 @@ export async function crearBorradorDesdePayload({
   })
 
   const personaId = payload.receptor.persona_id
-  const persona = await prisma.persona.findUnique({
+  const persona = await db.persona.findUnique({
     where: { id_persona: personaId },
     include: { cliente: true, empresa_persona: true }
   })
@@ -212,61 +226,63 @@ export async function crearBorradorDesdePayload({
 
   const tipoFinal = overrideTipo ?? tipoCalculado
 
-  const resultado = await prisma.$transaction(async (tx) => {
+  // Encapsulate the creation logic so it can run either inside the provided
+  // transaction client or inside a new prisma.$transaction.
+  const createWithTx = async (tx: Prisma.TransactionClient) => {
     const serieRegistro = await obtenerSerieDisponible({ tx, tipo: tipoFinal, serieSolicitada: serie })
 
     const siguienteNumero = serieRegistro.correlativo_actual + 1
 
-  const comprobante = await tx.comprobante.create({
-    data: {
-      id_facturacion_serie: serieRegistro.id_facturacion_serie,
-      tipo: tipoFinal,
-      serie: serieRegistro.serie,
-      numero: siguienteNumero,
-      origen_tipo: payload.origen_tipo,
-      origen_id: payload.origen_id,
-      estado: EstadoComprobante.BORRADOR,
-      estado_pago: 'pendiente',
-      codigo: payload.origen_codigo ?? null,
-      incluye_igv: preciosIncluyenIgv,
-      moneda: config?.moneda_default ?? 'PEN',
-      subtotal: totales.subtotal,
-      igv: totales.igv,
-      total: totales.total,
-      receptor_nombre: empresaSeleccionada?.razon_social ?? payload.receptor.nombre,
-      receptor_documento: empresaSeleccionada?.ruc ?? payload.receptor.documento,
-      receptor_direccion: empresaSeleccionada?.direccion_fiscal ?? payload.receptor.direccion ?? null,
-      descripcion: payload.descripcion ?? null,
-      notas: payload.notas ?? null,
-      precios_incluyen_igv: preciosIncluyenIgv,
-      creado_por: usuarioId,
-      actualizado_por: usuarioId,
-      id_persona: payload.receptor.persona_id,
-      id_empresa_persona: empresaSeleccionada?.id_empresa_persona ?? null,
-      id_cliente: cliente.id_cliente,
-      id_cotizacion: payload.origen_tipo === 'COTIZACION' ? payload.origen_id : null,
-      id_transaccion: payload.origen_tipo === 'ORDEN' ? payload.origen_id : null,
-      override_tipo_comprobante: overrideTipo ?? null,
-      motivo_override: motivoOverride ?? null,
-      detalles: {
-        create: items.map((item) => ({
-          tipo_item: item.tipo,
-          descripcion: item.descripcion,
-          cantidad: item.cantidad,
-          unidad_medida: item.unidad_medida ?? null,
-          precio_unitario: item.precio_unitario,
-          descuento: item.descuento,
-          subtotal: item.subtotal,
-          igv: item.igv,
-          total: item.total,
-          id_producto: item.id_producto ?? null,
-          id_servicio: item.id_servicio ?? null,
-          metadata: item.metadata ? (item.metadata as Prisma.JsonObject) : Prisma.JsonNull
-        }))
-      }
-    },
-    include: comprobanteInclude
-  })
+    const comprobante = await tx.comprobante.create({
+      data: {
+        id_facturacion_serie: serieRegistro.id_facturacion_serie,
+        tipo: tipoFinal,
+        serie: serieRegistro.serie,
+        numero: siguienteNumero,
+        origen_tipo: payload.origen_tipo,
+        origen_id: payload.origen_id,
+        estado: EstadoComprobante.BORRADOR,
+        estado_pago: 'pendiente',
+        codigo: payload.origen_codigo ?? null,
+        incluye_igv: preciosIncluyenIgv,
+        moneda: config?.moneda_default ?? 'PEN',
+        subtotal: totales.subtotal,
+        igv: totales.igv,
+        total: totales.total,
+        receptor_nombre: empresaSeleccionada?.razon_social ?? payload.receptor.nombre,
+        receptor_documento: empresaSeleccionada?.ruc ?? payload.receptor.documento,
+        receptor_direccion: empresaSeleccionada?.direccion_fiscal ?? payload.receptor.direccion ?? null,
+        descripcion: payload.descripcion ?? null,
+        notas: payload.notas ?? null,
+        precios_incluyen_igv: preciosIncluyenIgv,
+        creado_por: usuarioId,
+        actualizado_por: usuarioId,
+        id_persona: payload.receptor.persona_id,
+        id_empresa_persona: empresaSeleccionada?.id_empresa_persona ?? null,
+        id_cliente: cliente.id_cliente,
+        id_cotizacion: payload.origen_tipo === 'COTIZACION' ? payload.origen_id : null,
+        id_transaccion: payload.origen_tipo === 'ORDEN' ? payload.origen_id : null,
+        override_tipo_comprobante: overrideTipo ?? null,
+        motivo_override: motivoOverride ?? null,
+        detalles: {
+          create: items.map((item) => ({
+            tipo_item: item.tipo,
+            descripcion: item.descripcion,
+            cantidad: item.cantidad,
+            unidad_medida: item.unidad_medida ?? null,
+            precio_unitario: item.precio_unitario,
+            descuento: item.descuento,
+            subtotal: item.subtotal,
+            igv: item.igv,
+            total: item.total,
+            id_producto: item.id_producto ?? null,
+            id_servicio: item.id_servicio ?? null,
+            metadata: item.metadata ? (item.metadata as Prisma.JsonObject) : Prisma.JsonNull
+          }))
+        }
+      },
+      include: comprobanteInclude
+    })
 
     await tx.facturacionSerie.update({
       where: { id_facturacion_serie: serieRegistro.id_facturacion_serie },
@@ -289,6 +305,14 @@ export async function crearBorradorDesdePayload({
     })
 
     return comprobante
+  }
+
+  if (prismaClient) {
+    return await createWithTx(prismaClient)
+  }
+
+  const resultado = await prisma.$transaction(async (tx) => {
+    return await createWithTx(tx)
   })
 
   return resultado
@@ -314,13 +338,30 @@ const serializeBitacora = (evento: ComprobanteConRelaciones['bitacoras'][number]
   usuario: evento.usuario
 })
 
+const serializeVentaPago = (pago: NonNullable<ComprobanteConRelaciones['venta']>['pagos'][number]) => ({
+  ...pago,
+  monto: decimalToNumber(pago.monto) ?? 0
+})
+
+const serializeVenta = (venta: ComprobanteConRelaciones['venta']) => {
+  if (!venta) return null
+  return {
+    ...venta,
+    total: decimalToNumber(venta.total) ?? 0,
+    total_pagado: decimalToNumber(venta.total_pagado) ?? 0,
+    saldo: decimalToNumber(venta.saldo) ?? 0,
+    pagos: venta.pagos.map(serializeVentaPago)
+  }
+}
+
 export const serializeComprobante = (comprobante: ComprobanteConRelaciones) => ({
   ...comprobante,
   subtotal: decimalToNumber(comprobante.subtotal) ?? 0,
   igv: decimalToNumber(comprobante.igv) ?? 0,
   total: decimalToNumber(comprobante.total) ?? 0,
   detalles: comprobante.detalles.map(serializeDetalle),
-  bitacoras: comprobante.bitacoras.map(serializeBitacora)
+  bitacoras: comprobante.bitacoras.map(serializeBitacora),
+  venta: serializeVenta(comprobante.venta ?? null)
 })
 
 type ListarComprobantesParams = {
@@ -331,6 +372,8 @@ type ListarComprobantesParams = {
   tipo?: TipoComprobante | null
   serie?: string | null
   origen?: OrigenComprobante | null
+  fechaDesde?: Date | null
+  fechaHasta?: Date | null
 }
 
 export async function listarComprobantes({
@@ -341,11 +384,21 @@ export async function listarComprobantes({
   tipo,
   serie,
   origen
+  , fechaDesde, fechaHasta
 }: ListarComprobantesParams) {
   const where: Prisma.ComprobanteWhereInput = {}
 
   if (estado) {
     where.estado = estado
+  }
+  if (fechaDesde || fechaHasta) {
+    if (fechaDesde && fechaHasta) {
+      where.creado_en = { gte: fechaDesde, lte: fechaHasta }
+    } else if (fechaDesde) {
+      where.creado_en = { gte: fechaDesde }
+    } else if (fechaHasta) {
+      where.creado_en = { lte: fechaHasta }
+    }
   }
   if (tipo) {
     where.tipo = tipo
@@ -447,6 +500,42 @@ export async function emitirComprobante({ comprobanteId, usuarioId, descripcion,
       },
       include: comprobanteInclude
     })
+
+    const totalDecimal = new Prisma.Decimal(comprobante.total ?? 0)
+    const ventaExistente = await tx.venta.findUnique({ where: { id_comprobante: comprobante.id_comprobante } })
+    const fechaVenta = comprobante.fecha_emision ?? ahora
+
+    if (ventaExistente) {
+      const totalPagado = new Prisma.Decimal(ventaExistente.total_pagado ?? 0)
+      const saldoCalculado = totalDecimal.minus(totalPagado)
+      const saldoAjustado = saldoCalculado.greaterThan(0) ? saldoCalculado : new Prisma.Decimal(0)
+      const estadoPago = saldoAjustado.lessThanOrEqualTo(0)
+        ? EstadoPagoVenta.pagado
+        : totalPagado.greaterThan(0)
+          ? EstadoPagoVenta.parcial
+          : EstadoPagoVenta.pendiente
+
+      await tx.venta.update({
+        where: { id_comprobante: comprobante.id_comprobante },
+        data: {
+          fecha: fechaVenta,
+          total: totalDecimal,
+          saldo: saldoAjustado,
+          estado_pago: estadoPago
+        }
+      })
+    } else {
+      await tx.venta.create({
+        data: {
+          id_comprobante: comprobante.id_comprobante,
+          fecha: fechaVenta,
+          total: totalDecimal,
+          total_pagado: new Prisma.Decimal(0),
+          saldo: totalDecimal,
+          estado_pago: EstadoPagoVenta.pendiente
+        }
+      })
+    }
 
     if (comprobante.origen_tipo === OrigenComprobante.ORDEN && comprobante.id_transaccion) {
       await tx.transaccion.update({

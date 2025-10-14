@@ -62,6 +62,7 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger,
   const NO_TRABAJADOR = '__NO_TRABAJADOR__'
   const [estadoFilter, setEstadoFilter] = useState(ALL_ESTADOS)
   const [modoFilter, setModoFilter] = useState(ALL_MODOS)
+  const [dateFilter, setDateFilter] = useState('')
   const [showApprovalModal, setShowApprovalModal] = useState(false)
   const [showConvertModal, setShowConvertModal] = useState(false)
   const [selectedCotizacion, setSelectedCotizacion] = useState<CotizacionCompleta | null>(null)
@@ -85,13 +86,42 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger,
         limit: '50',
         ...(search && { search }),
         ...(estadoFilter !== ALL_ESTADOS && { estado: estadoFilter }),
-        ...(modoFilter !== ALL_MODOS && { modo: modoFilter })
+        ...(modoFilter !== ALL_MODOS && { modo: modoFilter }),
+        ...(dateFilter && { date: dateFilter })
       })
 
       const response = await fetch(`/api/cotizaciones?${params}`)
       if (!response.ok) throw new Error('Error al cargar cotizaciones')
 
       const data = await response.json()
+      // Detectar cotizaciones cuya vigencia ya pasó y marcarlas como vencidas
+      const now = new Date()
+      const expiradasIds: number[] = []
+      for (const c of data.cotizaciones) {
+        const vig = c.vigencia_hasta ? new Date(c.vigencia_hasta) : null
+        if (vig && !isNaN(vig.valueOf()) && now > vig && c.estado !== 'aprobada' && c.estado !== 'vencida') {
+          expiradasIds.push(c.id_cotizacion)
+        }
+      }
+
+      if (expiradasIds.length > 0) {
+        try {
+          await fetch('/api/cotizaciones/mark-vencidas', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: expiradasIds })
+          })
+          // Volver a solicitar la lista para garantizar consistencia
+          const r2 = await fetch(`/api/cotizaciones?${params}`)
+          const d2 = await r2.json()
+          setCotizaciones(d2.cotizaciones)
+          return
+        } catch (err) {
+          console.warn('No se pudo marcar expiradas vía API:', err)
+          // continuar y mostrar la lista original como fallback
+        }
+      }
+
       setCotizaciones(data.cotizaciones)
     } catch (error) {
       console.error('Error:', error)
@@ -331,6 +361,8 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger,
     const badges = {
       'borrador': { label: 'Borrador', className: 'bg-gray-100 text-gray-800' },
       'enviada': { label: 'Enviada', className: 'bg-blue-100 text-blue-800' },
+      'en_facturacion': { label: 'En facturación', className: 'bg-purple-100 text-purple-800' },
+      'en_ordenes': { label: 'En órdenes', className: 'bg-amber-100 text-amber-800' },
       'aprobada': { label: 'Aprobada', className: 'bg-green-100 text-green-800' },
       'rechazada': { label: 'Rechazada', className: 'bg-red-100 text-red-800' },
       'vencida': { label: 'Vencida', className: 'bg-orange-100 text-orange-800' }
@@ -391,6 +423,8 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger,
                 <SelectItem value="borrador">Borrador</SelectItem>
                 <SelectItem value="enviada">Enviada</SelectItem>
                 <SelectItem value="aprobada">Aprobada</SelectItem>
+                <SelectItem value="en_facturacion">En facturación</SelectItem>
+                <SelectItem value="en_ordenes">En órdenes</SelectItem>
                 <SelectItem value="rechazada">Rechazada</SelectItem>
                 <SelectItem value="vencida">Vencida</SelectItem>
               </SelectContent>
@@ -407,6 +441,12 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger,
                 <SelectItem value="servicios_y_productos">Servicios + productos</SelectItem>
               </SelectContent>
             </Select>
+            
+            {/* Filtro por fecha */}
+            <div className="w-full md:w-44">
+              <Label className="sr-only">Fecha</Label>
+              <Input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} />
+            </div>
           </div>
 
           {/* Estadísticas */}
@@ -465,7 +505,7 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger,
                 </TableHeader>
                 <TableBody>
                   {cotizaciones.map((cotizacion) => (
-                    <TableRow key={cotizacion.id_cotizacion}>
+                    <TableRow key={cotizacion.id_cotizacion} className={cotizacion.estado === 'vencida' ? 'opacity-40' : ''}>
                       <TableCell>
                         <div>
                           <div className="font-medium">{cotizacion.codigo_cotizacion}</div>
@@ -515,7 +555,7 @@ export function CotizacionesTable({ onEdit, onView, onCreateNew, refreshTrigger,
                       </TableCell>
                       
                       <TableCell>
-                        {getEstadoBadge(cotizacion.estado)}
+                          {getEstadoBadge(cotizacion.estado)}
                         {cotizacion.estado === 'aprobada' && (
                           <div className="mt-1">
                             <Badge variant="outline" className="text-xs bg-yellow-50 text-yellow-800">

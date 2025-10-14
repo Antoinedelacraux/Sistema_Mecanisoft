@@ -108,6 +108,7 @@ type FiltersState = {
   tipo?: string
   serie?: string
   origen?: string
+  date?: string
 }
 
 type EmailDialogState = {
@@ -154,12 +155,13 @@ export default function FacturacionComprobantes() {
   const fetchComprobantes = useCallback(async () => {
     try {
       setFetchState("loading")
-      const params = new URLSearchParams({ page: page.toString(), limit: LIMIT.toString() })
+  const params = new URLSearchParams({ page: page.toString(), limit: LIMIT.toString() })
       if (filters.search.trim()) params.set("search", filters.search.trim())
       if (filters.estado) params.set("estado", filters.estado)
       if (filters.tipo) params.set("tipo", filters.tipo)
       if (filters.origen) params.set("origen", filters.origen)
       if (filters.serie) params.set("serie", filters.serie)
+  if (filters.date) params.set("date", filters.date)
 
       const response = await fetch(`/api/facturacion/comprobantes?${params.toString()}`, {
         cache: "no-store",
@@ -305,16 +307,21 @@ export default function FacturacionComprobantes() {
   }, [])
 
   const handleConfirmSendEmail = useCallback(async () => {
-    if (!emailDialog.comprobante) return
+    const comprobanteActual = emailDialog.comprobante
+    if (!comprobanteActual) return
 
-    const destinatario = emailDialog.destinatario.trim() || emailDialog.comprobante.persona?.correo?.trim() || ""
+    const destinatario = emailDialog.destinatario.trim() || comprobanteActual.persona?.correo?.trim() || ""
     if (!destinatario) {
-      setEmailDialog((prev) => ({ ...prev, destinatario: emailDialog.comprobante.persona?.correo?.trim() ?? "", error: "Ingresa al menos un correo destinatario." }))
+      setEmailDialog((prev) => ({
+        ...prev,
+        destinatario: prev.comprobante?.persona?.correo?.trim() ?? "",
+        error: "Ingresa al menos un correo destinatario.",
+      }))
       return
     }
 
     const mensaje = emailDialog.mensaje.trim()
-    const comprobante = emailDialog.comprobante
+    const comprobante = comprobanteActual
 
     try {
       setSendingEmailId(comprobante.id_comprobante)
@@ -448,6 +455,11 @@ export default function FacturacionComprobantes() {
                 label: `${serie.serie} (${TIPO_LABELS[serie.tipo]})`,
               }))}
             />
+            {/* Filtro por fecha */}
+            <div>
+              <Label className="text-xs uppercase tracking-wide text-gray-500">Fecha</Label>
+              <Input type="date" value={filters.date ?? ""} onChange={(e) => handleFilterChange('date', e.target.value)} />
+            </div>
           </div>
 
           <Separator />

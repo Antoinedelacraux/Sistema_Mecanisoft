@@ -265,7 +265,7 @@ export function ProductosTable({ onEdit, onView, onCreateNew, onManageCategories
         </div>
 
         {/* Estadísticas rápidas */}
-        <div className="grid grid-cols-2 md:grid-cols-7 gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
           <div className="text-center p-3 bg-blue-50 rounded-lg">
             <Package className="w-6 h-6 text-blue-600 mx-auto mb-1" />
             <div className="text-lg font-bold text-blue-600">{productos.length}</div>
@@ -276,12 +276,6 @@ export function ProductosTable({ onEdit, onView, onCreateNew, onManageCategories
               {productos.filter(p => p.tipo === 'producto').length}
             </div>
             <div className="text-sm text-green-600">Productos</div>
-          </div>
-          <div className="text-center p-3 bg-purple-50 rounded-lg">
-            <div className="text-lg font-bold text-purple-600">
-              {productos.filter(p => p.tipo === 'servicio').length}
-            </div>
-            <div className="text-sm text-purple-600">Servicios</div>
           </div>
           <div className="text-center p-3 bg-red-50 rounded-lg">
             <div className="text-lg font-bold text-red-600">

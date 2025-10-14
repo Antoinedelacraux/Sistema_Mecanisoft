@@ -6,6 +6,7 @@ import { FacturacionError } from '@/lib/facturacion/errors'
 import { prepararCotizacionParaFacturacion } from '@/lib/facturacion/cotizaciones'
 import { prepararOrdenParaFacturacion } from '@/lib/facturacion/ordenes'
 import { crearBorradorDesdePayload, listarComprobantes, serializeComprobante } from '@/lib/facturacion/comprobantes'
+import { prisma } from '@/lib/prisma'
 import { asegurarPermiso, PermisoDenegadoError, SesionInvalidaError } from '@/lib/permisos/guards'
 
 const querySchema = z.object({
@@ -16,6 +17,7 @@ const querySchema = z.object({
   tipo: z.enum(['BOLETA', 'FACTURA']).optional(),
   serie: z.string().trim().min(1).max(10).optional(),
   origen: z.enum(['COTIZACION', 'ORDEN']).optional()
+  ,date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
 })
 
 const bodySchema = z.object({
@@ -82,18 +84,80 @@ export async function POST(request: NextRequest) {
       throw new FacturacionError('El cliente no cuenta con una empresa asociada para facturar.', 422)
     }
 
-    const comprobante = await crearBorradorDesdePayload({
-      payload,
-      usuarioId: Number(session.user.id),
-      serie,
-      overrideTipo: override_tipo ?? null,
-      motivoOverride: motivo_override ?? null
+    // Crear borrador y, si viene de una ORDEN, marcar la orden como entregada
+    const usuarioId = Number(session.user.id)
+
+    const txResult = await prisma.$transaction(async (tx) => {
+      // If the origin is an order, re-check its state inside the transaction
+      // to provide an idempotent behaviour and avoid duplicate comprobantes.
+      if (origen_tipo === 'ORDEN') {
+        const orden = await tx.transaccion.findUnique({
+          where: { id_transaccion: origenId },
+          include: { comprobantes: true }
+        })
+
+        if (!orden) {
+          throw new FacturacionError('Orden no encontrada', 404)
+        }
+
+        // If the order already marked as entregado or already has comprobantes,
+        // prevent creating another one.
+        if (orden.estado_orden === 'entregado' || (orden.comprobantes && orden.comprobantes.length > 0)) {
+          throw new FacturacionError('La orden ya fue enviada a facturación o está marcada como entregada.', 409)
+        }
+      }
+
+      const comprobante = await crearBorradorDesdePayload({
+        payload,
+        usuarioId,
+        serie,
+        overrideTipo: override_tipo ?? null,
+        motivoOverride: motivo_override ?? null,
+        prismaClient: tx
+      })
+
+      if (origen_tipo === 'ORDEN') {
+        // actualizar transaccion a entregado y crear bitacora
+        await tx.transaccion.update({
+          where: { id_transaccion: origenId },
+          data: { estado_orden: 'entregado' }
+        })
+
+        await tx.bitacora.create({
+          data: {
+            id_usuario: usuarioId,
+            accion: 'ORDEN_ENVIADA_FACTURACION',
+            descripcion: `Orden ${payload.origen_codigo} enviada a facturación y marcada como entregada`,
+            tabla: 'transaccion'
+          }
+        })
+      }
+
+      if (origen_tipo === 'COTIZACION') {
+        // Si viene de una cotización (preparada por prepararCotizacionParaFacturacion)
+        // marcamos la cotización como en facturación para reflejar el flujo.
+        await tx.cotizacion.update({
+          where: { id_cotizacion: origenId },
+          data: { estado: 'en_facturacion' }
+        })
+
+        await tx.bitacora.create({
+          data: {
+            id_usuario: usuarioId,
+            accion: 'COTIZACION_ENVIADA_FACTURACION',
+            descripcion: `Cotización ${payload.origen_codigo} enviada a facturación`,
+            tabla: 'cotizacion'
+          }
+        })
+      }
+
+      return comprobante
     })
 
     return NextResponse.json(
       {
         message: 'Comprobante en borrador creado correctamente.',
-        data: serializeComprobante(comprobante)
+        data: serializeComprobante(txResult)
       },
       { status: 201 }
     )
@@ -131,7 +195,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Parámetros inválidos', detalles: parsed.error.flatten() }, { status: 400 })
     }
 
-    const { page, limit, search, estado, tipo, serie, origen } = parsed.data
+    const { page, limit, search, estado, tipo, serie, origen, date } = parsed.data
+    let fechaDesde: Date | null = null
+    let fechaHasta: Date | null = null
+    if (date) {
+      const start = new Date(date + 'T00:00:00.000')
+      const end = new Date(date + 'T23:59:59.999')
+      if (!isNaN(start.valueOf()) && !isNaN(end.valueOf())) {
+        fechaDesde = start
+        fechaHasta = end
+      }
+    }
+
     const resultado = await listarComprobantes({
       page,
       limit,
@@ -139,7 +214,9 @@ export async function GET(request: NextRequest) {
       estado: estado ?? null,
       tipo: tipo ?? null,
       serie: serie ?? null,
-      origen: origen ?? null
+      origen: origen ?? null,
+      fechaDesde,
+      fechaHasta
     })
 
     return NextResponse.json({

@@ -97,6 +97,7 @@ export function OrdenesTable({ onEdit, onView, onCreateNew, refreshTrigger }: Or
   const ALL_PRIORIDADES = '__ALL_PRIORIDADES__'
   const [estadoFilter, setEstadoFilter] = useState(ALL_ESTADOS)
   const [prioridadFilter, setPrioridadFilter] = useState(ALL_PRIORIDADES)
+  const [dateFilter, setDateFilter] = useState('')
   const [page, setPage] = useState(1)
   const [pagination, setPagination] = useState({
     total: 0,
@@ -106,6 +107,7 @@ export function OrdenesTable({ onEdit, onView, onCreateNew, refreshTrigger }: Or
   })
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [ordenAEliminar, setOrdenAEliminar] = useState<OrdenCompleta | null>(null)
+  const [facturacionLoadingId, setFacturacionLoadingId] = useState<number | null>(null)
   
   const { toast } = useToast()
 
@@ -121,6 +123,7 @@ export function OrdenesTable({ onEdit, onView, onCreateNew, refreshTrigger }: Or
         ...(search && { search }),
         ...(estadoFilter !== ALL_ESTADOS && { estado: estadoFilter }),
         ...(prioridadFilter !== ALL_PRIORIDADES && { prioridad: prioridadFilter })
+        ,...(dateFilter && { date: dateFilter })
       })
 
       const response = await fetch(`/api/ordenes?${params}`)
@@ -296,34 +299,49 @@ export function OrdenesTable({ onEdit, onView, onCreateNew, refreshTrigger }: Or
       return
     }
 
-    const tipoComprobante = orden.persona.numero_documento?.length === 11 ? 'factura' : 'boleta'
+  const tipoComprobante = orden.persona.numero_documento?.length === 11 ? 'FACTURA' : 'BOLETA'
+  const tipoComprobanteLabel = tipoComprobante.toLowerCase()
 
     try {
-      const response = await fetch('/api/facturacion/ordenes', {
+      setFacturacionLoadingId(orden.id_transaccion)
+
+      const response = await fetch('/api/facturacion/comprobantes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id_transaccion: orden.id_transaccion,
-          tipo_comprobante: tipoComprobante
+          origen_tipo: 'ORDEN',
+          origen_id: orden.id_transaccion,
+          override_tipo: tipoComprobante
         })
       })
 
-      if (!response.ok) {
+      let data: any = null
+      try {
+        data = await response.json()
+      } catch {
+        data = null
+      }
+
+      if (!response.ok || !data?.data) {
         let description = 'No se pudo enviar la orden a facturación.'
-        try {
-          const error = await response.json()
-          if (error?.error) description = error.error
-        } catch (parseError) {
-          console.warn('Respuesta de facturación no es JSON', parseError)
-        }
+        if (data?.error) description = data.error
         throw new Error(description)
       }
 
-      const data = await response.json()
+      const borrador = data.data
+      const numeroSerie = borrador?.serie && borrador?.numero
+        ? `${borrador.serie}-${String(borrador.numero).padStart(8, '0')}`
+        : null
+
       toast({
         title: 'Orden enviada a facturación',
-        description: data?.message || `La orden ${orden.codigo_transaccion} fue marcada para facturación (${tipoComprobante}).`
+        description:
+          numeroSerie
+            ? `Se creó el borrador ${numeroSerie} a partir de ${orden.codigo_transaccion}.`
+            : data?.message || `La orden ${orden.codigo_transaccion} fue preparada para facturación (${tipoComprobanteLabel}).`
       })
+
+      await fetchOrdenes()
     } catch (error) {
       console.error('Error enviando orden a facturación', error)
       toast({
@@ -331,6 +349,8 @@ export function OrdenesTable({ onEdit, onView, onCreateNew, refreshTrigger }: Or
         description: error instanceof Error ? error.message : 'No se pudo conectar con el módulo de facturación.',
         variant: 'destructive'
       })
+    } finally {
+      setFacturacionLoadingId(null)
     }
   }
 
@@ -417,6 +437,10 @@ export function OrdenesTable({ onEdit, onView, onCreateNew, refreshTrigger }: Or
                 <SelectItem value="urgente">Urgente</SelectItem>
               </SelectContent>
             </Select>
+            {/* Filtro por fecha */}
+            <div className="w-36">
+              <Input type="date" value={dateFilter} onChange={(e) => { setDateFilter(e.target.value); setPage(1); }} />
+            </div>
           </div>
         </div>
 
@@ -494,6 +518,7 @@ export function OrdenesTable({ onEdit, onView, onCreateNew, refreshTrigger }: Or
                       onKanban={enviarAlKanban}
                       onFacturar={enviarAFacturacion}
                       onDelete={solicitarEliminacion}
+                      facturacionLoadingId={facturacionLoadingId}
                     />
                   ))}
                 </TableBody>

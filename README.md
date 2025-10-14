@@ -59,6 +59,18 @@ Para ejecutar todas ellas en bloque:
 npx jest tests/api/serviciosApi.test.ts tests/api/serviciosIdApi.test.ts tests/api/inventarioReportesApi.test.ts tests/ui/serviciosTable.test.tsx
 ```
 
+## Problema común en Windows: bloqueo de Prisma
+
+En sistemas Windows es posible que `npx prisma generate` falle con un error EPERM al renombrar archivos temporales del cliente Prisma (`query_engine-windows.dll.node.tmp`). Para mitigarlo hemos añadido un script de ayuda:
+
+```powershell
+$env:DATABASE_URL = 'postgresql://user:pass@localhost:5432/tu_bd'
+npm run prisma:fix-locks
+```
+
+El script eliminará archivos `*.tmp` en `node_modules/.prisma/client` y volverá a ejecutar `npx prisma generate`. Si el problema persiste, cierra procesos `node`/VSCode y ejecuta `takeown` / `icacls` como sugiere el script.
+
+
 ## Script DX `npm run verify`
 
 Se añadió un script de verificación básica que encadena linting, chequeo de tipos y el paquete de pruebas anteriores:

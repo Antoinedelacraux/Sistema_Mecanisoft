@@ -207,7 +207,7 @@ export type ProductoFormData = {
   id_fabricante: number
   id_unidad: number
   tipo: string
-  codigo_producto: string
+  codigo_producto?: string
   nombre: string
   descripcion?: string
   stock: number
@@ -244,6 +244,7 @@ export type UnidadFormData = {
   nombre_unidad: string
   abreviatura: string
 }
+export type { VentaListadoItem, VentasResponse, ResumenVentas } from './ventas'
 
 export type TrabajadorFormData = {
   // Datos de persona

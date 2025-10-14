@@ -31,6 +31,7 @@ type MenuItem = {
   icon: typeof Home
   href: string
   permiso?: string
+  permisos?: string[]
 }
 
 const menuItems: MenuItem[] = [
@@ -116,6 +117,7 @@ const menuItems: MenuItem[] = [
     title: "Ventas",
     icon: ShoppingCart,
     href: "/dashboard/ventas",
+    permisos: ['facturacion.ver', 'facturacion.emitir']
   },
   {
     title: "Reportes",
@@ -137,7 +139,15 @@ export function Sidebar() {
   const { puede } = usePermisos()
 
   const visibleItems = useMemo<MenuItem[]>(() => (
-    menuItems.filter((item) => !item.permiso || puede(item.permiso))
+    menuItems.filter((item) => {
+      if (Array.isArray(item.permisos)) {
+        return item.permisos.some((codigo) => puede(codigo))
+      }
+      if (item.permiso) {
+        return puede(item.permiso)
+      }
+      return true
+    })
   ), [puede])
 
   const handleLogout = () => {

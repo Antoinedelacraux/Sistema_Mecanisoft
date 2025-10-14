@@ -212,6 +212,21 @@ export async function POST(
       }
     })
 
+    // Marcar la cotización como en_ordenes para reflejar que fue convertida
+    await prisma.cotizacion.update({
+      where: { id_cotizacion: id },
+      data: { estado: 'en_ordenes' }
+    })
+
+    await prisma.bitacora.create({
+      data: {
+        id_usuario: usuarioId,
+        accion: 'COTIZACION_PASO_A_EN_ORDENES',
+        descripcion: `Cotización ${cotizacion.codigo_cotizacion} marcada como en_ordenes tras conversión`,
+        tabla: 'cotizacion'
+      }
+    })
+
     return NextResponse.json({ 
       success: true,
       orden_codigo: codigoOrden,

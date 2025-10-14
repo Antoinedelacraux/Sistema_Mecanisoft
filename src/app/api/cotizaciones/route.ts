@@ -48,16 +48,17 @@ export async function GET(request: NextRequest) {
       return parsed
     }
 
-    const page = parsePositiveInt(searchParams.get('page'), 1)
+  const page = parsePositiveInt(searchParams.get('page'), 1)
     const limit = Math.min(parsePositiveInt(searchParams.get('limit'), 10), 100)
     const search = searchParams.get('search')?.trim() ?? ''
     const estadoRaw = searchParams.get('estado')?.trim()
     const modoRaw = searchParams.get('modo')?.trim()
+  const dateRaw = searchParams.get('date')?.trim()
 
     const modosPermitidos = new Set(['solo_servicios', 'solo_productos', 'servicios_y_productos'])
     const modo = modoRaw && modosPermitidos.has(modoRaw) ? modoRaw as 'solo_servicios' | 'solo_productos' | 'servicios_y_productos' : undefined
 
-    const estadosPermitidos = new Set(['borrador', 'enviada', 'aprobada', 'rechazada', 'vencida'])
+  const estadosPermitidos = new Set(['borrador', 'enviada', 'aprobada', 'rechazada', 'vencida', 'en_facturacion', 'en_ordenes'])
     const estado = estadoRaw && estadosPermitidos.has(estadoRaw) ? estadoRaw : undefined
 
     const skip = (page - 1) * limit
@@ -107,6 +108,20 @@ export async function GET(request: NextRequest) {
         { cliente: { persona: { numero_documento: { contains: search, mode: 'insensitive' as const } } } },
         { vehiculo: { placa: { contains: search, mode: 'insensitive' as const } } }
       ]
+    }
+
+    // Filtro por fecha (YYYY-MM-DD). Si se provee, filtramos por created_at dentro de ese día
+    if (dateRaw) {
+      // Intentamos parsear como fecha ISO (YYYY-MM-DD)
+      const dateMatch = /^\d{4}-\d{2}-\d{2}$/.test(dateRaw)
+      if (dateMatch) {
+        const start = new Date(dateRaw + 'T00:00:00.000')
+        const end = new Date(dateRaw + 'T23:59:59.999')
+        // Asegurar que las fechas sean válidas
+        if (!isNaN(start.valueOf()) && !isNaN(end.valueOf())) {
+          whereCondition.created_at = { gte: start, lte: end }
+        }
+      }
     }
 
     if (andConditions.length > 0) {

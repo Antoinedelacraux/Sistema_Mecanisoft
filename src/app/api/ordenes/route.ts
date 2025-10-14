@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
     const estadoPago = searchParams.get('estado_pago')
     const fechaDesdeRaw = searchParams.get('fecha_desde')
     const fechaHastaRaw = searchParams.get('fecha_hasta')
+  const dateRaw = searchParams.get('date')
     const modo = searchParams.get('modo')
     const includeTareas = searchParams.get('include_tareas') === 'true'
     const includeProgreso = searchParams.get('include_progreso') === 'true'
@@ -61,6 +62,19 @@ export async function GET(request: NextRequest) {
       if (!Number.isNaN(parsed.getTime())) {
         parsed.setHours(23, 59, 59, 999)
         fechaHasta = parsed
+      }
+    }
+
+    // Si se pasa `date=YYYY-MM-DD`, lo convertimos en fechaDesde y fechaHasta para ese día
+    if (!fechaDesde && !fechaHasta && dateRaw) {
+      const match = /^\d{4}-\d{2}-\d{2}$/.test(dateRaw)
+      if (match) {
+        const start = new Date(dateRaw + 'T00:00:00.000')
+        const end = new Date(dateRaw + 'T23:59:59.999')
+        if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
+          fechaDesde = start
+          fechaHasta = end
+        }
       }
     }
 
