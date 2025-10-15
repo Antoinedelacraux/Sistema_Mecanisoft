@@ -57,8 +57,8 @@ export async function POST(request: NextRequest) {
     }
 
     const payload = await request.json()
-    const trabajador = await createTrabajador(payload, Number(session.user.id))
-    return NextResponse.json(trabajador, { status: 201 })
+    const resultado = await createTrabajador(payload, Number(session.user.id))
+    return NextResponse.json(resultado, { status: 201 })
   } catch (error) {
     return handleError(error)
   }

@@ -1,8 +1,7 @@
-import { Prisma, PrismaClient, EstadoComprobante } from '@prisma/client'
+import { Prisma, PrismaClient, EstadoComprobante, EstadoPagoVenta, MetodoPagoVenta } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 
-type EstadoPagoVenta = Prisma.$Enums.EstadoPagoVenta
-type MetodoPagoVenta = Prisma.$Enums.MetodoPagoVenta
+// Use the enum types exported by Prisma client
 
 type ResumenVentasParams = {
   fechaDesde?: Date | null
@@ -61,27 +60,15 @@ export async function obtenerResumenVentas(
   }
 
   try {
-    const [agregado, porMetodo, porEstado] = await Promise.all([
-      prismaClient.venta.aggregate({
-        where,
-        _sum: { total: true },
-        _count: { _all: true }
-      }),
-      prismaClient.venta.groupBy({
-        where,
-        by: ['metodo_principal'],
-        _sum: { total: true }
-      }),
-      prismaClient.venta.groupBy({
-        where,
-        by: ['estado_pago'],
-        _count: { _all: true }
-      })
-    ])
+    // Use a safe findMany + in-memory reduction to avoid SQL ambiguity when multiple tables
+    // have a `total` column (Postgres can complain about ambiguous references).
+    const ventas = await prismaClient.venta.findMany({
+      where,
+      select: { metodo_principal: true, estado_pago: true, total: true }
+    })
 
-    const totalVentas = decimalToNumber(agregado._sum.total)
-    const numeroComprobantes = agregado._count._all ?? 0
-    const promedio = numeroComprobantes > 0 ? totalVentas / numeroComprobantes : 0
+    let totalVentas = 0
+    let numeroComprobantes = 0
 
     const porMetodoMap: Record<MetodoPagoVenta | 'SIN_REGISTRO', number> = {
       EFECTIVO: 0,
@@ -92,25 +79,29 @@ export async function obtenerResumenVentas(
       SIN_REGISTRO: 0
     }
 
-    for (const grupo of porMetodo) {
-      const monto = decimalToNumber(grupo._sum.total)
-      if (!grupo.metodo_principal) {
-        porMetodoMap.SIN_REGISTRO += monto
-      } else {
-        porMetodoMap[grupo.metodo_principal] += monto
-      }
-    }
-
     const porEstadoPago: Record<EstadoPagoVenta, number> = {
       pendiente: 0,
       parcial: 0,
       pagado: 0
     }
 
-    for (const grupo of porEstado) {
-      const estado = grupo.estado_pago
-      porEstadoPago[estado] = grupo._count._all ?? 0
+    for (const v of ventas) {
+      const monto = decimalToNumber(v.total)
+      totalVentas += monto
+      numeroComprobantes += 1
+
+      if (!v.metodo_principal) {
+        porMetodoMap.SIN_REGISTRO += monto
+      } else {
+        const key = v.metodo_principal as MetodoPagoVenta
+        porMetodoMap[key] = (porMetodoMap[key] ?? 0) + monto
+      }
+
+      const estadoKey = v.estado_pago as EstadoPagoVenta
+      porEstadoPago[estadoKey] = (porEstadoPago[estadoKey] ?? 0) + 1
     }
+
+    const promedio = numeroComprobantes > 0 ? totalVentas / numeroComprobantes : 0
 
     return {
       totalVentas,

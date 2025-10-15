@@ -73,7 +73,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(resultado, { status: 200 })
   } catch (error) {
     if (error instanceof FacturacionError) {
-      return NextResponse.json({ error: error.message }, { status: error.statusCode ?? 400 })
+      const status = (error as any).statusCode ?? 400
+      return NextResponse.json({ error: error.message }, { status })
     }
     console.error('Error registrando pago de venta:', error)
     return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })

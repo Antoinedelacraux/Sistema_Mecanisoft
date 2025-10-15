@@ -1,5 +1,6 @@
 import { Prisma, MovimientoTipo, TransferenciaEstado } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { syncProductoStock } from './sync-producto-stock';
 import {
   AnularTransferenciaDTO,
   ConfirmarTransferenciaDTO,
@@ -194,6 +195,8 @@ export const registrarIngreso = async (
       },
     });
 
+    await syncProductoStock(tx, input.productoId);
+
     const movimiento = await tx.movimientoInventario.create({
       data: {
   tipo: MovimientoTipo.INGRESO,
@@ -244,6 +247,8 @@ export const registrarSalida = async (
         stock_disponible: nuevoStock,
       },
     });
+
+    await syncProductoStock(tx, input.productoId);
 
     const movimiento = await tx.movimientoInventario.create({
       data: {
@@ -303,6 +308,8 @@ export const registrarAjuste = async (
         stock_disponible: nuevoStock,
       },
     });
+
+    await syncProductoStock(tx, input.productoId);
 
     const movimiento = await tx.movimientoInventario.create({
       data: {
@@ -371,6 +378,8 @@ export const crearTransferencia = async (
         stock_disponible: inventarioOrigen.stock_disponible.sub(cantidadDecimal),
       },
     });
+
+    await syncProductoStock(tx, input.productoId);
 
     const movimientoEnvio = await tx.movimientoInventario.create({
       data: {
@@ -464,6 +473,8 @@ export const confirmarTransferencia = async (
       },
     });
 
+    await syncProductoStock(tx, transferencia.movimiento_envio.id_producto);
+
     await tx.movimientoInventario.update({
       where: { id_movimiento_inventario: transferencia.movimiento_recepcion.id_movimiento_inventario },
       data: {
@@ -523,6 +534,8 @@ export const anularTransferencia = async (
         stock_disponible: inventarioOrigen.stock_disponible.add(cantidadDecimal),
       },
     });
+
+    await syncProductoStock(tx, transferencia.movimiento_envio.id_producto);
 
     await tx.movimientoInventario.update({
       where: { id_movimiento_inventario: transferencia.movimiento_envio.id_movimiento_inventario },

@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma'
 import { generateCodigoEmpleado, resolveRolId } from './helpers'
 import { defaultTrabajadorInclude } from './detail-controller'
 import { ApiError } from './errors'
+import { sendMail } from '@/lib/mailer'
 
 const documentoPermitido = z.enum(['DNI', 'RUC', 'CE', 'PASAPORTE'])
 
@@ -22,7 +23,6 @@ const createTrabajadorSchema = z.object({
   cargo: z.string().min(1),
   especialidad: z.string().min(1),
   nivel_experiencia: z.string().min(1),
-  tarifa_hora: z.union([z.number(), z.string()]).optional().nullable(),
   fecha_ingreso: z.union([z.string(), z.date()]).optional().nullable(),
   sueldo_mensual: z.union([z.number(), z.string()]).optional().nullable(),
   crear_usuario: z.boolean().optional().default(false),
@@ -33,7 +33,7 @@ const createTrabajadorSchema = z.object({
 
 type CreateTrabajadorInput = z.infer<typeof createTrabajadorSchema>
 
-const toDecimal = (value: CreateTrabajadorInput['tarifa_hora']) => {
+const toDecimal = (value: CreateTrabajadorInput['sueldo_mensual']) => {
   if (value === undefined || value === null || value === '') return undefined
   const numberValue = typeof value === 'string' ? Number(value) : value
   if (Number.isNaN(numberValue)) {
@@ -65,6 +65,10 @@ export async function createTrabajador(payload: unknown, sessionUserId: number) 
   if (data.crear_usuario) {
     if (!data.nombre_usuario || !data.password) {
       throw new ApiError(400, 'Debes proporcionar nombre de usuario y contraseña para crear credenciales')
+    }
+
+    if (!data.correo?.trim()) {
+      throw new ApiError(400, 'Debes registrar un correo electrónico para enviar las credenciales')
     }
 
     const usuarioExistente = await prisma.usuario.findUnique({
@@ -105,7 +109,9 @@ export async function createTrabajador(payload: unknown, sessionUserId: number) 
           nombre_usuario: data.nombre_usuario!,
           password: hashedPassword,
           estado: true,
-          estatus: true
+          estatus: true,
+          requiere_cambio_password: true,
+          envio_credenciales_pendiente: true
         }
       })
 
@@ -122,7 +128,6 @@ export async function createTrabajador(payload: unknown, sessionUserId: number) 
         cargo: data.cargo,
         especialidad: data.especialidad,
         nivel_experiencia: data.nivel_experiencia,
-        tarifa_hora: toDecimal(data.tarifa_hora) ?? new Prisma.Decimal(0),
         fecha_ingreso: toDate(data.fecha_ingreso) ?? undefined,
         sueldo_mensual: toDecimal(data.sueldo_mensual),
         activo: true,
@@ -141,5 +146,45 @@ export async function createTrabajador(payload: unknown, sessionUserId: number) 
     }
   })
 
-  return trabajador
+  let credencialesEnviadas = false
+  let credencialesError: string | null = null
+
+  if (data.crear_usuario && trabajador.usuario && trabajador.usuario.id_usuario) {
+    try {
+      await sendMail({
+        to: data.correo!,
+        subject: 'Credenciales de acceso al sistema',
+        html: `
+          <p>Hola ${data.nombre} ${data.apellido_paterno ?? ''},</p>
+          <p>Se ha creado tu cuenta en el sistema del taller. Utiliza las siguientes credenciales para ingresar:</p>
+          <ul>
+            <li><strong>Usuario:</strong> ${data.nombre_usuario}</li>
+            <li><strong>Contraseña temporal:</strong> ${data.password}</li>
+          </ul>
+          <p>Por seguridad se te solicitará cambiar la contraseña en tu primer inicio de sesión.</p>
+          <p>Si no reconoces este mensaje, comunícate con el administrador del sistema.</p>
+        `
+      })
+
+      credencialesEnviadas = true
+
+      await prisma.usuario.update({
+        where: { id_usuario: trabajador.usuario.id_usuario },
+        data: { envio_credenciales_pendiente: false }
+      })
+
+      trabajador.usuario.envio_credenciales_pendiente = false
+    } catch (error) {
+      console.error('[Trabajadores] Error enviando credenciales:', error)
+      credencialesError = error instanceof Error ? error.message : 'No se pudo enviar el correo con las credenciales'
+    }
+  }
+
+  return {
+    trabajador,
+    credenciales: {
+      enviadas: credencialesEnviadas,
+      error: credencialesError
+    }
+  }
 }

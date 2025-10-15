@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Search, Plus, Edit, Eye, ToggleLeft, ToggleRight, Wrench, User, Clock } from 'lucide-react'
+import { Search, Plus, Edit, Eye, ToggleLeft, ToggleRight, Wrench, User, Clock, Send } from 'lucide-react'
 import { TrabajadorCompleto } from '@/types'
 import { useToast } from '@/components/ui/use-toast'
 
@@ -21,6 +21,7 @@ export function TrabajadoresTable({ onEdit, onView, onCreateNew, refreshTrigger 
   const [trabajadores, setTrabajadores] = useState<TrabajadorCompleto[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [actionLoadingId, setActionLoadingId] = useState<number | null>(null)
   
   const { toast } = useToast()
 
@@ -83,6 +84,7 @@ export function TrabajadoresTable({ onEdit, onView, onCreateNew, refreshTrigger 
     }
 
     try {
+      setActionLoadingId(trabajador.id_trabajador)
       const response = await fetch(`/api/trabajadores/${trabajador.id_trabajador}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -100,13 +102,73 @@ export function TrabajadoresTable({ onEdit, onView, onCreateNew, refreshTrigger 
         description: `${persona.nombre} ha sido ${newStatus ? 'activado' : 'desactivado'}`,
       })
 
-      fetchTrabajadores()
+  await fetchTrabajadores()
     } catch (error) {
       toast({
         title: "Error",
         description: "Error al cambiar el estado",
         variant: "destructive",
       })
+    } finally {
+      setActionLoadingId(null)
+    }
+  }
+
+  const handleSendCredentials = async (trabajador: TrabajadorCompleto) => {
+    if (!trabajador.usuario) {
+      toast({
+        title: 'Sin usuario asignado',
+        description: 'Debes crear un usuario antes de enviar credenciales.',
+        variant: 'warning'
+      })
+      return
+    }
+
+    const persona = getPersona(trabajador)
+    const correoDestino = trabajador.usuario.persona?.correo ?? persona?.correo
+
+    if (!correoDestino) {
+      toast({
+        title: 'Correo no registrado',
+        description: 'Actualiza el correo del trabajador para poder enviar credenciales.',
+        variant: 'warning'
+      })
+      return
+    }
+
+    if (!window.confirm(`Se generará una nueva contraseña temporal para ${persona?.nombre ?? 'el trabajador'} y se enviará al correo ${correoDestino}. ¿Deseas continuar?`)) {
+      return
+    }
+
+    try {
+      setActionLoadingId(trabajador.id_trabajador)
+      const response = await fetch(`/api/trabajadores/${trabajador.id_trabajador}/credenciales`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      })
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => null)
+        const message = body?.error ?? 'No se pudo enviar el correo con credenciales'
+        throw new Error(message)
+      }
+
+      toast({
+        title: 'Credenciales enviadas',
+        description: `Se envió un correo a ${correoDestino} con una nueva contraseña temporal.`
+      })
+
+  await fetchTrabajadores()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Error al enviar las credenciales'
+      toast({
+        title: 'Error',
+        description: message,
+        variant: 'destructive'
+      })
+    } finally {
+      setActionLoadingId(null)
     }
   }
 
@@ -139,12 +201,12 @@ export function TrabajadoresTable({ onEdit, onView, onCreateNew, refreshTrigger 
   }
 
   const getNivelBadge = (nivel: string) => {
-    const colores = {
-      'Junior': 'bg-blue-100 text-blue-800',
-      'Senior': 'bg-green-100 text-green-800',
-      'Especialista': 'bg-purple-100 text-purple-800'
-    }
-    return colores[nivel as keyof typeof colores] || 'bg-gray-100 text-gray-800'
+    const normalized = nivel.toLowerCase()
+    if (normalized.includes('semi')) return 'bg-orange-100 text-orange-800'
+    if (normalized.includes('junior')) return 'bg-blue-100 text-blue-800'
+    if (normalized.includes('senior')) return 'bg-green-100 text-green-800'
+    if (normalized.includes('especial')) return 'bg-purple-100 text-purple-800'
+    return 'bg-gray-100 text-gray-800'
   }
 
   return (
@@ -311,11 +373,22 @@ export function TrabajadoresTable({ onEdit, onView, onCreateNew, refreshTrigger 
                         >
                           <Eye className="w-4 h-4" />
                         </Button>
+                        {trabajador.usuario && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleSendCredentials(trabajador)}
+                            disabled={actionLoadingId === trabajador.id_trabajador}
+                            className="text-sky-600 hover:text-sky-700"
+                          >
+                            <Send className="w-4 h-4" />
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => onEdit(trabajador)}
-                          disabled={!trabajador.activo}
+                          disabled={!trabajador.activo || actionLoadingId === trabajador.id_trabajador}
                           className={!trabajador.activo ? "opacity-50 cursor-not-allowed" : ""}
                         >
                           <Edit className="w-4 h-4" />
@@ -324,6 +397,7 @@ export function TrabajadoresTable({ onEdit, onView, onCreateNew, refreshTrigger 
                           variant="ghost"
                           size="sm"
                           onClick={() => handleToggleStatus(trabajador)}
+                          disabled={actionLoadingId === trabajador.id_trabajador}
                           className={trabajador.activo ? "text-orange-600 hover:text-orange-700" : "text-green-600 hover:text-green-700"}
                         >
                           {trabajador.activo ? <ToggleLeft className="w-4 h-4" /> : <ToggleRight className="w-4 h-4" />}

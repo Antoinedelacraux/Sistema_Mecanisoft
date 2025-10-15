@@ -52,8 +52,8 @@ export async function PUT(request: NextRequest, ctx: ParamsMaybePromise) {
 
     const { id } = await resolveParams(ctx.params)
     const payload = await request.json()
-    const trabajador = await updateTrabajador(parseId(id), payload, Number(session.user.id))
-    return NextResponse.json(trabajador)
+    const resultado = await updateTrabajador(parseId(id), payload, Number(session.user.id))
+    return NextResponse.json(resultado)
   } catch (error) {
     return handleError(error)
   }

@@ -27,19 +27,19 @@ async function backfillVentas() {
           }
         }
       }
-    })
+    }) as Array<any>
 
     if (comprobantes.length === 0) {
       break
     }
 
-    const operaciones = comprobantes.map((comprobante) => {
-      const existente = comprobante.venta
-      const pagos = existente?.pagos ?? []
+    const operaciones = comprobantes.map((comprobante: any) => {
+      const existente = comprobante.venta as any | null
+      const pagos = (existente?.pagos ?? []) as Array<any>
 
       const total = toDecimal(comprobante.total)
       const totalPagadoDesdePagos = pagos.reduce(
-        (acc, pago) => acc.plus(pago.monto),
+        (acc: Prisma.Decimal, pago: any) => acc.plus(pago.monto),
         new Prisma.Decimal(0)
       )
       const totalPagado = pagos.length > 0
@@ -88,7 +88,7 @@ async function backfillVentas() {
       })
     })
 
-    await prisma.$transaction(operaciones, { timeout: 120_000 })
+  await prisma.$transaction(operaciones)
 
     processed += comprobantes.length
     cursor = comprobantes[comprobantes.length - 1].id_comprobante

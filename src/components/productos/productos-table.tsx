@@ -1,16 +1,19 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Search, Plus, Edit, Trash2, Eye, Package, AlertTriangle, Settings } from 'lucide-react'
+import { Search, Plus, Edit, Eye, Package, AlertTriangle, Settings, ArrowDownCircle } from 'lucide-react'
 import { ProductoCompleto, CategoriaCompleta } from '@/types'
 import { useToast } from '@/components/ui/use-toast'
 import { ToggleLeft, ToggleRight, Image } from 'lucide-react'
+import ProductoStockDrawer from '@/components/inventario/basico/producto-stock-drawer'
+import CompraRapidaForm from '@/components/inventario/basico/compra-rapida-form'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 
 interface ProductosTableProps {
   onEdit: (producto: ProductoCompleto) => void
@@ -28,7 +31,7 @@ export function ProductosTable({ onEdit, onView, onCreateNew, onManageCategories
   const [categoriaFilter, setCategoriaFilter] = useState('all')
   const [tipoFilter, setTipoFilter] = useState('all')
   const [stockBajo, setStockBajo] = useState(false)
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('active')
   const [page, setPage] = useState(1)
   const [pagination, setPagination] = useState({
     total: 0,
@@ -36,6 +39,8 @@ export function ProductosTable({ onEdit, onView, onCreateNew, onManageCategories
     current: 1,
     limit: 10
   })
+  const [entradaProducto, setEntradaProducto] = useState<ProductoCompleto | null>(null)
+  const [entradaSheetOpen, setEntradaSheetOpen] = useState(false)
   
   const { toast } = useToast()
 
@@ -51,7 +56,13 @@ export function ProductosTable({ onEdit, onView, onCreateNew, onManageCategories
         ...(stockBajo && { stock_bajo: 'true' })
       })
 
-      params.set('include_inactive', 'true')
+      if (statusFilter === 'active') {
+        params.set('estatus', 'activos')
+      } else if (statusFilter === 'inactive') {
+        params.set('estatus', 'inactivos')
+      } else {
+        params.set('include_inactive', 'true')
+      }
 
       const response = await fetch(`/api/productos?${params}`)
       if (!response.ok) throw new Error('Error al cargar productos')
@@ -69,7 +80,7 @@ export function ProductosTable({ onEdit, onView, onCreateNew, onManageCategories
     } finally {
       setLoading(false)
     }
-  }, [page, search, categoriaFilter, tipoFilter, stockBajo, toast])
+  }, [page, search, categoriaFilter, tipoFilter, stockBajo, statusFilter, toast])
 
   const fetchCategorias = useCallback(async () => {
     try {
@@ -91,6 +102,42 @@ export function ProductosTable({ onEdit, onView, onCreateNew, onManageCategories
       fetchProductos()
     }
   }, [refreshTrigger, fetchProductos])
+
+  const entradaInitialLines = useMemo(() => {
+    if (!entradaProducto) return undefined
+    return [{
+      producto: {
+        id_producto: entradaProducto.id_producto,
+        nombre: entradaProducto.nombre,
+        codigo_producto: entradaProducto.codigo_producto ?? 'SIN-CODIGO',
+        unidad: entradaProducto.unidad_medida?.nombre_unidad ?? '',
+        stock_disponible: String(entradaProducto.stock ?? 0),
+        stock_comprometido: '0',
+        costo_promedio: String(Number(entradaProducto.precio_compra ?? 0)),
+      },
+      cantidad: '1',
+      precio_unitario: String(Number(entradaProducto.precio_compra ?? 0)),
+    }]
+  }, [entradaProducto])
+
+  const handleNuevaEntrada = (producto: ProductoCompleto) => {
+    if (!producto.estatus) return
+    setEntradaProducto(producto)
+    setEntradaSheetOpen(true)
+  }
+
+  const handleEntradaSuccess = () => {
+    fetchProductos()
+    setEntradaSheetOpen(false)
+    setEntradaProducto(null)
+  }
+
+  const handleEntradaSheetChange = (open: boolean) => {
+    setEntradaSheetOpen(open)
+    if (!open) {
+      setEntradaProducto(null)
+    }
+  }
 
   const handleToggleStatus = async (producto: ProductoCompleto) => {
   const newStatus = !producto.estatus
@@ -121,33 +168,6 @@ export function ProductosTable({ onEdit, onView, onCreateNew, onManageCategories
     })
   }
 }
-
-  const handleDelete = async (producto: ProductoCompleto) => {
-    if (!confirm(`¿Estás seguro de eliminar el producto ${producto.nombre}?`)) {
-      return
-    }
-
-    try {
-      const response = await fetch(`/api/productos/${producto.id_producto}`, {
-        method: 'DELETE'
-      })
-
-      if (!response.ok) throw new Error('Error al eliminar producto')
-
-      toast({
-        title: "Producto eliminado",
-        description: `${producto.nombre} ha sido eliminado correctamente`,
-      })
-
-      fetchProductos()
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Error al eliminar el producto",
-        variant: "destructive",
-      })
-    }
-  }
 
   const handleSearchChange = (value: string) => {
     setSearch(value)
@@ -420,6 +440,16 @@ export function ProductosTable({ onEdit, onView, onCreateNew, onManageCategories
                       
                       <TableCell>
                         <div className="flex items-center gap-1">
+                          <ProductoStockDrawer productoId={producto.id_producto} variant="ghost" size="sm" />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleNuevaEntrada(producto)}
+                            disabled={!producto.estatus}
+                            title="Registrar nueva entrada"
+                          >
+                            <ArrowDownCircle className="w-4 h-4" />
+                          </Button>
                           <Button
                             variant="ghost"
                             size="sm"
@@ -443,18 +473,6 @@ export function ProductosTable({ onEdit, onView, onCreateNew, onManageCategories
                             className={producto.estatus ? "text-orange-600 hover:text-orange-700" : "text-green-600 hover:text-green-700"}
                           >
                             {producto.estatus ? <ToggleLeft className="w-4 h-4" /> : <ToggleRight className="w-4 h-4" />}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDelete(producto)}
-                            disabled={producto.estatus}
-                            className={producto.estatus 
-                              ? "opacity-50 cursor-not-allowed" 
-                              : "text-red-600 hover:text-red-700"
-                            }
-                          >
-                            <Trash2 className="w-4 h-4" />
                           </Button>
                         </div>
                       </TableCell>
@@ -497,6 +515,29 @@ export function ProductosTable({ onEdit, onView, onCreateNew, onManageCategories
           </>
         )}
       </CardContent>
+      <Sheet open={entradaSheetOpen} onOpenChange={handleEntradaSheetChange}>
+        <SheetContent side="right" className="w-full max-w-4xl lg:max-w-3xl">
+          <SheetHeader>
+            <SheetTitle>Registrar entrada rápida</SheetTitle>
+            {entradaProducto && (
+              <SheetDescription>
+                {entradaProducto.nombre} ({entradaProducto.codigo_producto ?? 'Sin código'})
+              </SheetDescription>
+            )}
+          </SheetHeader>
+          {entradaProducto ? (
+            <div className="mt-6">
+              <CompraRapidaForm
+                key={entradaProducto.id_producto}
+                initialLines={entradaInitialLines}
+                onSuccess={handleEntradaSuccess}
+              />
+            </div>
+          ) : (
+            <p className="mt-6 text-sm text-muted-foreground">Selecciona un producto para registrar la entrada.</p>
+          )}
+        </SheetContent>
+      </Sheet>
     </Card>
   )
 }

@@ -1,256 +1,280 @@
-# Propuesta de módulo de inventario
+# Propuesta simplificada y práctica para el módulo de Inventario
 
-## Contexto y objetivos
-- Centralizar el control de existencias de repuestos e insumos del taller.
-- Mantener trazabilidad de entradas, salidas, ajustes y transferencias entre ubicaciones.
-- Integrarse con los módulos de productos, órdenes de trabajo y facturación para sincronizar consumos y valorizaciones.
-- Ofrecer indicadores rápidos (stock disponible, stock comprometido, niveles críticos) junto con alertas automatizadas.
+Objetivo breve
+- Entregar un módulo de inventario sencillo, seguro y útil: gestionar proveedores, registrar entradas (compras), registrar salidas (consumos/órdenes), y mantener un historial de movimientos por producto. Aprovechar el módulo existente `producto` para seleccionar ítems.
 
-## Principios de diseño
-- **Consistencia con el resto de la app**: mantener nomenclatura en español, esquema Prisma, bitácora de acciones y validaciones server-first.
-- **Auditoría completa**: cada movimiento genera un registro en `bitacora_inventario` y se asocia al usuario autenticado.
-- **Escalabilidad**: permitir ubicar productos por almacén, estante y contenedor; soportar variantes de productos o atributos adicionales sin refactor mayor.
-- **Integración declarativa**: exponer servicios reutilizables para que órdenes y facturación descuenten o bloqueen stock mediante transacciones Prisma.
+Principios
+- Minimalista: cubrir lo esencial primero (proveedores, compras, inventario por producto y movimientos), luego ampliar (almacenes/ubicaciones, transferencias).
+- Seguro: todas las mutaciones en transacciones Prisma y registro de movimientos (historial/auditoría).
+- Pragmático: tipos y endpoints claros; UI mínima que permita operar sin fricción.
 
-## Modelo de datos propuesto (Prisma)
+1) Modelo de datos (mínimo recomendado, Prisma)
 ```prisma
-model Almacen {
-  id_almacen        Int                  @id @default(autoincrement())
-  nombre            String
-  descripcion       String?
-  direccion         String?
-  activo            Boolean              @default(true)
-  ubicaciones       AlmacenUbicacion[]
-  inventarios       InventarioProducto[]
-  creado_en         DateTime             @default(now())
-  actualizado_en    DateTime             @updatedAt
+model Proveedor {
+  id_proveedor    Int      @id @default(autoincrement())
+  nombre          String
+  ruc             String?  @unique
+  contacto        String?
+  telefono        String?
+  correo          String?
+  creado_en       DateTime @default(now())
+  actualizado_en  DateTime @updatedAt
 }
 
-model AlmacenUbicacion {
-  id_almacen_ubicacion Int                @id @default(autoincrement())
-  id_almacen           Int
-  codigo               String             @unique
-  descripcion          String?
-  activo               Boolean            @default(true)
-  inventarios          InventarioProducto[]
-  almacen              Almacen            @relation(fields: [id_almacen], references: [id_almacen])
-  creado_en            DateTime           @default(now())
-  actualizado_en       DateTime           @updatedAt
+model Compra {
+  id_compra       Int      @id @default(autoincrement())
+  id_proveedor    Int
+  fecha           DateTime @default(now())
+  total           Decimal  @default(0)
+  estado          CompraEstado @default(RECIBIDO)
+  creado_por      Int
+  detalles        CompraDetalle[]
+  proveedor       Proveedor @relation(fields: [id_proveedor], references: [id_proveedor])
+  creado_en       DateTime @default(now())
+  actualizado_en  DateTime @updatedAt
 }
 
-model InventarioProducto {
-  id_inventario_producto Int             @id @default(autoincrement())
-  id_producto            Int
-  id_almacen             Int
-  id_almacen_ubicacion   Int?
-  stock_disponible       Decimal          @default(0)
-  stock_comprometido     Decimal          @default(0)
-  stock_minimo           Decimal          @default(0)
-  stock_maximo           Decimal?
-  costo_promedio         Decimal          @default(0)
-  producto               Producto         @relation(fields: [id_producto], references: [id_producto])
-  almacen                Almacen          @relation(fields: [id_almacen], references: [id_almacen])
-  ubicacion              AlmacenUbicacion @relation(fields: [id_almacen_ubicacion], references: [id_almacen_ubicacion])
-  movimientos            MovimientoInventario[]
-  creado_en              DateTime         @default(now())
-  actualizado_en         DateTime         @updatedAt
-
-  @@unique([id_producto, id_almacen, id_almacen_ubicacion])
+model CompraDetalle {
+  id_compra_detalle Int    @id @default(autoincrement())
+  id_compra         Int
+  id_producto       Int
+  cantidad          Decimal
+  precio_unitario   Decimal
+  subtotal          Decimal
+  compra            Compra @relation(fields: [id_compra], references: [id_compra])
 }
 
-model MovimientoInventario {
-  id_movimiento_inventario Int            @id @default(autoincrement())
-  tipo                     MovimientoTipo
-  id_producto              Int
-  id_inventario_producto   Int
-  cantidad                 Decimal
-  costo_unitario           Decimal
-  referencia_origen        String?        // p.e. id de orden o factura
-  origen_tipo              MovimientoOrigen?
-  observaciones            String?
-  id_usuario               Int
-  fecha                    DateTime        @default(now())
-  producto                 Producto         @relation(fields: [id_producto], references: [id_producto])
-  inventario               InventarioProducto @relation(fields: [id_inventario_producto], references: [id_inventario_producto])
-  usuario                  Usuario          @relation(fields: [id_usuario], references: [id_usuario])
-  detalle_transferencia    MovimientoTransferencia? @relation("TransferenciaDetalle", fields: [id_movimiento_transferencia], references: [id_movimiento_transferencia])
-  id_movimiento_transferencia Int?
-  bitacora                 BitacoraInventario[]
+model Inventario {
+  id_inventario     Int     @id @default(autoincrement())
+  id_producto       Int     @unique
+  stock_disponible  Decimal @default(0)
+  stock_comprometido Decimal @default(0)
+  costo_promedio    Decimal @default(0)
+  actualizado_en    DateTime @updatedAt
+}
+
+model Movimiento {
+  id_movimiento     Int     @id @default(autoincrement())
+  tipo              MovimientoTipo
+  id_producto       Int
+  cantidad          Decimal
+  costo_unitario    Decimal?
+  referencia        String? // e.g. "compra:12" o "orden:45"
+  id_usuario        Int
+  creado_en         DateTime @default(now())
 }
 
 enum MovimientoTipo {
   INGRESO
   SALIDA
-  AJUSTE_POSITIVO
-  AJUSTE_NEGATIVO
-  TRANSFERENCIA_ENVIO
-  TRANSFERENCIA_RECEPCION
+  AJUSTE
 }
 
-enum MovimientoOrigen {
-  COMPRA
-  ORDEN_TRABAJO
-  FACTURACION
-  AJUSTE_MANUAL
-  TRANSFERENCIA
-  OTRO
-}
+enum CompraEstado { PENDIENTE RECIBIDO ANULADO }
+```
 
-model MovimientoTransferencia {
-  id_movimiento_transferencia Int @id @default(autoincrement())
-  id_movimiento_envio         Int
-  id_movimiento_recepcion     Int
-  estado                      TransferenciaEstado @default(PENDIENTE_RECEPCION)
-  creado_en                   DateTime @default(now())
-  actualizado_en              DateTime @updatedAt
+Notas:
+- `Inventario` es 1 registro por producto (si en el futuro se quiere multi-almacén, cambiar a composite key: product+almacen).
+- `costo_promedio` es opcional; actualizarlo en cada compra cuando se requiera.
 
-  movimiento_envio     MovimientoInventario @relation("TransferenciaEnvio", fields: [id_movimiento_envio], references: [id_movimiento_inventario])
-  movimiento_recepcion MovimientoInventario @relation("TransferenciaRecepcion", fields: [id_movimiento_recepcion], references: [id_movimiento_inventario])
-}
+2) Servicios backend (contratos y reglas)
+- Todos los servicios deben ejecutarse en una transacción Prisma.
 
-enum TransferenciaEstado {
-  PENDIENTE_RECEPCION
-  COMPLETADA
-  ANULADA
-}
+a) registrarCompra({ id_proveedor, lineas, creado_por })
+- lineas: Array<{ id_producto, cantidad, precio_unitario }>
+- Pasos:
+  1. Crear `Compra` y `CompraDetalle`.
+  2. Para cada línea: actualizar/crear `Inventario` (sumar `stock_disponible`) y recalcular `costo_promedio` opcionalmente.
+  3. Crear `Movimiento` tipo INGRESO por línea con `referencia = 'compra:<id>'`.
+  4. Retornar { compraId, total }.
 
-model BitacoraInventario {
-  id_bitacora_inventario Int      @id @default(autoincrement())
-  id_movimiento          Int
-  id_usuario             Int
-  accion                 String
-  descripcion            String?
-  metadata               Json?
-  creado_en              DateTime @default(now())
-  movimiento             MovimientoInventario @relation(fields: [id_movimiento], references: [id_movimiento_inventario])
-  usuario                Usuario             @relation(fields: [id_usuario], references: [id_usuario])
+b) registrarSalida({ id_producto, cantidad, referencia, id_usuario })
+- Pasos:
+  1. Leer `Inventario` y comprobar stock disponible.
+  2. Restar `cantidad` de `stock_disponible` (o fallar con 409 si insuficiente, según política).
+  3. Crear `Movimiento` tipo SALIDA.
+
+c) registrarAjuste({ id_producto, cantidad, motivo, id_usuario })
+- Aplicar el ajuste (positivo o negativo), crear `Movimiento` tipo AJUSTE y registrar motivo en `referencia`.
+
+d) getStock(id_producto)
+- Devuelve: stock_disponible, stock_comprometido, costo_promedio y últimos N movimientos.
+
+3) Endpoints (App Router) — esquemas rápidos
+- POST /api/inventario/compras -> registrarCompra
+- GET /api/inventario/compras -> listado (filtros: proveedor, fecha)
+- GET /api/inventario/compras/[id] -> detalle
+- POST /api/inventario/movimientos -> crear movimiento manual (SALIDA/AJUSTE)
+- GET /api/inventario/movimientos -> historial / filtros
+- GET /api/inventario/stock/[id_producto] -> getStock
+- GET/POST /api/inventario/proveedores -> gestionar proveedores
+
+Seguridad: `getServerSession(authOptions)` + permisos (inventario_ver, inventario_editar, inventario_ajustar, inventario_compras).
+
+3.1) Registro de proveedores — propuesta (inventory-only)
+
+- Propósito: permitir crear proveedores ligeros exclusivamente para el flujo de inventario (p. ej. compras rápidas). Esta funcionalidad es intencionalmente minimal y no sincroniza con otras entidades del sistema (como `persona`) en esta fase.
+
+- Restricciones clave:
+  - Solo para uso interno del módulo de inventario (compras/entradas). No tocará ni reemplazará procesos de gestión de clientes/empleados en otras áreas.
+  - No se crea/actualiza una entidad `persona` en esta iteración; si en el futuro se requiere integración, se hará en una iteración posterior.
+
+- Endpoint (servidor)
+  - POST /api/inventario/proveedores
+  - Payload (JSON):
+    - nombre: string (required) — razón social o nombre
+    - ruc: string | null (optional) — validación básica (Perú: 8/11 dígitos)
+    - contacto: string | null (optional)
+    - telefono: string | null (optional)
+    - correo: string | null (optional)
+    - nombre_comercial: string | null (optional)
+
+  - Respuestas:
+    - 201 { proveedor: { id_proveedor, nombre, ruc, contacto, telefono, correo, nombre_comercial } }
+    - 400 { error: '...' } (validación)
+    - 401 / 403 para sesión/permiso
+    - 500 para errores internos
+
+  - Validaciones recomendadas (Zod):
+    - nombre: z.string().trim().min(2)
+    - ruc: z.string().regex(/^[0-9]{8,11}$/).optional().nullable()
+    - correo: z.string().email().optional().nullable()
+
+  - Flujo del servidor (sencillo):
+    1. Comprobar sesión y permiso `inventario.editar`.
+    2. Validar payload con Zod.
+    3. Crear `proveedor` en la tabla de proveedores dentro de una transacción corta.
+    4. (Opcional) Registrar un evento en `bitacora` con `user.id`.
+
+- Contrato del servicio (esqueleto):
+  - function registrarProveedor(tx: PrismaClient | TxClient, payload: CreateProveedorPayload, creado_por: number): Promise<ProveedorRecord>
+  - errores esperados: VALIDATION_ERROR (400), DUPLICADO_RUC (409), PERMISO (403)
+
+- Formulario UI (simple) — propuesta minimal y comportamiento con compras rápidas
+  - Componente: `src/components/inventario/ProveedorForm.tsx` (client component)
+  - Campos: `nombre` (input), `ruc` (input), `nombre_comercial` (input), `contacto` (input), `telefono` (input), `correo` (input)
+  - Comportamiento:
+    - Validación ligera en cliente (requerir `nombre`), deshabilitar botón mientras se envía.
+    - POST a `/api/inventario/proveedores` con JSON y mostrar errores del servidor si los hubiera.
+    - Al crear correctamente: devolver el proveedor creado al componente padre (p. ej. `CompraRapidaForm`) para que se seleccione automáticamente en el formulario de compra rápida y cerrar el drawer/modal.
+  - UX mínimo: un botón 'Crear proveedor' junto al selector/Autocomplete en `CompraRapidaForm` que abre un drawer pequeño con `ProveedorForm`.
+
+Ejemplo de payload que envía el frontend:
+
+```json
+{
+  "nombre": "Taller Demo SAC",
+  "ruc": "20601234567",
+  "nombre_comercial": "Taller Demo",
+  "contacto": "Juan Perez",
+  "telefono": "+51912345678",
+  "correo": "contacto@taller.com"
 }
 ```
 
-## Servicios y utilidades back-end
-- **`src/lib/inventario/prisma-utils.ts`**: helpers para cargar inventarios con includes frecuentes, conversión de decimales y validaciones de stock.
-- **Servicios principales**:
-  - `registrarIngreso({ productoId, almacenId, cantidad, costoUnitario, referencia })`
-  - `registrarSalida({ productoId, almacenId, cantidad, origenTipo, referencia })`
-  - `registrarAjuste({ productoId, almacenId, cantidad, motivo, esPositivo })`
-  - `transferirStock({ productoId, origenAlmacenId, destinoAlmacenId, cantidad, usuarioId })`
-  - Cada servicio opera en transacciones Prisma, actualiza `stock_disponible`/`stock_comprometido`, recalcula `costo_promedio` y genera bitácora.
-- **Integración con órdenes**: al reservar una orden, incrementar `stock_comprometido`; al completarla, convertir a salida definitiva o devolver stock.
-- **Alertas**: utilidades para detectar `stock_disponible` por debajo de `stock_minimo`. Se pueden ejecutar en un cron (p.e. `/api/inventario/alertas/cron`).
+Notas operativas y prioridades:
+  - Diseñar esto para no bloquear el flujo de compras rápidas: endpoint y formulario deben ser lo más livianos posible.
+  - Si se requiere más integración (vincular con `persona` u otras entidades), hacerlo en una iteración futura y migrar datos con cuidado.
+  - Añadir tests API (happy path + validación) cuando se implemente el endpoint.
 
-## API (App Router)
-- `src/app/api/inventario/almacenes/route.ts`
-  - GET (listado paginado, filtros activos), POST (crear almacén).
-- `src/app/api/inventario/almacenes/[id]/route.ts`
-  - GET detalle, PUT update, DELETE soft delete.
-- `src/app/api/inventario/almacenes/[id]/ubicaciones/route.ts`
-  - GET (paginado por almacén) y POST (crear ubicación con validaciones de unicidad).
-- `src/app/api/inventario/almacenes/[id]/ubicaciones/[ubicacionId]/route.ts`
-  - GET detalle, PUT update, DELETE soft delete de ubicaciones.
-- `src/app/api/inventario/productos/route.ts`
-  - GET stock por producto, POST crear inventario inicial.
-- `src/app/api/inventario/movimientos/route.ts`
-  - GET (paginación, filtros por tipo, producto, fecha), POST para registrar ingresos/salidas/ajustes.
-- `src/app/api/inventario/transferencias/route.ts`
-  - POST crear transferencia (genera envío + recepción pendiente).
-- `src/app/api/inventario/transferencias/[id]/route.ts`
-  - PATCH para confirmar recepción o anular.
-- `src/app/api/inventario/reportes/route.ts`
-  - GET con totales por almacén, valorización y nivel crítico.
-- Todas las rutas con guardia `getServerSession(authOptions)` y bitácora con `prisma.bitacoraInventario.create`.
 
-## Componentes y vistas (App Router)
-- `src/app/dashboard/inventario/page.tsx`
-  - Overview con KPIs, cards de stock crítico, gráfico simples (stock vs comprometido).
-- `src/app/dashboard/inventario/almacenes/page.tsx`
-  - Vista para gestionar almacenes y sus ubicaciones con formularios rápidos de creación.
-- `src/app/dashboard/inventario/movimientos/page.tsx`
-  - Tabla con filtro por tipo, fecha, almacén; botón "Registrar movimiento".
-- `src/app/dashboard/inventario/transferencias/page.tsx`
-  - Asistente para transferencias (seleccionar almacén origen/destino, productos, cantidades) + timeline de estados.
-- `src/app/dashboard/inventario/ajustes/page.tsx`
-  - Formulario de ajuste con motivo, soporte adjunto (opcional) y vista previa de impacto.
-- Componentes reutilizables en `src/components/inventario/`:
-  - `inventario-table.tsx`, `movimiento-form.tsx`, `transferencia-wizard.tsx`, `stock-badges.tsx`.
-  - Formularios rápidos (`movimiento-quick-form.tsx`, `transferencia-wizard.tsx`) utilizan los selectores de almacenes/ubicaciones para reducir errores al capturar IDs manuales.
-  - `almacenes/almacenes-manager.tsx` centraliza listado paginado, búsqueda y formularios para almacenes/ubicaciones.
-  - Selectores de dominio (`selectors/almacen-select.tsx`, `selectors/ubicacion-select.tsx`) exponen listas reusables de almacenes y ubicaciones con soporte para estados inactivos, búsqueda incremental con debounce y paginación "cargar más".
-  - El asistente de órdenes (`orden-wizard.tsx`) reutiliza estos selectores para asociar cada producto a un almacén y, opcionalmente, a una ubicación específica antes de confirmar la orden.
-- Integración con productos: botón "Ver stock" que abre drawer con stock por almacén y detalle de movimientos recientes.
+4) UI mínima (prioridad)
+- Dashboard inventario: KPIs (productos bajo stock, valoración rápida), buscador de producto.
+- Proveedores: lista y crear.
+- Registrar compra: formulario con autocomplete de productos (usar endpoint de productos), líneas, preview total.
+- Movimientos: tabla (filtro por tipo/fecha/producto) y formulario rápido para salidas/ajustes.
+- Drawer "Ver stock" en la ficha de `producto` que muestra stock y últimos movimientos.
 
-## Flujos clave
-1. **Ingreso por compra**
-   - API de compras u órdenes genera `registrarIngreso` con costo unitario del proveedor.
-   - Recalcula `costo_promedio` usando `costo_promedio = ((stock_actual * costo_actual) + (cantidad * costo_nuevo)) / (stock_actual + cantidad)`.
-2. **Reserva de stock para orden de trabajo**
-   - Al crear orden, reservar (incrementar `stock_comprometido`).
-   - Al comenzar la ejecución, convertir reserva en salida real (disminuir disponible, comprometido).
-3. **Ajuste inventario**
-   - Usuario con rol "Supervisor" hace conteo físico, registra diferencia en módulo de ajustes.
-   - Se requiere motivo, evidencia (foto). Bitácora almacena metadata.
-4. **Transferencia entre almacenes**
-   - Se crea movimiento doble: envío (disminuye disponible en origen) y recepción pendiente.
-   - Al confirmar recepción, aumentar disponible en destino.
-5. **Alertas y reportes**
-   - Cron diario evalúa `stock_disponible <= stock_minimo` y envía notificación (correo o notificación in-app).
-   - Reporte de valorización: suma `stock_disponible * costo_promedio` por almacén.
+5) Migración y seed
+- Crear migración Prisma con los modelos propuestos.
+- Seed opcional:
+  - Crear proveedor de prueba y crear entradas iniciales para productos críticos.
 
-## Seguridad y roles
-- Permisos nuevos en tabla de roles: `inventario_ver`, `inventario_editar`, `inventario_transferir`, `inventario_ajustar`.
-- Middleware y componentes deben verificar roles antes de mostrar acciones sensibles.
-- Todas las mutaciones registran usuario y IP opcional en metadata.
+6) Tests y calidad
+- Unit tests para servicios (jest, mock de Prisma).
+- API tests para endpoints clave (validaciones y errores 401/409).
+- Añadir `npx tsc --noEmit` y `npm run lint` en el pipeline.
 
-## Testing
-- Tests unitarios en `tests/lib/inventario/` para cada servicio (mock Prisma + bitácora) siguiendo patrón actual.
-- Tests de API (`tests/api/inventarioMovimientosApi.test.ts`, `tests/api/inventarioAlmacenesApi.test.ts`, `tests/api/inventarioUbicacionesApi.test.ts`) para validar validaciones y respuestas 401/422/409.
-- Tests de integración front-end con React Testing Library para formularios críticos (movimientos, transferencias).
+7) Plan incremental de entrega
+- Iteración 0: crear modelos + migración + seed mínimo.
+- Iteración 1: implementar `registrarCompra`, `getStock`, endpoints básicos y tests unitarios.
+- Iteración 2: UI de Registrar Compra + Drawer de stock + pruebas de integración.
+- Iteración 3: Reservas (`stock_comprometido`) e integración con órdenes.
 
-## Migraciones y despliegue
-- Nueva migración Prisma con tablas y enums anteriores.
-- Script de seed opcional para crear almacén principal "Almacén Central" y ubicaciones base.
-- Ajustar `prisma/clean-test-data.ts` para limpiar tablas inventario.
+8) Consideraciones operativas
+- Concurrency: usar transacciones Prisma para evitar condiciones de carrera; documentar políticas de stock insuficiente.
+- Decimal handling: convertir `Prisma.Decimal` a number antes de enviar JSON.
+- Anulación de compras: implementar creando movimientos inversos o marca ANULADO según política.
 
-## Roadmap futuro
-- Webhooks o integración con ERP.
-- Inventario multi-moneda (costo promedio por moneda).
-- Serialización o lotes (tracking por número de serie o lote).
-- Forecasting con series históricas para recomendar reposición.
+¿Quieres que implemente la Iteración 0 (modelos + migración + seed) ahora en el repo? Puedo crear la migración y un seed minimal, o si prefieres comienzo por los servicios/endpoints (Iteración 1).
 
-## Plan de implementación iterativo
-1. **Iteración 0 – Preparación**
-  - Revisar y aprobar el modelo de datos con negocio.
-  - Crear migración inicial de Prisma y actualizar seeds (almacén principal, ubicaciones base).
-  - Configurar tests básicos (`tests/lib/inventario` y `tests/api/inventario`) como skeleton con mocks de Prisma.
-2. **Iteración 1 – Core de inventario**
-  - Implementar servicios `registrarIngreso`, `registrarSalida`, `registrarAjuste` con pruebas unitarias.
-  - Exponer endpoints `POST /api/inventario/movimientos` para ingresos y salidas.
-  - UI mínima para registrar movimientos manuales y ver stock disponible.
-  - Ejecutar `npx tsc --noEmit` y `npm run lint` al cierre.
-3. **Iteración 2 – Reservas y órdenes**
-  - Conectar con módulo de órdenes para reservar stock (`stock_comprometido`).
-    - Añadir endpoints específicos (`POST /api/inventario/reservas`) y hooks del lado de órdenes.
-    - Cobertura de tests sobre escenarios de reserva/consumo y errores de stock insuficiente.
-    - Reutilizar selectores de almacén/ubicación en el wizard de órdenes para definir el punto exacto de reserva por producto.
-4. **Iteración 3 – Transferencias y ajustes avanzados**
-  - Implementar flujo completo de transferencia (envío, recepción, anulación) con wizard UI.
-  - Registrar ajustes con evidencia y ampliar bitácora.
-  - Pruebas end-to-end sobre transferencias (API + componentes clave).
-5. **Iteración 4 – Alertas y reportes**
-  - Implementar cron/endpoint para alertas de stock mínimo.
-  - Generar reportes de valorización y tablero de KPIs.
-  - Afinar documentación, métricas y observabilidad.
+---
 
-Cada iteración debe concluir con:
-- `npx tsc --noEmit` para garantizar que no se introducen errores de tipos.
-- `npm run lint` y tests pertinentes (`npx jest tests/lib/inventario --runInBand`).
-- Actualización de bitácora de cambios y checklist de dependencias (órdenes, facturación, productos).
+Archivo de referencia: `src/components/productos` debe seguir enlazando al nuevo drawer de stock (botón "Ver stock").
 
-## Buenas prácticas y mantenibilidad
-- **Límites de archivo**: dividir servicios y componentes grandes en archivos de ~500 líneas máximo (ej. separar `movimiento-service.ts`, `transferencia-service.ts`).
-- **Agrupación por dominio**: usar estructura `src/lib/inventario/`, `src/app/api/inventario/`, `src/components/inventario/` para aislar lógica y UI.
-- **Transacciones Prisma**: encapsular operaciones críticas en funciones utilitarias para reuso y consistencia.
-- **Tipado estricto**: definir tipos compartidos en `src/types/inventario.ts` y reexportarlos para evitar duplicación.
-- **Bitácora consistente**: crear helper `registrarBitacoraInventario` que reciba acción, descripción y metadata normalizada.
-- **Validaciones server-first**: validar payloads con Zod en las rutas API antes de invocar servicios.
-- **Integración continua**: incluir el directorio `tests/lib/inventario` en la suite existente y asegurar que `npx tsc --noEmit` forma parte del pipeline antes de merge.
-- **Documentación viva**: mantener este `.md` y los README parciales sincronizados con cada iteración.
+Si confirmas, empiezo a generar los archivos Prisma y los servicios iniciales.
+
+---
+
+## Decisión: migración incremental (no rompiente) — plan recomendado
+
+Vamos a seguir la opción recomendada: implementar el nuevo modelo y los servicios de forma incremental y no rompiente. El objetivo es que el sistema siga funcionando mientras añadimos la nueva capa y migramos datos gradualmente.
+
+Ventajas de este enfoque
+- Cero o mínimo downtime en producción.
+- Posibilidad de validar con datos reales y revertir cambios si hace falta.
+- Permite tener adaptadores que mantengan compatibilidad con endpoints antiguos mientras el frontend se actualiza.
+
+Paso a paso (Iteración 0 — entrega segura)
+1) Añadir modelos Prisma propuestos al `prisma/schema.prisma` (nuevas tablas: Proveedor, Compra, CompraDetalle, Inventario, Movimiento, enums).
+2) Generar migración local: `npx prisma migrate dev --name inventario_init` y `npx prisma generate`.
+3) Crear un seed mínimo (`prisma/seed.ts`) que inserte un `Proveedor` de ejemplo y, opcionalmente, algunos registros iniciales de `Inventario` para productos críticos.
+4) Implementar servicios básicos en `src/lib/inventario/`:
+  - `getStock(prisma, id_producto)` — consulta el inventario y devuelve movimientos recientes.
+  - `registrarCompra(prisma, payload)` — crea compra, actualiza inventario y crea movimientos (esqueleto con transacción).
+5) Crear endpoints read-only iniciales para exponer `GET /api/inventario/stock/[id_producto]` y `GET /api/inventario/proveedores`.
+6) Añadir tests básicos y `npx tsc --noEmit` para validar tipado.
+7) (Opcional) Crear `scripts/backfill-inventario.ts` para mapear datos existentes al nuevo esquema.
+
+Cómo haremos la transición en la práctica
+- Primero desplegamos la migración y los endpoints de consulta (sin cambiar comportamiento actual).
+- Llenamos `Inventario` con backfill y/o seed en un entorno de staging.
+- Implementamos los servicios de escritura (`registrarCompra` y `registrarSalida`) y los endpoints POST pero mantenemos los endpoints antiguos (si existen) hasta que el frontend esté listo.
+- Actualizamos la UI gradualmente: primero el drawer `Ver stock`, luego el formulario de compra; al final cambiamos los consumers principales y eliminamos compatibilidad previa.
+
+Comandos útiles (PowerShell)
+```powershell
+npx prisma migrate dev --name inventario_init
+npx prisma generate
+# Ejecutar seed (si se añade):
+tsx prisma/seed.ts
+```
+
+¿Confirmas que proceda con Iteración 0 (añadir modelos + migración + seed + servicios esqueleto)? Si confirmas, empezaré aplicando los cambios en el repo y ejecutaré `npx prisma migrate dev` y `npx tsc --noEmit` aquí para validar.
+
+## Estado Iteración 0 — 14/10/2025
+- ✅ Modelos Prisma creados (`Inventario`, `Compra`, `CompraDetalle`, `Movimiento`, enums nuevos) más relaciones inversas.
+- ✅ Migración aplicada (`20251014120217_inventario_basico_init`) y cliente Prisma regenerado.
+- ✅ Seed actualizado con proveedor demo e inventario base para 3 productos activos.
+- ✅ Servicios iniciales en `src/lib/inventario/basico` (`registrarCompra`, `getStock`) con controladores pequeños y transacciones.
+- ✅ Endpoints de consulta: `GET /api/inventario/stock/[id_producto]` y `GET /api/inventario/proveedores` con guardas de sesión/permisos.
+- ✅ Verificación de tipos (`npx tsc --noEmit`).
+- 🔜 Preparar pruebas unitarias y endpoints de escritura adicionales (Iteración 1).
+
+## Estado Iteración 1 — 14/10/2025
+- ✅ Servicios adicionales en `src/lib/inventario/basico`: `registrarSalida` y `registrarAjuste` con bitácora y validaciones de stock.
+- ✅ Endpoints protegidos:
+  - `POST /api/inventario/compras` + `GET /api/inventario/compras` y `GET /api/inventario/compras/[id]`.
+  - `POST /api/inventario/movimientos/basico` + `GET /api/inventario/movimientos/basico`.
+- ✅ Tipos y errores centralizados (`common.ts`, `types.ts`) para reutilizar validaciones de productos/proveedores.
+- ✅ Pruebas unitarias (`tests/lib/inventario/basico/*.test.ts`) cubriendo compras, salidas, ajustes y consultas de stock.
+- ✅ Typecheck y suites Jest (`npx tsc --noEmit`, `npx jest tests/lib/inventario/basico`).
+- 🔜 Conectar formularios/UI y preparar dashboard simplificado (Iteración 2).
+
+## Iteración 2 en curso — 14/10/2025
+- ✅ Dashboard simplificado en `src/app/dashboard/inventario/page.tsx` con KPIs, tablas recientes y refresh en vivo.
+- ✅ Formularios cliente:
+  - `MovimientoQuickForm` (salidas/ajustes) enlazado a `/api/inventario/movimientos/basico`.
+  - `CompraRapidaForm` enlazado a `/api/inventario/compras` con soporte para múltiples líneas.
+- ✅ Drawer "Ver stock" (`ProductoStockDrawer`) integrado en la tabla de productos para consultar `GET /api/inventario/stock/[id_producto]`.
+- 🔜 Mejorar selectors/autocomplete de productos y proveedores, estilizar tablas y preparar pruebas E2E/UI.

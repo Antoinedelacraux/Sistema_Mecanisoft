@@ -5,44 +5,40 @@ import FacturacionComprobantes from '@/components/facturacion/facturacion-compro
 beforeAll(() => {
   global.fetch = jest.fn(async (url, opts) => {
     if (typeof url === 'string' && url.includes('/api/facturacion/comprobantes')) {
-      return {
-        ok: true,
-        json: async () => ({
-          data: [
-            {
-              id_comprobante: 101,
-              serie: 'F001',
-              numero: 1,
-              tipo: 'FACTURA',
-              estado: 'BORRADOR',
-              origen_tipo: 'COTIZACION',
-              origen_id: 1,
-              receptor_nombre: 'Empresa SAC',
-              receptor_documento: '20123456789',
-              total: 200,
-              subtotal: 169.49,
-              igv: 30.51,
-              detalles: [
-                { id_comprobante_detalle: 1, descripcion: 'Producto A', cantidad: 2, precio_unitario: 100, descuento: 0, total: 200, tipo_item: 'PRODUCTO' }
-              ],
-              persona: { correo: 'cliente@correo.com' },
-              bitacoras: [],
-              creado_en: new Date().toISOString(),
-              actualizado_en: new Date().toISOString(),
-            }
-          ],
-          pagination: { total: 1, pages: 1, current: 1, limit: 10 }
-        })
+      const body = {
+        data: [
+          {
+            id_comprobante: 101,
+            serie: 'F001',
+            numero: 1,
+            tipo: 'FACTURA',
+            estado: 'BORRADOR',
+            origen_tipo: 'COTIZACION',
+            origen_id: 1,
+            receptor_nombre: 'Empresa SAC',
+            receptor_documento: '20123456789',
+            total: 200,
+            subtotal: 169.49,
+            igv: 30.51,
+            detalles: [
+              { id_comprobante_detalle: 1, descripcion: 'Producto A', cantidad: 2, precio_unitario: 100, descuento: 0, total: 200, tipo_item: 'PRODUCTO' }
+            ],
+            persona: { correo: 'cliente@correo.com' },
+            bitacoras: [],
+            creado_en: new Date().toISOString(),
+            actualizado_en: new Date().toISOString(),
+          }
+        ],
+        pagination: { total: 1, pages: 1, current: 1, limit: 10 }
       }
+      return Promise.resolve({ ok: true, status: 200, json: async () => body } as unknown as Response)
     }
     // For series fetch
     if (typeof url === 'string' && url.includes('/api/facturacion/series')) {
-      return {
-        ok: true,
-        json: async () => ({ data: [{ id_facturacion_serie: 1, tipo: 'FACTURA', serie: 'F001', correlativo_actual: 1, activo: true }] })
-      }
+      const body = { data: [{ id_facturacion_serie: 1, tipo: 'FACTURA', serie: 'F001', correlativo_actual: 1, activo: true }] }
+      return Promise.resolve({ ok: true, status: 200, json: async () => body } as unknown as Response)
     }
-    return { ok: false, json: async () => ({}) }
+    return Promise.resolve({ ok: false, status: 500, json: async () => ({}) } as unknown as Response)
   })
 })
 

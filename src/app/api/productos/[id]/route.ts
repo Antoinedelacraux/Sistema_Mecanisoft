@@ -104,7 +104,7 @@ export async function PUT(
         codigo_producto: data.codigo_producto,
         nombre: data.nombre,
         descripcion: data.descripcion,
-        stock: parseInt(data.stock) || 0,
+        // El stock real se gestiona desde el módulo de inventario. No actualizar stock aquí.
         stock_minimo: parseInt(data.stock_minimo) || 0,
         precio_compra: parseFloat(data.precio_compra),
         precio_venta: parseFloat(data.precio_venta),

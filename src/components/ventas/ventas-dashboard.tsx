@@ -115,15 +115,22 @@ export default function VentasDashboard() {
         setListState("loading")
         const query = buildQuery({ pageOverride, includeSearch: true })
         const response = await fetch(`/api/ventas?${query.toString()}`)
-        const body: VentasResponse | { error?: string } = await response.json()
+        const body = await response.json()
 
         if (!response.ok) {
           throw new Error("error" in body ? body.error : "No se pudieron obtener las ventas")
         }
 
-        setVentas(body.ventas)
-        setPagination(body.pagination)
-        setPage(body.pagination.current)
+        // Narrow response shape at runtime
+        if (!body || typeof body !== 'object' || !Array.isArray(body.ventas)) {
+          setVentas([])
+          setPagination({ total: 0, pages: 1, current: 1, limit: LIMIT })
+          setPage(1)
+        } else {
+          setVentas(body.ventas)
+          setPagination(body.pagination)
+          setPage(body.pagination.current)
+        }
         setListState("idle")
       } catch (error) {
         console.error("Error listando ventas", error)

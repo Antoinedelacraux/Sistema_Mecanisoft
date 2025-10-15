@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useForm, SubmitHandler } from 'react-hook-form'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,13 +14,35 @@ import { useToast } from '@/components/ui/use-toast'
 import { User, Settings, DollarSign } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 
+const AUTO_ROLE_VALUE = '__AUTO__'
+const MECANICO_LABEL = 'Mecánico'
+
 interface TrabajadorFormProps {
   trabajador?: TrabajadorCompleto
   onSuccess: () => void
   onCancel: () => void
+  roles: { id_rol: number; nombre_rol: string }[]
 }
 
-export function TrabajadorForm({ trabajador, onSuccess, onCancel }: TrabajadorFormProps) {
+const normalizeLabel = (value?: string | null) => {
+  if (!value) return ''
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+}
+
+const mapNivelExperiencia = (valor?: string | null): string => {
+  const normalized = normalizeLabel(valor)
+  if (!normalized) return ''
+  if (normalized.includes('semi')) return 'Semi Senior (2 a 5 años)'
+  if (normalized.startsWith('junior')) return 'Junior (0 a 2 años)'
+  if (normalized.startsWith('senior')) return 'Senior (5 a 7 años)'
+  if (normalized.includes('especial')) return 'Especialista (8+ años)'
+  return valor ?? ''
+}
+
+export function TrabajadorForm({ trabajador, onSuccess, onCancel, roles }: TrabajadorFormProps) {
   const [loading, setLoading] = useState(false)
   const [generatedCode, setGeneratedCode] = useState('')
   
@@ -61,11 +83,24 @@ export function TrabajadorForm({ trabajador, onSuccess, onCancel }: TrabajadorFo
     return Number.isNaN(numberValue) ? undefined : numberValue
   }
 
+  const roleNames = useMemo(
+    () => {
+      const distinct = Array.from(new Set(roles.map((rol) => rol.nombre_rol))).sort((a, b) => a.localeCompare(b, 'es'))
+      if (distinct.length === 0) {
+        return ['Mecánico', 'Recepcionista', 'Administrador']
+      }
+      return distinct
+    },
+    [roles]
+  )
+
   const {
     register,
     handleSubmit,
     setValue,
     watch,
+    setError,
+    clearErrors,
     formState: { errors }
   } = useForm<TrabajadorFormData>({
     defaultValues: trabajador
@@ -82,11 +117,10 @@ export function TrabajadorForm({ trabajador, onSuccess, onCancel }: TrabajadorFo
           nombre_usuario: trabajador.usuario?.nombre_usuario ?? '',
           password: '',
           crear_usuario: Boolean(trabajador.usuario),
-          rol_usuario: trabajador.usuario?.rol?.nombre_rol ?? '',
-          cargo: trabajador.cargo,
-          especialidad: trabajador.especialidad,
-          nivel_experiencia: trabajador.nivel_experiencia,
-          tarifa_hora: decimalToNumber(trabajador.tarifa_hora) ?? 0,
+          rol_usuario: trabajador.usuario?.rol?.nombre_rol ?? AUTO_ROLE_VALUE,
+          cargo: trabajador.cargo ?? '',
+          especialidad: trabajador.especialidad ?? 'General',
+          nivel_experiencia: mapNivelExperiencia(trabajador.nivel_experiencia),
           fecha_ingreso: formatDateInput(trabajador.fecha_ingreso),
           sueldo_mensual: decimalToNumber(trabajador.sueldo_mensual),
         }
@@ -103,11 +137,10 @@ export function TrabajadorForm({ trabajador, onSuccess, onCancel }: TrabajadorFo
           crear_usuario: false,
           nombre_usuario: '',
           password: '',
-          rol_usuario: '',
+          rol_usuario: AUTO_ROLE_VALUE,
           cargo: '',
-          especialidad: '',
+          especialidad: 'General',
           nivel_experiencia: '',
-          tarifa_hora: 0,
           fecha_ingreso: '',
           sueldo_mensual: undefined,
         }
@@ -116,28 +149,68 @@ export function TrabajadorForm({ trabajador, onSuccess, onCancel }: TrabajadorFo
   const tipoDocumento = watch('tipo_documento')
   const especialidadSeleccionada = watch('especialidad')
   const nivelExperienciaSeleccionado = watch('nivel_experiencia')
+  const cargoSeleccionado = watch('cargo')
+  const rolSeleccionado = watch('rol_usuario')
   const crearUsuario = watch('crear_usuario') || false
   const tieneUsuario = Boolean(trabajador?.usuario)
   const mostrarCamposUsuario = tieneUsuario || crearUsuario
+  const [rolAsignadoManual, setRolAsignadoManual] = useState(false)
+
+  const rolNormalizado = normalizeLabel(rolSeleccionado === AUTO_ROLE_VALUE ? cargoSeleccionado : rolSeleccionado)
+  const cargoNormalizado = normalizeLabel(cargoSeleccionado)
+  const shouldMostrarEspecialidad = (rolNormalizado || cargoNormalizado) === normalizeLabel(MECANICO_LABEL)
 
   useEffect(() => {
     register('tipo_documento', { required: 'El tipo de documento es requerido' })
-    register('especialidad', { required: 'Selecciona una especialidad' })
+    register('cargo', { required: 'El cargo es requerido' })
+    register('rol_usuario')
+    register('especialidad', {
+      validate: (value) => {
+        if (!shouldMostrarEspecialidad) return true
+        return value?.trim() ? true : 'Selecciona una especialidad'
+      }
+    })
     register('nivel_experiencia', { required: 'Selecciona un nivel' })
     register('crear_usuario')
-  }, [register])
+  }, [register, shouldMostrarEspecialidad])
 
   useEffect(() => {
     if (!crearUsuario && !tieneUsuario) {
       setValue('nombre_usuario', '')
       setValue('password', '')
-      setValue('rol_usuario', '')
+      setValue('rol_usuario', AUTO_ROLE_VALUE)
     }
   }, [crearUsuario, setValue, tieneUsuario])
+
+  useEffect(() => {
+    if (!shouldMostrarEspecialidad) {
+      setValue('especialidad', 'General', { shouldValidate: true })
+      clearErrors('especialidad')
+    }
+  }, [shouldMostrarEspecialidad, setValue, clearErrors])
+
+  useEffect(() => {
+    setRolAsignadoManual(rolSeleccionado !== AUTO_ROLE_VALUE)
+  }, [rolSeleccionado])
 
   const onSubmit: SubmitHandler<TrabajadorFormData> = async (data) => {
     try {
       setLoading(true)
+
+      const cargo = data.cargo?.trim() ?? ''
+      const rolPreferido = data.rol_usuario === AUTO_ROLE_VALUE ? undefined : data.rol_usuario?.trim()
+      const rolParaValidacion = rolPreferido ?? cargo
+      const esMecanico = normalizeLabel(rolParaValidacion) === normalizeLabel(MECANICO_LABEL)
+
+      if (esMecanico && !data.especialidad?.trim()) {
+        setError('especialidad', { type: 'manual', message: 'Selecciona una especialidad' })
+        throw new Error('Selecciona una especialidad válida para el rol de mecánico')
+      }
+
+      if ((mostrarCamposUsuario || data.crear_usuario) && !data.correo?.trim()) {
+        setError('correo', { type: 'manual', message: 'Registra un correo para enviar las credenciales' })
+        throw new Error('Debes registrar un correo electrónico para enviar las credenciales')
+      }
 
       const payload: TrabajadorFormData = {
         ...data,
@@ -150,16 +223,15 @@ export function TrabajadorForm({ trabajador, onSuccess, onCancel }: TrabajadorFo
         correo: data.correo?.trim() || undefined,
         direccion: data.direccion?.trim() || undefined,
         fecha_nacimiento: data.fecha_nacimiento || undefined,
-        cargo: data.cargo.trim(),
-        especialidad: data.especialidad.trim(),
+        cargo,
+        especialidad: esMecanico ? (data.especialidad?.trim() ?? 'General') : 'General',
         nivel_experiencia: data.nivel_experiencia.trim(),
-        tarifa_hora: normalizeNumericInput(data.tarifa_hora),
         fecha_ingreso: data.fecha_ingreso || undefined,
         sueldo_mensual: normalizeNumericInput(data.sueldo_mensual),
         crear_usuario: mostrarCamposUsuario,
         nombre_usuario: mostrarCamposUsuario ? data.nombre_usuario?.trim() : undefined,
         password: mostrarCamposUsuario && data.password ? data.password : undefined,
-        rol_usuario: mostrarCamposUsuario && data.rol_usuario ? data.rol_usuario.trim() : undefined,
+        rol_usuario: mostrarCamposUsuario ? rolPreferido : undefined,
       }
 
       const url = trabajador 
@@ -181,18 +253,31 @@ export function TrabajadorForm({ trabajador, onSuccess, onCancel }: TrabajadorFo
         throw new Error(error.error || 'Error al guardar trabajador')
       }
 
-      const result = await response.json()
+      const { trabajador: trabajadorRespuesta, credenciales } = (result => {
+        if (result && typeof result === 'object' && 'trabajador' in result) {
+          return result as { trabajador: TrabajadorCompleto; credenciales?: { enviadas?: boolean; error?: string | null } }
+        }
+        return { trabajador: result as TrabajadorCompleto, credenciales: undefined }
+      })(await response.json())
 
       // Mostrar código generado si es nuevo trabajador
-      if (!trabajador) {
-        setGeneratedCode(result.codigo_empleado)
+      if (!trabajador && trabajadorRespuesta?.codigo_empleado) {
+        setGeneratedCode(trabajadorRespuesta.codigo_empleado)
       }
 
+      const credencialesEnviadas = credenciales?.enviadas === true
+      const credencialesMensaje = credencialesEnviadas
+        ? ' Las credenciales se enviaron al correo registrado.'
+        : credenciales?.error
+        ? ` No se pudieron enviar las credenciales: ${credenciales.error}.`
+        : ''
+
       toast({
-        title: trabajador ? "Trabajador actualizado" : "Trabajador creado",
-        description: trabajador 
-          ? `${data.nombre} ${data.apellido_paterno} ha sido actualizado correctamente`
-          : `${data.nombre} ${data.apellido_paterno} ha sido creado con código: ${result.codigo_empleado}`,
+        title: trabajador ? 'Trabajador actualizado' : 'Trabajador creado',
+        description:
+          (trabajador
+            ? `${data.nombre} ${data.apellido_paterno} ha sido actualizado correctamente.`
+            : `${data.nombre} ${data.apellido_paterno} ha sido creado con código: ${trabajadorRespuesta?.codigo_empleado ?? '—'}.`) + credencialesMensaje,
       })
 
       onSuccess()
@@ -209,7 +294,7 @@ export function TrabajadorForm({ trabajador, onSuccess, onCancel }: TrabajadorFo
   }
 
   return (
-    <Card className="w-full max-w-4xl mx-auto">
+    <Card className="w-full max-w-5xl mx-auto">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <User className="w-6 h-6" />
@@ -471,15 +556,34 @@ export function TrabajadorForm({ trabajador, onSuccess, onCancel }: TrabajadorFo
               </div>
 
               <div className="md:col-span-2">
-                <Label htmlFor="rol_usuario">Rol asignado (opcional)</Label>
-                <Input
-                  id="rol_usuario"
-                  {...register('rol_usuario')}
-                  placeholder="Ej. Mecánico, Recepcionista"
+                <Label htmlFor="rol_usuario">Rol asignado</Label>
+                <Select
+                  value={rolSeleccionado ?? AUTO_ROLE_VALUE}
+                  onValueChange={(value) => {
+                    if (!mostrarCamposUsuario) return
+                    setValue('rol_usuario', value, { shouldValidate: true, shouldDirty: true })
+                    setRolAsignadoManual(value !== AUTO_ROLE_VALUE)
+                  }}
                   disabled={!mostrarCamposUsuario}
-                />
+                >
+                  <SelectTrigger id="rol_usuario">
+                    <SelectValue placeholder="Selecciona un rol" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={AUTO_ROLE_VALUE}>Detectar automáticamente según el cargo</SelectItem>
+                    {roleNames.map((rol) => (
+                      <SelectItem key={rol} value={rol}>
+                        {rol}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Si lo dejas vacío, asignaremos un rol automáticamente según el cargo registrado.
+                  {rolSeleccionado === AUTO_ROLE_VALUE
+                    ? cargoSeleccionado
+                      ? `Se asignará el rol "${cargoSeleccionado}" en base al cargo seleccionado.`
+                      : 'Selecciona un cargo para asignar el rol automáticamente.'
+                    : 'Puedes ajustar los permisos desde el módulo de usuarios cuando lo necesites.'}
                 </p>
               </div>
             </div>
@@ -494,81 +598,84 @@ export function TrabajadorForm({ trabajador, onSuccess, onCancel }: TrabajadorFo
               Información Laboral
             </h3>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
                 <Label htmlFor="cargo">Cargo *</Label>
-                <Input
-                  id="cargo"
-                  {...register('cargo', {
-                    required: 'El cargo es requerido',
-                    minLength: { value: 2, message: 'Mínimo 2 caracteres' }
-                  })}
-                  placeholder="Ej. Mecánico, Recepcionista"
-                />
+                <Select
+                  value={cargoSeleccionado}
+                  onValueChange={(value) => {
+                    setValue('cargo', value, { shouldValidate: true, shouldDirty: true })
+                    if (!rolAsignadoManual) {
+                      setValue('rol_usuario', AUTO_ROLE_VALUE)
+                    }
+                  }}
+                >
+                  <SelectTrigger id="cargo">
+                    <SelectValue placeholder="Selecciona un cargo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {roleNames.map((rol) => (
+                      <SelectItem key={rol} value={rol}>
+                        {rol}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 {errors.cargo && (
                   <p className="text-red-500 text-sm mt-1">{errors.cargo.message}</p>
                 )}
               </div>
 
-              <div>
-                <Label htmlFor="especialidad">Especialidad *</Label>
-                <Select 
-                  value={especialidadSeleccionada}
-                  onValueChange={(value) => setValue('especialidad', value, { shouldValidate: true })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar especialidad" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Motor">Motor</SelectItem>
-                    <SelectItem value="Frenos">Frenos</SelectItem>
-                    <SelectItem value="Eléctrico">Sistema Eléctrico</SelectItem>
-                    <SelectItem value="Suspensión">Suspensión</SelectItem>
-                    <SelectItem value="Transmisión">Transmisión</SelectItem>
-                    <SelectItem value="Climatización">Aire Acondicionado</SelectItem>
-                    <SelectItem value="Carrocería">Carrocería y Pintura</SelectItem>
-                    <SelectItem value="General">Mecánica General</SelectItem>
-                  </SelectContent>
-                </Select>
-                {errors.especialidad && (
-                  <p className="text-red-500 text-sm mt-1">Selecciona una especialidad</p>
-                )}
-              </div>
+              {shouldMostrarEspecialidad ? (
+                <div>
+                  <Label htmlFor="especialidad">Especialidad *</Label>
+                  <Select
+                    value={especialidadSeleccionada}
+                    onValueChange={(value) => setValue('especialidad', value, { shouldValidate: true })}
+                  >
+                    <SelectTrigger id="especialidad">
+                      <SelectValue placeholder="Seleccionar especialidad" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Motor">Motor</SelectItem>
+                      <SelectItem value="Frenos">Frenos</SelectItem>
+                      <SelectItem value="Eléctrico">Sistema Eléctrico</SelectItem>
+                      <SelectItem value="Suspensión">Suspensión</SelectItem>
+                      <SelectItem value="Transmisión">Transmisión</SelectItem>
+                      <SelectItem value="Climatización">Aire Acondicionado</SelectItem>
+                      <SelectItem value="Carrocería">Carrocería y Pintura</SelectItem>
+                      <SelectItem value="General">Mecánica General</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {errors.especialidad && (
+                    <p className="text-red-500 text-sm mt-1">{errors.especialidad.message}</p>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <Label>Especialidad</Label>
+                  <Input value="No aplica" disabled readOnly />
+                </div>
+              )}
 
               <div>
                 <Label htmlFor="nivel_experiencia">Nivel de Experiencia *</Label>
-                <Select 
+                <Select
                   value={nivelExperienciaSeleccionado}
                   onValueChange={(value) => setValue('nivel_experiencia', value, { shouldValidate: true })}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="nivel_experiencia">
                     <SelectValue placeholder="Seleccionar nivel" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Junior">Junior (0-2 años)</SelectItem>
-                    <SelectItem value="Senior">Senior (3-7 años)</SelectItem>
-                    <SelectItem value="Especialista">Especialista (8+ años)</SelectItem>
+                    <SelectItem value="Junior (0 a 2 años)">Junior (0 a 2 años)</SelectItem>
+                    <SelectItem value="Semi Senior (2 a 5 años)">Semi Senior (2 a 5 años)</SelectItem>
+                    <SelectItem value="Senior (5 a 7 años)">Senior (5 a 7 años)</SelectItem>
+                    <SelectItem value="Especialista (8+ años)">Especialista (8+ años)</SelectItem>
                   </SelectContent>
                 </Select>
                 {errors.nivel_experiencia && (
-                  <p className="text-red-500 text-sm mt-1">Selecciona un nivel</p>
-                )}
-              </div>
-
-              <div>
-                <Label htmlFor="tarifa_hora">Tarifa por Hora (S/)</Label>
-                <Input
-                  id="tarifa_hora"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  {...register('tarifa_hora', {
-                    min: { value: 0, message: 'La tarifa no puede ser negativa' }
-                  })}
-                  placeholder="0.00"
-                />
-                {errors.tarifa_hora && (
-                  <p className="text-red-500 text-sm mt-1">{errors.tarifa_hora.message}</p>
+                  <p className="text-red-500 text-sm mt-1">{errors.nivel_experiencia.message}</p>
                 )}
               </div>
 

@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma'
 import { getTrabajadorOrThrow, defaultTrabajadorInclude } from './detail-controller'
 import { ApiError } from './errors'
 import { resolveRolId } from './helpers'
+import { sendMail } from '@/lib/mailer'
 
 const documentoPermitido = z.enum(['DNI', 'RUC', 'CE', 'PASAPORTE'])
 
@@ -22,7 +23,6 @@ const updateSchema = z.object({
   cargo: z.string().optional(),
   especialidad: z.string().optional(),
   nivel_experiencia: z.string().optional(),
-  tarifa_hora: z.union([z.number(), z.string()]).optional().nullable(),
   fecha_ingreso: z.union([z.string(), z.date()]).optional().nullable(),
   sueldo_mensual: z.union([z.number(), z.string()]).optional().nullable(),
   activo: z.boolean().optional(),
@@ -34,7 +34,7 @@ const updateSchema = z.object({
 
 type UpdateInput = z.infer<typeof updateSchema>
 
-const toDecimal = (value: UpdateInput['tarifa_hora']) => {
+const toDecimal = (value: UpdateInput['sueldo_mensual']) => {
   if (value === undefined || value === null || value === '') return undefined
   const numberValue = typeof value === 'string' ? Number(value) : value
   if (Number.isNaN(numberValue)) {
@@ -56,6 +56,16 @@ export async function updateTrabajador(id: number, payload: unknown, sessionUser
   const data = updateSchema.parse(payload)
 
   const trabajadorActual = await getTrabajadorOrThrow(id)
+
+  let credencialesParaEnviar: { usuario: string; password: string } | null = null
+  let usuarioDestinoId: number | null = trabajadorActual.id_usuario ?? null
+
+  if (data.password) {
+    const correoDestino = data.correo?.trim() || trabajadorActual.persona.correo?.trim()
+    if (!correoDestino) {
+      throw new ApiError(400, 'Debes registrar un correo electrónico para enviar las credenciales')
+    }
+  }
 
   if (data.numero_documento && data.numero_documento !== trabajadorActual.persona.numero_documento) {
     const existingDoc = await prisma.persona.findUnique({ where: { numero_documento: data.numero_documento } })
@@ -97,6 +107,11 @@ export async function updateTrabajador(id: number, payload: unknown, sessionUser
         throw new ApiError(400, 'Debes proporcionar nombre de usuario y contraseña para crear credenciales')
       }
 
+      const correoParaEnvio = data.correo?.trim() || trabajadorActual.persona.correo?.trim()
+      if (!correoParaEnvio) {
+        throw new ApiError(400, 'Debes registrar un correo electrónico para enviar las credenciales')
+      }
+
       const rolId = await resolveRolId({ cargo: data.cargo ?? trabajadorActual.cargo, rolPreferido: data.rol_usuario }, tx)
       const hashedPassword = await bcrypt.hash(data.password, 10)
 
@@ -107,11 +122,18 @@ export async function updateTrabajador(id: number, payload: unknown, sessionUser
           nombre_usuario: data.nombre_usuario,
           password: hashedPassword,
           estado: data.activo ?? trabajadorActual.activo,
-          estatus: data.activo ?? trabajadorActual.activo
+          estatus: data.activo ?? trabajadorActual.activo,
+          requiere_cambio_password: true,
+          envio_credenciales_pendiente: true
         }
       })
 
       usuarioId = usuario.id_usuario
+      usuarioDestinoId = usuario.id_usuario
+      credencialesParaEnviar = {
+        usuario: data.nombre_usuario,
+        password: data.password
+      }
     }
 
     if (usuarioId) {
@@ -119,10 +141,25 @@ export async function updateTrabajador(id: number, payload: unknown, sessionUser
 
       if (data.nombre_usuario && data.nombre_usuario !== trabajadorActual.usuario?.nombre_usuario) {
         updates.nombre_usuario = data.nombre_usuario
+        if (!credencialesParaEnviar && data.password) {
+          credencialesParaEnviar = {
+            usuario: data.nombre_usuario,
+            password: data.password
+          }
+        }
       }
 
       if (data.password) {
         updates.password = await bcrypt.hash(data.password, 10)
+        updates.requiere_cambio_password = true
+        updates.envio_credenciales_pendiente = true
+        if (!credencialesParaEnviar) {
+          const usuarioNombre = data.nombre_usuario ?? trabajadorActual.usuario?.nombre_usuario ?? trabajadorActual.persona.numero_documento
+          credencialesParaEnviar = {
+            usuario: usuarioNombre,
+            password: data.password
+          }
+        }
       }
 
       if (data.rol_usuario || data.cargo) {
@@ -137,6 +174,7 @@ export async function updateTrabajador(id: number, payload: unknown, sessionUser
           where: { id_usuario: usuarioId },
           data: updates
         })
+        usuarioDestinoId = usuarioId
       }
     }
 
@@ -146,7 +184,6 @@ export async function updateTrabajador(id: number, payload: unknown, sessionUser
         cargo: data.cargo ?? trabajadorActual.cargo,
         especialidad: data.especialidad ?? trabajadorActual.especialidad,
         nivel_experiencia: data.nivel_experiencia ?? trabajadorActual.nivel_experiencia,
-        tarifa_hora: toDecimal(data.tarifa_hora) ?? trabajadorActual.tarifa_hora,
         fecha_ingreso: toDate(data.fecha_ingreso) ?? trabajadorActual.fecha_ingreso,
         sueldo_mensual: toDecimal(data.sueldo_mensual) ?? trabajadorActual.sueldo_mensual,
         activo: data.activo ?? trabajadorActual.activo,
@@ -165,5 +202,52 @@ export async function updateTrabajador(id: number, payload: unknown, sessionUser
     }
   })
 
-  return trabajador
+  let credencialesEnviadas = false
+  let credencialesError: string | null = null
+
+  if (credencialesParaEnviar && usuarioDestinoId) {
+    const { usuario: usuarioCredencial, password: passwordTemporal } = credencialesParaEnviar
+    const correoDestino = trabajador.persona.correo ?? trabajador.usuario?.persona?.correo
+    if (!correoDestino) {
+      credencialesError = 'No hay un correo registrado para enviar las credenciales.'
+    } else {
+      try {
+        await sendMail({
+          to: correoDestino,
+          subject: 'Actualización de credenciales del sistema',
+          html: `
+            <p>Hola ${trabajador.persona.nombre} ${trabajador.persona.apellido_paterno ?? ''},</p>
+            <p>Se actualizaron tus credenciales de acceso al sistema del taller:</p>
+            <ul>
+              <li><strong>Usuario:</strong> ${usuarioCredencial}</li>
+              <li><strong>Contraseña temporal:</strong> ${passwordTemporal}</li>
+            </ul>
+            <p>Al ingresar se te solicitará cambiar la contraseña.</p>
+          `
+        })
+
+        credencialesEnviadas = true
+
+        await prisma.usuario.update({
+          where: { id_usuario: usuarioDestinoId },
+          data: { envio_credenciales_pendiente: false }
+        })
+
+        if (trabajador.usuario && trabajador.usuario.id_usuario === usuarioDestinoId) {
+          trabajador.usuario.envio_credenciales_pendiente = false
+        }
+      } catch (error) {
+        console.error('[Trabajadores] Error enviando credenciales (update):', error)
+        credencialesError = error instanceof Error ? error.message : 'No se pudieron enviar las credenciales actualizadas'
+      }
+    }
+  }
+
+  return {
+    trabajador,
+    credenciales: {
+      enviadas: credencialesEnviadas,
+      error: credencialesError
+    }
+  }
 }

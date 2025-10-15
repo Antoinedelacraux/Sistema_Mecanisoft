@@ -1,9 +1,8 @@
-import { Prisma, PrismaClient, EstadoComprobante } from '@prisma/client'
+import { Prisma, PrismaClient, EstadoComprobante, EstadoPagoVenta, MetodoPagoVenta } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { FacturacionError } from '@/lib/facturacion/errors'
 
-type EstadoPagoVenta = Prisma.$Enums.EstadoPagoVenta
-type MetodoPagoVenta = Prisma.$Enums.MetodoPagoVenta
+// Use enum types exported by Prisma client
 
 export type RegistrarPagoInput = {
   id_comprobante: number
@@ -52,7 +51,7 @@ const estadoPagoToComprobante = (estado: EstadoPagoVenta) => {
 export async function registrarPagoVenta(
   input: RegistrarPagoInput,
   usuarioId: number,
-  prismaClient: PrismaClient | Prisma.TransactionClient = prisma
+  prismaClient: PrismaClient = prisma
 ): Promise<RegistrarPagoResultado> {
   const accion = input.accion ?? (input.id_venta_pago ? 'actualizar' : 'crear')
 

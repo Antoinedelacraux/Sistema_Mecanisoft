@@ -1,18 +1,57 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import type { Rol } from '@prisma/client'
 import { TrabajadoresTable } from '@/components/trabajadores/trabajadores-table'
 import { TrabajadorForm } from '@/components/trabajadores/trabajador-form'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { TrabajadorCompleto } from '@/types'
+import { useToast } from '@/components/ui/use-toast'
 
 type ModalState = 'closed' | 'create' | 'edit' | 'view'
+
+interface RolesResponse {
+  roles: Rol[]
+}
+
+const fetchRoles = async (): Promise<Rol[]> => {
+  const response = await fetch('/api/roles', {
+    credentials: 'include',
+    cache: 'no-store'
+  })
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    const message = body?.error ?? 'No se pudo obtener la lista de roles'
+    throw new Error(message)
+  }
+
+  const data: RolesResponse = await response.json()
+  return data.roles
+}
 
 export default function TrabajadoresPage() {
   const [modalState, setModalState] = useState<ModalState>('closed')
   const [selectedTrabajador, setSelectedTrabajador] = useState<TrabajadorCompleto | undefined>()
   const [refreshTrigger, setRefreshTrigger] = useState(0)
+  const [roles, setRoles] = useState<Rol[]>([])
+
+  const { toast } = useToast()
+
+  useEffect(() => {
+    const loadRoles = async () => {
+      try {
+        const data = await fetchRoles()
+        setRoles(data)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Error al cargar roles'
+        toast({ title: 'Error', description: message, variant: 'destructive' })
+      }
+    }
+
+    loadRoles()
+  }, [toast])
 
   const handleCreateNew = () => {
     setSelectedTrabajador(undefined)
@@ -40,8 +79,8 @@ export default function TrabajadoresPage() {
     setSelectedTrabajador(undefined)
   }
 
-  // Helper para formatear tarifa que podría venir como number, string o Prisma.Decimal
-  const formatTarifa = (valor: any): string => {
+  // Helper para formatear montos que podrían venir como number, string o Prisma.Decimal
+  const formatMonto = (valor: any): string => {
     if (valor == null) return '—'
     try {
       if (typeof valor === 'number') return valor.toFixed(2)
@@ -121,9 +160,17 @@ export default function TrabajadoresPage() {
                 </Badge>
               </div>
               <div>
+                <p className="font-semibold">Cargo</p>
+                <p>{trabajador.cargo ?? '—'}</p>
+              </div>
+              <div>
+                <p className="font-semibold">Rol del Sistema</p>
+                <p>{trabajador.usuario?.rol?.nombre_rol ?? trabajador.cargo ?? '—'}</p>
+              </div>
+              <div>
                 <p className="font-semibold">Especialidad</p>
                 <Badge className="bg-blue-100 text-blue-800">
-                  {trabajador.especialidad ?? ''}
+                  {normalizeEspecialidad(trabajador.especialidad, trabajador.usuario?.rol?.nombre_rol ?? trabajador.cargo)}
                 </Badge>
               </div>
               <div>
@@ -133,16 +180,12 @@ export default function TrabajadoresPage() {
                 </Badge>
               </div>
               <div>
-                <p className="font-semibold">Tarifa por Hora</p>
-                <p className="text-lg font-semibold">S/ {formatTarifa(trabajador.tarifa_hora)}</p>
-              </div>
-              <div>
                 <p className="font-semibold">Fecha de Ingreso</p>
                 <p>{fechaIngreso ? fechaIngreso.toLocaleDateString('es-PE') : '—'}</p>
               </div>
               <div>
                 <p className="font-semibold">Sueldo Mensual</p>
-                <p>{sueldo ? `S/ ${formatTarifa(sueldo)}` : '—'}</p>
+                <p>{sueldo ? `S/ ${formatMonto(sueldo)}` : '—'}</p>
               </div>
             </div>
           </div>
@@ -201,7 +244,7 @@ export default function TrabajadoresPage() {
 
       {/* Modal para formularios */}
       <Dialog open={modalState !== 'closed'} onOpenChange={() => setModalState('closed')}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             {/* Título accesible para screen readers (no se duplica visual con el contenido interno) */}
             <DialogTitle className="sr-only">
@@ -215,6 +258,7 @@ export default function TrabajadoresPage() {
               trabajador={selectedTrabajador}
               onSuccess={handleSuccess}
               onCancel={handleCancel}
+              roles={roles}
             />
           )}
           
@@ -223,4 +267,20 @@ export default function TrabajadoresPage() {
       </Dialog>
     </div>
   )
+}
+
+const normalizeLabel = (value?: string | null) => {
+  if (!value) return ''
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+}
+
+const normalizeEspecialidad = (especialidad?: string | null, rol?: string | null) => {
+  const rolNormalizado = normalizeLabel(rol)
+  if (rolNormalizado === normalizeLabel('Mecánico')) {
+    return especialidad ?? 'General'
+  }
+  return especialidad ?? 'No aplica'
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -13,6 +13,13 @@ import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
+import CompraRapidaForm from '@/components/inventario/basico/compra-rapida-form'
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
 import { ProductoFormData, ProductoCompleto, CategoriaCompleta, FabricanteCompleto, UnidadCompleta } from '@/types'
 import { useToast } from '@/components/ui/use-toast'
 
@@ -30,7 +37,10 @@ export function ProductoForm({ producto, onSuccess, onCancel }: ProductoFormProp
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string>(producto?.foto || '')
   const [uploadingImage, setUploadingImage] = useState(false)
+  const [inventarioCostoPromedio, setInventarioCostoPromedio] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isCompraSheetOpen, setCompraSheetOpen] = useState(false)
+  const [compraInitialLines, setCompraInitialLines] = useState<any[] | undefined>(undefined)
 
   const { toast } = useToast()
 
@@ -39,11 +49,11 @@ export function ProductoForm({ producto, onSuccess, onCancel }: ProductoFormProp
     id_categoria: z.number().int().positive(),
     id_fabricante: z.number().int().positive(),
     id_unidad: z.number().int().positive(),
-    tipo: z.enum(['producto']),
     codigo_producto: z.string().max(50).optional(),
     nombre: z.string().min(1).max(120),
     descripcion: z.string().max(500).optional(),
-    stock: z.number().min(0),
+    // stock inicial ya no es requerido: se registra vía entrada de inventario
+    stock: z.number().min(0).optional(),
     stock_minimo: z.number().min(0),
     precio_compra: z.number().min(0),
     precio_venta: z.number().min(0),
@@ -69,7 +79,6 @@ export function ProductoForm({ producto, onSuccess, onCancel }: ProductoFormProp
       id_categoria: producto.id_categoria,
       id_fabricante: producto.id_fabricante,
       id_unidad: producto.id_unidad,
-      tipo: 'producto',
       codigo_producto: producto.codigo_producto,
       nombre: producto.nombre,
       descripcion: producto.descripcion || '',
@@ -83,11 +92,10 @@ export function ProductoForm({ producto, onSuccess, onCancel }: ProductoFormProp
       id_categoria: undefined as unknown as number,
       id_fabricante: undefined as unknown as number,
       id_unidad: undefined as unknown as number,
-      tipo: 'producto',
       codigo_producto: undefined,
       nombre: '',
       descripcion: '',
-      stock: 0,
+      // no definimos stock aquí; el stock inicial debe registrarse mediante una entrada de inventario
       stock_minimo: 1,
       precio_compra: 0,
       precio_venta: 0,
@@ -96,7 +104,6 @@ export function ProductoForm({ producto, onSuccess, onCancel }: ProductoFormProp
     }
   })
 
-  const tipoProducto = watch('tipo')
   const precioCompra = watch('precio_compra')
   const precioVenta = watch('precio_venta')
 
@@ -135,6 +142,26 @@ export function ProductoForm({ producto, onSuccess, onCancel }: ProductoFormProp
 
     fetchData()
   }, [toast])
+
+  // fetch inventario costo_promedio for margen calculation
+  useEffect(() => {
+    let mounted = true
+    const fetchStock = async () => {
+      if (!producto) return
+      try {
+        const res = await fetch(`/api/inventario/stock/${producto.id_producto}`)
+        if (!res.ok) return
+        const data = await res.json()
+        if (!mounted) return
+        setInventarioCostoPromedio(data.inventario?.costo_promedio ?? null)
+      } catch (e) {
+        // ignore - fallback will use producto.precio_compra
+      }
+    }
+
+    fetchStock()
+    return () => { mounted = false }
+  }, [producto])
 
   const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -196,12 +223,11 @@ export function ProductoForm({ producto, onSuccess, onCancel }: ProductoFormProp
         id_categoria: formData.id_categoria,
         id_fabricante: formData.id_fabricante,
         id_unidad: formData.id_unidad,
-        tipo: formData.tipo,
+        tipo: producto?.tipo ?? 'producto',
         codigo_producto: formData.codigo_producto,
         nombre: formData.nombre,
         descripcion: formData.descripcion,
-        stock: formData.tipo === 'producto' ? formData.stock : 0,
-        stock_minimo: formData.tipo === 'producto' ? formData.stock_minimo : 0,
+        stock_minimo: formData.stock_minimo,
         precio_compra: formData.precio_compra,
         precio_venta: formData.precio_venta,
         descuento: formData.descuento || 0,
@@ -223,10 +249,33 @@ export function ProductoForm({ producto, onSuccess, onCancel }: ProductoFormProp
         throw new Error(error.error || 'Error al guardar el producto');
       }
 
+      const created = await response.json().catch(() => null)
+
       toast({
         title: producto ? "Producto actualizado" : "Producto creado",
         description: `${formData.nombre} ha sido ${producto ? 'actualizado' : 'creado'} correctamente`,
       })
+
+      if (!producto && created) {
+        // Nuevo producto creado: abrir sheet de compra rápida con producto preseleccionado
+        const option = {
+          producto: {
+            id_producto: created.id_producto,
+            nombre: created.nombre,
+            codigo_producto: created.codigo_producto,
+            unidad: created.unidad_medida?.nombre_unidad ?? '',
+            stock_disponible: '0',
+            stock_comprometido: '0',
+            costo_promedio: '0'
+          },
+          cantidad: '0',
+          precio_unitario: '0'
+        }
+        setCompraInitialLines([option])
+        setCompraSheetOpen(true)
+        return
+      }
+
       onSuccess()
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error desconocido'
@@ -241,19 +290,38 @@ export function ProductoForm({ producto, onSuccess, onCancel }: ProductoFormProp
   }
 
   const calcularMargen = () => {
-    if (precioCompra > 0 && precioVenta > 0) {
-      const margen = ((precioVenta - precioCompra) / precioCompra) * 100
+    const costo = inventarioCostoPromedio ? Number.parseFloat(inventarioCostoPromedio) : precioCompra
+    if (costo > 0 && precioVenta > 0) {
+      const margen = ((precioVenta - costo) / costo) * 100
       return margen.toFixed(2)
     }
     return '0.00'
   }
 
+  const handleSyncPrecioCompra = useCallback(async () => {
+    if (!producto) return
+    if (!confirm('¿Actualizar precio de compra del producto con el costo promedio del inventario?')) return
+    try {
+      const res = await fetch(`/api/productos/${producto.id_producto}/usar-costo-promedio`, { method: 'PATCH' })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error || 'No se pudo sincronizar')
+      }
+      const body = await res.json()
+      setValue('precio_compra', Number(body.precio_compra))
+      setInventarioCostoPromedio(body.precio_compra?.toString() ?? inventarioCostoPromedio)
+      toast({ title: 'Precio sincronizado', description: 'El precio de compra fue actualizado con el costo promedio.' })
+    } catch (err) {
+      toast({ title: 'Error', description: err instanceof Error ? err.message : 'Error desconocido', variant: 'destructive' })
+    }
+  }, [producto, setValue, toast, inventarioCostoPromedio])
+
   return (
-    <Card className="w-full max-w-4xl mx-auto">
+    <Card className="w-full max-w-7xl mx-auto">
       <CardHeader>
         <CardTitle>{producto ? 'Editar Producto' : 'Nuevo Producto'}</CardTitle>
         <CardDescription>
-          {producto ? 'Modifica la información del producto' : 'Completa los datos para registrar un nuevo producto o servicio'}
+          {producto ? 'Modifica la información del producto' : 'Completa los datos para registrar un nuevo producto'}
         </CardDescription>
       </CardHeader>
 
@@ -273,26 +341,13 @@ export function ProductoForm({ producto, onSuccess, onCancel }: ProductoFormProp
             </div>
             <div className="flex flex-col gap-2 md:col-span-2">
               <Label>Nombre *</Label>
-              <Input placeholder="Nombre del producto / servicio" {...register('nombre')} />
+              <Input placeholder="Nombre del producto" {...register('nombre')} />
               {errors.nombre && <p className="text-sm text-red-600">{errors.nombre.message}</p>}
             </div>
           </div>
 
           {/* Clasificación */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="flex flex-col gap-2">
-              <Label>Tipo *</Label>
-              <Select value={tipoProducto} onValueChange={(val) => setValue('tipo', val as 'producto')}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccione" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="producto">Producto</SelectItem>
-                </SelectContent>
-              </Select>
-              {errors.tipo && <p className="text-sm text-red-600">{errors.tipo.message}</p>}
-            </div>
-
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="flex flex-col gap-2">
               <Label>Categoría *</Label>
               <Select value={watch('id_categoria')?.toString() || ''} onValueChange={(v) => setValue('id_categoria', parseInt(v))}>
@@ -345,25 +400,30 @@ export function ProductoForm({ producto, onSuccess, onCancel }: ProductoFormProp
               <Textarea rows={4} placeholder="Descripción breve" {...register('descripcion')} />
             </div>
 
-          {/* Inventario (solo producto) */}
-          {tipoProducto === 'producto' && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="flex flex-col gap-2">
-                <Label>Stock Inicial</Label>
-                <Input type="number" min={0} {...register('stock', { valueAsNumber: true })} />
-                {errors.stock && <p className="text-sm text-red-600">{errors.stock.message}</p>}
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label>Stock Mínimo</Label>
-                <Input type="number" min={0} {...register('stock_minimo', { valueAsNumber: true })} />
-                {errors.stock_minimo && <p className="text-sm text-red-600">{errors.stock_minimo.message}</p>}
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label>Descuento (%)</Label>
-                <Input type="number" min={0} max={100} {...register('descuento', { valueAsNumber: true })} />
+          {/* Inventario (producto) */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="flex flex-col gap-2">
+              <Label>Stock Inicial</Label>
+              <div className="text-sm text-gray-600">El stock inicial no se asigna directamente al crear el producto. Registra una entrada de inventario para definir la cantidad inicial y mantener el historial de movimientos.</div>
+              <div className="mt-2">
+                    <div className="flex gap-2 items-center">
+                      <button type="button" className="text-sm text-primary underline" onClick={() => { setCompraInitialLines([{ producto: { id_producto: producto?.id_producto ?? 0, nombre: producto?.nombre ?? '', codigo_producto: producto?.codigo_producto ?? '', unidad: producto?.unidad_medida?.nombre_unidad ?? '', stock_disponible: '0', stock_comprometido: '0', costo_promedio: '0' }, cantidad: '1', precio_unitario: (watch('precio_compra') ?? 0).toString() }]); setCompraSheetOpen(true); }}>
+                        Registrar stock inicial
+                      </button>
+                      <a href="/dashboard/inventario" className="text-sm text-muted-foreground underline">Ir a inventario</a>
+                    </div>
               </div>
             </div>
-          )}
+            <div className="flex flex-col gap-2">
+              <Label>Stock Mínimo</Label>
+              <Input type="number" min={0} {...register('stock_minimo', { valueAsNumber: true })} />
+              {errors.stock_minimo && <p className="text-sm text-red-600">{errors.stock_minimo.message}</p>}
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label>Descuento (%)</Label>
+              <Input type="number" min={0} max={100} {...register('descuento', { valueAsNumber: true })} />
+            </div>
+          </div>
 
           {/* Precios */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -380,6 +440,11 @@ export function ProductoForm({ producto, onSuccess, onCancel }: ProductoFormProp
             <div className="flex flex-col gap-2">
               <Label>Margen (%)</Label>
               <div className="px-3 py-2 rounded border bg-gray-50 text-sm font-mono">{calcularMargen()}%</div>
+              {producto && inventarioCostoPromedio && (
+                <div className="mt-2">
+                  <button type="button" onClick={handleSyncPrecioCompra} className="text-sm text-primary underline">Sincronizar precio con costo promedio</button>
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-3 mt-6">
               <Switch checked={watch('oferta')} onCheckedChange={(v) => setValue('oferta', v)} />
@@ -436,6 +501,22 @@ export function ProductoForm({ producto, onSuccess, onCancel }: ProductoFormProp
           </div>
         </form>
       </CardContent>
+      <Sheet open={isCompraSheetOpen} onOpenChange={setCompraSheetOpen}>
+        <SheetContent side="right" className="w-full max-w-4xl lg:max-w-3xl">
+          <SheetHeader>
+            <SheetTitle>Registrar entrada inicial de inventario</SheetTitle>
+          </SheetHeader>
+          <div className="p-4 w-full">
+            <CompraRapidaForm
+              initialLines={compraInitialLines}
+              onSuccess={() => {
+                setCompraSheetOpen(false)
+                onSuccess()
+              }}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
     </Card>
   )
 }

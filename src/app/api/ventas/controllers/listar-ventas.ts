@@ -1,8 +1,7 @@
-import { Prisma, PrismaClient, EstadoComprobante, OrigenComprobante, TipoComprobante } from '@prisma/client'
+import { Prisma, PrismaClient, EstadoComprobante, OrigenComprobante, TipoComprobante, EstadoPagoVenta, MetodoPagoVenta } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 
-type EstadoPagoVenta = Prisma.$Enums.EstadoPagoVenta
-type MetodoPagoVenta = Prisma.$Enums.MetodoPagoVenta
+// Use enum types directly from Prisma client
 
 export type ListarVentasParams = {
   page: number

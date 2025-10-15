@@ -12,6 +12,7 @@
     "verify": "npm run lint && npm run typecheck && npm run test:critical",
     "seed": "tsx prisma/seed.ts",
     "backfill:ventas": "tsx scripts/backfill-ventas.ts",
+  "grant:inventario": "tsx scripts/grant-inventario-permissions.ts",
     "grant:ventas": "tsx scripts/grant-ventas-permissions.ts",
     "prisma:fix-locks": "tsx scripts/fix-prisma-locks.ts"
   },

@@ -82,6 +82,18 @@ enum ReservaEstado {
   CANCELADA
 }
 
+enum MovimientoBasicoTipo {
+  INGRESO
+  SALIDA
+  AJUSTE
+}
+
+enum CompraEstado {
+  PENDIENTE
+  RECIBIDO
+  ANULADO
+}
+
 // ✅ Modelo para Cotizaciones:
 model Cotizacion {
   id_cotizacion     Int      @id @default(autoincrement())
@@ -212,6 +224,7 @@ model Proveedor {
 
   persona                 Persona                @relation(fields: [id_persona], references: [id_persona], onDelete: Cascade)
   transaccion_proveedores TransaccionProveedor[]
+  compras                 Compra[]
 
   @@map("proveedor")
 }
@@ -264,6 +277,8 @@ model Usuario {
   movimientos_inventario    MovimientoInventario[]
   bitacoras_inventario      BitacoraInventario[]
   permisos                  UsuarioPermiso[]
+  compras_registradas       Compra[]
+  movimientos_basicos       Movimiento[]
 
   @@map("usuario")
 }
@@ -412,6 +427,9 @@ model Producto {
   ComprobanteDetalle   ComprobanteDetalle[]
   inventarios          InventarioProducto[]
   movimientos_inventario MovimientoInventario[]
+  inventario_basico    Inventario?
+  compras_detalles     CompraDetalle[]
+  movimientos_basicos  Movimiento[]
 
   @@map("producto")
 }
@@ -920,6 +938,69 @@ model ReservaInventario {
   detalle_transaccion DetalleTransaccion? @relation(fields: [id_detalle_transaccion], references: [id_detalle_transaccion])
 
   @@map("reserva_inventario")
+}
+
+model Inventario {
+  id_inventario        Int      @id @default(autoincrement())
+  id_producto          Int      @unique
+  stock_disponible     Decimal  @default(0) @db.Decimal(14, 4)
+  stock_comprometido   Decimal  @default(0) @db.Decimal(14, 4)
+  costo_promedio       Decimal  @default(0) @db.Decimal(14, 4)
+  creado_en            DateTime @default(now())
+  actualizado_en       DateTime @updatedAt
+
+  producto Producto @relation(fields: [id_producto], references: [id_producto])
+
+  @@map("inventario")
+}
+
+model Compra {
+  id_compra      Int           @id @default(autoincrement())
+  id_proveedor   Int
+  fecha          DateTime      @default(now())
+  total          Decimal       @default(0) @db.Decimal(14, 4)
+  estado         CompraEstado  @default(RECIBIDO)
+  creado_por     Int
+  creado_en      DateTime      @default(now())
+  actualizado_en DateTime      @updatedAt
+
+  proveedor Proveedor @relation(fields: [id_proveedor], references: [id_proveedor])
+  detalles  CompraDetalle[]
+  usuario   Usuario   @relation(fields: [creado_por], references: [id_usuario])
+
+  @@map("compra")
+}
+
+model CompraDetalle {
+  id_compra_detalle Int     @id @default(autoincrement())
+  id_compra         Int
+  id_producto       Int
+  cantidad          Decimal @db.Decimal(14, 4)
+  precio_unitario   Decimal @db.Decimal(14, 4)
+  subtotal          Decimal @db.Decimal(14, 4)
+
+  compra   Compra   @relation(fields: [id_compra], references: [id_compra], onDelete: Cascade)
+  producto Producto @relation(fields: [id_producto], references: [id_producto])
+
+  @@unique([id_compra, id_producto])
+  @@map("compra_detalle")
+}
+
+model Movimiento {
+  id_movimiento  Int                 @id @default(autoincrement())
+  tipo           MovimientoBasicoTipo
+  id_producto    Int
+  cantidad       Decimal             @db.Decimal(14, 4)
+  costo_unitario Decimal?            @db.Decimal(14, 4)
+  referencia     String?             @db.VarChar(120)
+  id_usuario     Int
+  creado_en      DateTime            @default(now())
+
+  producto Producto @relation(fields: [id_producto], references: [id_producto])
+  usuario  Usuario  @relation(fields: [id_usuario], references: [id_usuario])
+
+  @@index([id_producto])
+  @@map("movimiento")
 }
 
 // Sistema de auditoría

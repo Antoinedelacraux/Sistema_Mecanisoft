@@ -9,6 +9,7 @@ import {
   validarProducto,
   validarUbicacion,
 } from '@/lib/inventario/services';
+import { syncProductoStock } from '@/lib/inventario/sync-producto-stock';
 import {
   ActualizarReservaDTO,
   CambiarEstadoReservaParams,
@@ -57,6 +58,8 @@ const reservarStockTx = async (tx: TxClient, input: ReservarStockDTO): Promise<R
       stock_comprometido: inventario.stock_comprometido.add(cantidadDecimal),
     },
   });
+
+  await syncProductoStock(tx, input.productoId);
 
   const reserva = await tx.reservaInventario.create({
     data: {
@@ -121,6 +124,8 @@ const cambiarEstadoReserva = async (
       stock_comprometido: stockComprometido,
     },
   });
+
+  await syncProductoStock(tx, reserva.inventario.producto.id_producto);
 
   const reservaActualizada = await tx.reservaInventario.update({
     where: { id_reserva_inventario: reserva.id_reserva_inventario },

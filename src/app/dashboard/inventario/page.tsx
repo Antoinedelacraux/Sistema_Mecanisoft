@@ -1,95 +1,55 @@
-import Link from 'next/link';
-import { Prisma } from '@prisma/client';
-import { ShieldAlert } from 'lucide-react';
-import { getServerSession } from 'next-auth';
+import { Prisma } from '@prisma/client'
+import { ShieldAlert } from 'lucide-react'
+import { getServerSession } from 'next-auth'
 
-import MovimientoQuickForm from '@/components/inventario/movimiento-quick-form';
-import TransferenciaWizard from '@/components/inventario/transferencia-wizard';
-import TransferenciasTable, { type TransferenciaResumen } from '@/components/inventario/transferencias-table';
-import { obtenerResumenInventario } from '@/lib/inventario/reportes';
-import { prisma } from '@/lib/prisma';
-import { authOptions } from '@/lib/auth';
-import { asegurarPermiso, PermisoDenegadoError, SesionInvalidaError } from '@/lib/permisos/guards';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import CompraRapidaForm from '@/components/inventario/basico/compra-rapida-form'
+import MovimientoQuickForm from '@/components/inventario/movimiento-quick-form'
+import ProductoStockDrawer from '@/components/inventario/basico/producto-stock-drawer'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import { asegurarPermiso, PermisoDenegadoError, SesionInvalidaError } from '@/lib/permisos/guards'
 
-export const revalidate = 0;
+export const revalidate = 0
 
-const decimalToNumber = (value: Prisma.Decimal | null) => (value ? Number(value.toString()) : 0);
-const decimalToString = (value: Prisma.Decimal | null | undefined) => (value ? value.toString() : null);
-const decimalFormatter = new Intl.NumberFormat('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const integerFormatter = new Intl.NumberFormat('es-PE');
+const decimalToNumber = (value: Prisma.Decimal) => Number(value.toString())
 
-const movimientoInclude = {
-  inventario: {
-    include: {
-      almacen: {
-        select: {
-          id_almacen: true,
-          nombre: true,
-        },
-      },
-      ubicacion: {
-        select: {
-          id_almacen_ubicacion: true,
-          codigo: true,
-          descripcion: true,
-        },
-      },
-    },
-  },
-  producto: {
-    select: {
-      id_producto: true,
-      codigo_producto: true,
-      nombre: true,
-      tipo: true,
-    },
-  },
-  usuario: {
-    select: {
-      id_usuario: true,
-      nombre_usuario: true,
-      persona: {
-        select: {
-          nombre: true,
-          apellido_paterno: true,
-          apellido_materno: true,
-        },
-      },
-    },
-  },
-} satisfies Prisma.MovimientoInventarioInclude;
+const moneyFormatter = new Intl.NumberFormat('es-PE', {
+  style: 'currency',
+  currency: 'PEN',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
 
-const transferenciaInclude = {
-  movimiento_envio: { include: movimientoInclude },
-  movimiento_recepcion: { include: movimientoInclude },
-} satisfies Prisma.MovimientoTransferenciaInclude;
+const decimalFormatter = new Intl.NumberFormat('es-PE', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
 
-const getInventarioSnapshot = async () => {
-  const [inventarios, movimientos, reservas, reservasPendientesTotal, transferencias] = await prisma.$transaction([
-    prisma.inventarioProducto.findMany({
-      take: 5,
-      orderBy: { actualizado_en: 'desc' },
+const integerFormatter = new Intl.NumberFormat('es-PE')
+
+const formatDateTime = (value: Date) =>
+  new Intl.DateTimeFormat('es-PE', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(value)
+
+const getDashboardData = async () => {
+  const [inventarioReciente, movimientosRecientes, comprasRecientes, statsBase, proveedoresActivos] = await Promise.all([
+    prisma.inventario.findMany({
       include: {
         producto: {
           select: {
             id_producto: true,
             nombre: true,
             codigo_producto: true,
-            tipo: true,
-          },
-        },
-        almacen: {
-          select: {
-            id_almacen: true,
-            nombre: true,
           },
         },
       },
+      orderBy: { actualizado_en: 'desc' },
+      take: 8,
     }),
-    prisma.movimientoInventario.findMany({
-      take: 5,
-      orderBy: { fecha: 'desc' },
+    prisma.movimiento.findMany({
       include: {
         producto: {
           select: {
@@ -104,59 +64,59 @@ const getInventarioSnapshot = async () => {
           },
         },
       },
-    }),
-    prisma.reservaInventario.findMany({
-      take: 5,
-      where: { estado: 'PENDIENTE' },
       orderBy: { creado_en: 'desc' },
+      take: 10,
+    }),
+    prisma.compra.findMany({
       include: {
-        inventario: {
-          include: {
-            producto: {
-              select: {
-                id_producto: true,
-                nombre: true,
-                codigo_producto: true,
-              },
-            },
-            almacen: {
-              select: {
-                id_almacen: true,
-                nombre: true,
-              },
-            },
-          },
-        },
-        transaccion: {
+        proveedor: {
           select: {
-            id_transaccion: true,
-            codigo_transaccion: true,
-            estado_orden: true,
+            razon_social: true,
           },
         },
       },
+      orderBy: { fecha: 'desc' },
+      take: 5,
     }),
-    prisma.reservaInventario.count({ where: { estado: 'PENDIENTE' } }),
-    prisma.movimientoTransferencia.findMany({
-      take: 10,
-      orderBy: { creado_en: 'desc' },
-      include: transferenciaInclude,
+    prisma.inventario.findMany({
+      select: {
+        stock_disponible: true,
+        stock_comprometido: true,
+        costo_promedio: true,
+      },
     }),
-  ]);
+    prisma.proveedor.count({ where: { estatus: true } }),
+  ])
+
+  const totalProductos = statsBase.length
+  const totalDisponible = statsBase.reduce((acc, item) => acc + item.stock_disponible.toNumber(), 0)
+  const totalComprometido = statsBase.reduce((acc, item) => acc + item.stock_comprometido.toNumber(), 0)
+  const valorizacionTotal = statsBase.reduce(
+    (acc, item) => acc + item.stock_disponible.mul(item.costo_promedio).toNumber(),
+    0,
+  )
+  const sinStock = statsBase.filter((item) => item.stock_disponible.lte(new Prisma.Decimal(0))).length
 
   return {
-    inventarios,
-    movimientos,
-    reservas,
-    reservasPendientesTotal,
-    transferencias,
-  };
-};
+    resumen: {
+      totalProductos,
+      totalDisponible,
+      totalComprometido,
+      valorizacionTotal,
+      sinStock,
+      proveedoresActivos,
+    },
+    inventarioReciente,
+    movimientosRecientes,
+    comprasRecientes,
+  }
+}
 
 const InventarioDashboardPage = async () => {
-  const session = await getServerSession(authOptions);
+  const session = await getServerSession(authOptions)
+
   try {
-    await asegurarPermiso(session, 'reportes.ver', { prismaClient: prisma });
+    await asegurarPermiso(session, 'inventario.ver', { prismaClient: prisma })
   } catch (error) {
     if (error instanceof SesionInvalidaError) {
       return (
@@ -164,10 +124,10 @@ const InventarioDashboardPage = async () => {
           <ShieldAlert className="h-5 w-5 text-orange-500" />
           <AlertTitle>Sesión requerida</AlertTitle>
           <AlertDescription>
-            Debes iniciar sesión nuevamente para consultar los reportes de inventario.
+            Debes iniciar sesión nuevamente para acceder al panel de inventario.
           </AlertDescription>
         </Alert>
-      );
+      )
     }
 
     if (error instanceof PermisoDenegadoError) {
@@ -175,148 +135,135 @@ const InventarioDashboardPage = async () => {
         <Alert className="mt-6">
           <ShieldAlert className="h-5 w-5 text-orange-500" />
           <AlertTitle>Acceso restringido</AlertTitle>
-          <AlertDescription>
-            No cuentas con permisos para visualizar los reportes de inventario.
-          </AlertDescription>
+          <AlertDescription>No cuentas con permisos para visualizar el módulo de inventario.</AlertDescription>
         </Alert>
-      );
+      )
     }
 
-    throw error;
+    throw error
   }
 
-  const [snapshot, resumenInventario] = await Promise.all([
-    getInventarioSnapshot(),
-    obtenerResumenInventario(),
-  ]);
-  const { inventarios, movimientos, reservas, reservasPendientesTotal, transferencias } = snapshot;
-  const transferenciasSerializadas = mapTransferencias(transferencias);
-  const resumenGlobal = resumenInventario.resumen;
-  const resumenPorAlmacen = resumenInventario.porAlmacen;
-  const productosCriticos = resumenInventario.productosCriticos;
+  const { resumen, inventarioReciente, movimientosRecientes, comprasRecientes } = await getDashboardData()
 
   return (
     <div className="space-y-8">
       <section className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Inventario</h1>
-          <p className="text-sm text-muted-foreground">Primer acercamiento al módulo — vista resumida mientras completamos el resto del roadmap.</p>
+          <h1 className="text-2xl font-semibold tracking-tight">Inventario (versión básica)</h1>
+          <p className="text-sm text-muted-foreground">
+            Conecta compras y movimientos rápidos mientras iteramos la experiencia completa.
+          </p>
         </div>
-        <Link
-          href="/dashboard/inventario/almacenes"
-          className="inline-flex items-center justify-center rounded-md border border-border px-4 py-2 text-sm font-medium transition hover:border-primary hover:text-primary"
-        >
-          Gestionar almacenes
-        </Link>
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <div className="rounded-lg border border-border bg-card p-4">
-          <p className="text-sm text-muted-foreground">Inventarios monitoreados</p>
-          <p className="mt-2 text-2xl font-semibold">{integerFormatter.format(resumenGlobal.totalProductosMonitoreados)}</p>
+          <p className="text-sm text-muted-foreground">Productos con inventario</p>
+          <p className="mt-2 text-2xl font-semibold">{integerFormatter.format(resumen.totalProductos)}</p>
         </div>
         <div className="rounded-lg border border-border bg-card p-4">
-          <p className="text-sm text-muted-foreground">Stock disponible (suma rápida)</p>
-          <p className="mt-2 text-2xl font-semibold">{formatDecimalString(resumenGlobal.stockDisponibleTotal)}</p>
+          <p className="text-sm text-muted-foreground">Stock disponible</p>
+          <p className="mt-2 text-2xl font-semibold">{decimalFormatter.format(resumen.totalDisponible)}</p>
         </div>
         <div className="rounded-lg border border-border bg-card p-4">
           <p className="text-sm text-muted-foreground">Stock comprometido</p>
-          <p className="mt-2 text-2xl font-semibold">{formatDecimalString(resumenGlobal.stockComprometidoTotal)}</p>
-        </div>
-        <div className="rounded-lg border border-border bg-card p-4">
-          <p className="text-sm text-muted-foreground">En nivel crítico</p>
-          <p className="mt-2 text-2xl font-semibold">{integerFormatter.format(resumenGlobal.itemsCriticos)}</p>
+          <p className="mt-2 text-2xl font-semibold">{decimalFormatter.format(resumen.totalComprometido)}</p>
         </div>
         <div className="rounded-lg border border-border bg-card p-4">
           <p className="text-sm text-muted-foreground">Valorización total</p>
-          <p className="mt-2 text-2xl font-semibold">S/ {formatDecimalString(resumenGlobal.valorizacionTotal)}</p>
+          <p className="mt-2 text-2xl font-semibold">{moneyFormatter.format(resumen.valorizacionTotal)}</p>
         </div>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-        <div className="rounded-lg border border-border bg-card p-6">
-          <h2 className="text-lg font-semibold">Valorización por almacén</h2>
-          <p className="text-sm text-muted-foreground">Identifica los almacenes que concentran el mayor capital para priorizar reposiciones.</p>
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[520px] text-left text-sm">
-              <thead className="border-b border-border text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th className="py-2 pr-4">Almacén</th>
-                  <th className="py-2 pr-4 text-right">Disponible</th>
-                  <th className="py-2 pr-4 text-right">Comprometido</th>
-                  <th className="py-2 pr-4 text-right">Valorización</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {resumenPorAlmacen.length === 0 ? (
-                  <tr>
-                    <td className="py-4 text-muted-foreground" colSpan={4}>Aún no hay inventarios asociados a almacenes.</td>
-                  </tr>
-                ) : (
-                  resumenPorAlmacen.slice(0, 5).map((almacen) => (
-                    <tr key={almacen.id_almacen}>
-                      <td className="py-2 pr-4 font-medium">{almacen.nombre}</td>
-                      <td className="py-2 pr-4 text-right">{formatDecimalString(almacen.stock_disponible)}</td>
-                      <td className="py-2 pr-4 text-right">{formatDecimalString(almacen.stock_comprometido)}</td>
-                      <td className="py-2 pr-4 text-right font-semibold">S/ {formatDecimalString(almacen.valorizacion)}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+        <div className="rounded-lg border border-border bg-card p-4">
+          <p className="text-sm text-muted-foreground">Proveedores activos</p>
+          <p className="mt-2 text-2xl font-semibold">{integerFormatter.format(resumen.proveedoresActivos)}</p>
+          <p className="text-xs text-muted-foreground">{resumen.sinStock} producto(s) sin stock.</p>
         </div>
-        <div className="rounded-lg border border-border bg-card p-6">
-          <h2 className="text-lg font-semibold">Alertas actuales</h2>
-          <p className="text-sm text-muted-foreground">Sincroniza este resumen ejecutando el cron de alertas o registrando nuevos movimientos.</p>
-          <div className="mt-6 space-y-3">
-            <div className="rounded-md border border-border bg-background px-4 py-3">
-              <p className="text-sm text-muted-foreground">Productos en mínimo</p>
-              <p className="text-2xl font-semibold">{integerFormatter.format(productosCriticos.length)}</p>
-            </div>
-            <div className="rounded-md border border-border bg-background px-4 py-3">
-              <p className="text-sm text-muted-foreground">Reservas pendientes</p>
-              <p className="text-2xl font-semibold">{integerFormatter.format(reservasPendientesTotal)}</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-[1.05fr_1fr]">
-        <TransferenciaWizard />
-        <TransferenciasTable transferencias={transferenciasSerializadas} />
       </section>
 
       <section className="grid gap-6 lg:grid-cols-2">
         <MovimientoQuickForm />
+        <CompraRapidaForm />
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-2">
         <div className="rounded-md border border-border bg-card p-6">
-          <h2 className="text-lg font-semibold">Movimientos recientes</h2>
-          <p className="text-sm text-muted-foreground">Se muestran los últimos cinco registros para validar el flujo.</p>
+          <h2 className="text-lg font-semibold">Inventario actualizado</h2>
+          <p className="text-sm text-muted-foreground">Últimos registros recalculados con el flujo simplificado.</p>
           <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[400px] text-left text-sm">
+            <table className="w-full min-w-[420px] text-left text-sm">
               <thead className="border-b border-border text-xs uppercase text-muted-foreground">
                 <tr>
-                  <th className="py-2 pr-4">Fecha</th>
-                  <th className="py-2 pr-4">Tipo</th>
                   <th className="py-2 pr-4">Producto</th>
-                  <th className="py-2 pr-4 text-right">Cantidad</th>
+                  <th className="py-2 pr-4 text-right">Disponible</th>
+                  <th className="py-2 pr-4 text-right">Comprometido</th>
+                  <th className="py-2 pr-4 text-right">Costo promedio</th>
+                  <th className="py-2 pr-4 text-center">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {movimientos.length === 0 ? (
+                {inventarioReciente.length === 0 ? (
                   <tr>
-                    <td className="py-4 text-muted-foreground" colSpan={4}>Aún no hay movimientos registrados.</td>
+                    <td className="py-4 text-muted-foreground" colSpan={5}>
+                      Registra una compra o un ajuste para generar el primer inventario.
+                    </td>
                   </tr>
                 ) : (
-                  movimientos.map((movimiento) => (
-                    <tr key={movimiento.id_movimiento_inventario}>
-                      <td className="py-2 pr-4 text-muted-foreground">{movementDate(movimiento.fecha)}</td>
-                      <td className="py-2 pr-4 font-medium">{movimiento.tipo.replace('_', ' ')}</td>
+                  inventarioReciente.map((item) => (
+                    <tr key={item.id_inventario}>
                       <td className="py-2 pr-4">
-                        <span className="font-medium">{movimiento.producto?.nombre ?? '—'}</span>
-                        <span className="ml-1 text-xs text-muted-foreground">#{movimiento.id_producto}</span>
+                        <div className="font-medium">{item.producto?.nombre ?? `Producto #${item.id_producto}`}</div>
+                        <div className="text-xs text-muted-foreground">#{item.producto?.codigo_producto ?? item.id_producto}</div>
                       </td>
-                      <td className="py-2 pr-4 text-right font-medium">{decimalFormatter.format(decimalToNumber(movimiento.cantidad))}</td>
+                      <td className="py-2 pr-4 text-right font-semibold">
+                        {decimalFormatter.format(item.stock_disponible.toNumber())}
+                      </td>
+                      <td className="py-2 pr-4 text-right text-muted-foreground">
+                        {decimalFormatter.format(item.stock_comprometido.toNumber())}
+                      </td>
+                      <td className="py-2 pr-4 text-right text-muted-foreground">
+                        {moneyFormatter.format(item.costo_promedio.toNumber())}
+                      </td>
+                      <td className="py-2 text-center">
+                        <ProductoStockDrawer productoId={item.id_producto} />
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="rounded-md border border-border bg-card p-6">
+          <h2 className="text-lg font-semibold">Compras recientes</h2>
+          <p className="text-sm text-muted-foreground">Últimos registros creados con el endpoint simplificado.</p>
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[360px] text-left text-sm">
+              <thead className="border-b border-border text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th className="py-2 pr-4">Fecha</th>
+                  <th className="py-2 pr-4">Proveedor</th>
+                  <th className="py-2 pr-4 text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {comprasRecientes.length === 0 ? (
+                  <tr>
+                    <td className="py-4 text-muted-foreground" colSpan={3}>
+                      Aún no se registran compras en el módulo simplificado.
+                    </td>
+                  </tr>
+                ) : (
+                  comprasRecientes.map((compra) => (
+                    <tr key={compra.id_compra}>
+                      <td className="py-2 pr-4 text-muted-foreground">{formatDateTime(compra.fecha)}</td>
+                      <td className="py-2 pr-4">
+                        <span className="font-medium">{compra.proveedor?.razon_social ?? 'Proveedor sin nombre'}</span>
+                        <span className="ml-1 text-xs text-muted-foreground">#{compra.id_compra}</span>
+                      </td>
+                      <td className="py-2 pr-4 text-right font-semibold">
+                        {moneyFormatter.format(compra.total.toNumber())}
+                      </td>
                     </tr>
                   ))
                 )}
@@ -327,125 +274,40 @@ const InventarioDashboardPage = async () => {
       </section>
 
       <section className="rounded-md border border-border bg-card p-6">
-        <h2 className="text-lg font-semibold">Reservas pendientes</h2>
-        <p className="text-sm text-muted-foreground">Reservas activas registradas en los últimos movimientos de órdenes.</p>
+        <h2 className="text-lg font-semibold">Movimientos recientes</h2>
+        <p className="text-sm text-muted-foreground">Vista rápida de salidas y ajustes registrados desde este panel.</p>
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[520px] text-left text-sm">
+          <table className="w-full min-w-[420px] text-left text-sm">
             <thead className="border-b border-border text-xs uppercase text-muted-foreground">
               <tr>
-                <th className="py-2 pr-4">Creada</th>
+                <th className="py-2 pr-4">Fecha</th>
+                <th className="py-2 pr-4">Tipo</th>
                 <th className="py-2 pr-4">Producto</th>
-                <th className="py-2 pr-4">Almacén</th>
-                <th className="py-2 pr-4">Orden</th>
                 <th className="py-2 pr-4 text-right">Cantidad</th>
+                <th className="py-2 pr-4">Usuario</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {reservas.length === 0 ? (
+              {movimientosRecientes.length === 0 ? (
                 <tr>
-                  <td className="py-4 text-muted-foreground" colSpan={5}>No hay reservas pendientes registradas.</td>
+                  <td className="py-4 text-muted-foreground" colSpan={5}>
+                    Registra una salida o ajuste para comenzar a poblar el historial.
+                  </td>
                 </tr>
               ) : (
-                reservas.map((reserva) => {
-                  const producto = reserva.inventario.producto;
-                  const almacen = reserva.inventario.almacen;
-                  const transaccion = reserva.transaccion;
-
-                  return (
-                    <tr key={reserva.id_reserva_inventario}>
-                      <td className="py-2 pr-4 text-muted-foreground">{movementDate(reserva.creado_en)}</td>
-                      <td className="py-2 pr-4">
-                        <div className="font-medium">{producto?.nombre ?? '—'}</div>
-                        <div className="text-xs text-muted-foreground">#{producto?.codigo_producto ?? reserva.inventario.id_inventario_producto}</div>
-                      </td>
-                      <td className="py-2 pr-4 text-sm text-muted-foreground">{almacen?.nombre ?? `Almacén #${reserva.inventario.id_almacen}`}</td>
-                      <td className="py-2 pr-4 text-sm">
-                        {transaccion ? (
-                          <span className="font-medium">{transaccion.codigo_transaccion ?? `Orden #${transaccion.id_transaccion}`}</span>
-                        ) : (
-                          <span className="text-muted-foreground">Sin orden</span>
-                        )}
-                      </td>
-                      <td className="py-2 pr-4 text-right font-semibold">{decimalFormatter.format(decimalToNumber(reserva.cantidad))}</td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="rounded-md border border-border bg-card p-6">
-        <h2 className="text-lg font-semibold">Inventario observado</h2>
-        <p className="text-sm text-muted-foreground">Lista preliminar (5 registros) para corroborar stock vs. mínimos.</p>
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[500px] text-left text-sm">
-            <thead className="border-b border-border text-xs uppercase text-muted-foreground">
-              <tr>
-                <th className="py-2 pr-4">Producto</th>
-                <th className="py-2 pr-4">Almacén</th>
-                <th className="py-2 pr-4 text-right">Disponible</th>
-                <th className="py-2 pr-4 text-right">Mínimo</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {inventarios.length === 0 ? (
-                <tr>
-                  <td className="py-4 text-muted-foreground" colSpan={4}>Registra un movimiento para comenzar a poblar el inventario.</td>
-                </tr>
-              ) : (
-                inventarios.map((item) => {
-                  const disponible = decimalToNumber(item.stock_disponible);
-                  const minimo = decimalToNumber(item.stock_minimo);
-                  const esCritico = disponible <= minimo && minimo > 0;
-
-                  return (
-                    <tr key={item.id_inventario_producto} className={esCritico ? 'bg-destructive/10' : undefined}>
-                      <td className="py-2 pr-4">
-                        <div className="font-medium">{item.producto?.nombre ?? 'Producto sin nombre'}</div>
-                        <div className="text-xs text-muted-foreground">#{item.producto?.codigo_producto ?? item.id_producto}</div>
-                      </td>
-                      <td className="py-2 pr-4 text-sm text-muted-foreground">{item.almacen?.nombre ?? `Almacén #${item.id_almacen}`}</td>
-                      <td className="py-2 pr-4 text-right font-semibold">{decimalFormatter.format(disponible)}</td>
-                      <td className="py-2 pr-4 text-right">{decimalFormatter.format(minimo)}</td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="rounded-md border border-border bg-card p-6">
-        <h2 className="text-lg font-semibold">Productos en nivel crítico</h2>
-        <p className="text-sm text-muted-foreground">Máximo 10 resultados priorizados por menor stock disponible para una acción rápida.</p>
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[520px] text-left text-sm">
-            <thead className="border-b border-border text-xs uppercase text-muted-foreground">
-              <tr>
-                <th className="py-2 pr-4">Producto</th>
-                <th className="py-2 pr-4">Almacén</th>
-                <th className="py-2 pr-4 text-right">Disponible</th>
-                <th className="py-2 pr-4 text-right">Mínimo</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {productosCriticos.length === 0 ? (
-                <tr>
-                  <td className="py-4 text-muted-foreground" colSpan={4}>Sin alertas activas. Ejecuta el cron o registra nuevos movimientos para recalcular.</td>
-                </tr>
-              ) : (
-                productosCriticos.map((producto) => (
-                  <tr key={producto.id_inventario_producto} className="bg-destructive/10">
+                movimientosRecientes.map((movimiento) => (
+                  <tr key={movimiento.id_movimiento}>
+                    <td className="py-2 pr-4 text-muted-foreground">{formatDateTime(movimiento.creado_en)}</td>
+                    <td className="py-2 pr-4 font-medium">{movimiento.tipo}</td>
                     <td className="py-2 pr-4">
-                      <div className="font-medium">{producto.nombre}</div>
-                      <div className="text-xs text-muted-foreground">#{producto.codigo_producto}</div>
+                      <span className="font-medium">{movimiento.producto?.nombre ?? `Producto #${movimiento.id_producto}`}</span>
                     </td>
-                    <td className="py-2 pr-4 text-sm text-muted-foreground">{producto.almacen}</td>
-                    <td className="py-2 pr-4 text-right font-semibold">{formatDecimalString(producto.stock_disponible)}</td>
-                    <td className="py-2 pr-4 text-right">{formatDecimalString(producto.stock_minimo)}</td>
+                    <td className="py-2 pr-4 text-right font-semibold">
+                      {decimalFormatter.format(decimalToNumber(movimiento.cantidad))}
+                    </td>
+                    <td className="py-2 pr-4 text-muted-foreground">
+                      {movimiento.usuario?.nombre_usuario ?? '—'}
+                    </td>
                   </tr>
                 ))
               )}
@@ -454,55 +316,7 @@ const InventarioDashboardPage = async () => {
         </div>
       </section>
     </div>
-  );
-};
+  )
+}
 
-const movementDate = (fecha: Date) => fecha.toLocaleDateString('es-PE', {
-  year: 'numeric',
-  month: 'short',
-  day: 'numeric',
-});
-
-const mapMovimiento = (movimiento: Prisma.MovimientoInventarioGetPayload<{ include: typeof movimientoInclude }>) => ({
-  id_movimiento_inventario: movimiento.id_movimiento_inventario,
-  tipo: movimiento.tipo,
-  cantidad: decimalToString(movimiento.cantidad),
-  referencia_origen: movimiento.referencia_origen,
-  origen_tipo: movimiento.origen_tipo,
-  observaciones: movimiento.observaciones,
-  fecha: movimiento.fecha.toISOString(),
-  producto: movimiento.producto,
-  inventario: {
-    id_inventario_producto: movimiento.inventario.id_inventario_producto,
-    id_producto: movimiento.inventario.id_producto,
-    id_almacen: movimiento.inventario.id_almacen,
-    id_almacen_ubicacion: movimiento.inventario.id_almacen_ubicacion,
-    stock_disponible: decimalToString(movimiento.inventario.stock_disponible),
-    stock_comprometido: decimalToString(movimiento.inventario.stock_comprometido),
-    stock_minimo: decimalToString(movimiento.inventario.stock_minimo),
-    stock_maximo: decimalToString(movimiento.inventario.stock_maximo),
-    costo_promedio: decimalToString(movimiento.inventario.costo_promedio),
-    almacen: movimiento.inventario.almacen,
-    ubicacion: movimiento.inventario.ubicacion,
-  },
-});
-
-const mapTransferencias = (
-  transferencias: Prisma.MovimientoTransferenciaGetPayload<{ include: typeof transferenciaInclude }>[],
-): TransferenciaResumen[] => transferencias.map((transferencia) => ({
-    id_movimiento_transferencia: transferencia.id_movimiento_transferencia,
-    estado: transferencia.estado,
-    creado_en: transferencia.creado_en.toISOString(),
-    actualizado_en: transferencia.actualizado_en.toISOString(),
-    movimiento_envio: mapMovimiento(transferencia.movimiento_envio),
-    movimiento_recepcion: mapMovimiento(transferencia.movimiento_recepcion),
-  }));
-
-const formatDecimalString = (value: string | null) => {
-  if (!value) return '0.00';
-  const parsed = Number.parseFloat(value);
-  if (Number.isNaN(parsed)) return value;
-  return decimalFormatter.format(parsed);
-};
-
-export default InventarioDashboardPage;
+export default InventarioDashboardPage

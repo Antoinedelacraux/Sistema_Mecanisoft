@@ -1,6 +1,25 @@
 'use client'
 
 import { useState } from 'react'
+
+// Safe converter: handles number | string | Prisma.Decimal-like objects
+const toNumber = (value: any): number => {
+  if (value == null) return 0
+  if (typeof value === 'number') return value
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+  // Prisma Decimal: has toNumber or toString
+  if (typeof value === 'object') {
+    if (typeof value.toNumber === 'function') return value.toNumber()
+    if (typeof value.toString === 'function') {
+      const parsed = Number(value.toString())
+      return Number.isFinite(parsed) ? parsed : 0
+    }
+  }
+  return 0
+}
 import { ProductosTable } from '@/components/productos/productos-table'
 import { ProductoForm } from '@/components/productos/producto-form'
 import { CategoriasManager } from '@/components/productos/categorias-manager'
@@ -70,7 +89,7 @@ export default function ProductosPage() {
 
       {/* Modal para formularios */}
       <Dialog open={modalState !== 'closed'} onOpenChange={() => setModalState('closed')}>
-        <DialogContent className={`${modalState === 'categories' ? 'max-w-7xl' : 'max-w-6xl'} max-h-[90vh] overflow-y-auto`}>
+    <DialogContent className={`${modalState === 'categories' ? 'max-w-8xl' : 'max-w-7xl'} max-h-[90vh] overflow-y-auto w-full`}>
           <DialogHeader>
             <DialogTitle>
               {modalState === 'create' && 'Crear Nuevo Producto'}
@@ -185,11 +204,11 @@ export default function ProductosPage() {
                   <div className="space-y-3">
                     <div>
                       <p className="font-semibold">Precio de Compra</p>
-                      <p className="text-lg">S/ {selectedProducto.precio_compra.toFixed(2)}</p>
+                      <p className="text-lg">S/ {toNumber(selectedProducto.precio_compra).toFixed(2)}</p>
                     </div>
                     <div>
                       <p className="font-semibold">Precio de Venta</p>
-                      <p className="text-xl font-bold text-green-600">S/ {selectedProducto.precio_venta.toFixed(2)}</p>
+                      <p className="text-xl font-bold text-green-600">S/ {toNumber(selectedProducto.precio_venta).toFixed(2)}</p>
                     </div>
                     {Number(selectedProducto.descuento) > 0 && (
                       <div>
@@ -200,12 +219,12 @@ export default function ProductosPage() {
                     <div className="bg-blue-50 p-3 rounded-lg">
                       <p className="text-blue-800">
                         <strong>Margen de Ganancia:</strong> {
-                          (((Number(selectedProducto.precio_venta) - Number(selectedProducto.precio_compra)) / Number(selectedProducto.precio_compra)) * 100).toFixed(2)
+                          (((toNumber(selectedProducto.precio_venta) - toNumber(selectedProducto.precio_compra)) / (toNumber(selectedProducto.precio_compra) || 1)) * 100).toFixed(2)
                         }%
                       </p>
                       <p className="text-blue-800">
                         <strong>Ganancia por unidad:</strong> S/ {
-                          (Number(selectedProducto.precio_venta) - Number(selectedProducto.precio_compra)).toFixed(2)
+                          (toNumber(selectedProducto.precio_venta) - toNumber(selectedProducto.precio_compra)).toFixed(2)
                         }
                       </p>
                     </div>

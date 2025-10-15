@@ -151,6 +151,8 @@ export async function POST(request: NextRequest) {
       foto
     } = data
 
+    const tipoProducto = tipo ?? 'producto'
+
     // Generar código si no se proporciona
     let finalCodigoProducto = codigo_producto
     if (!finalCodigoProducto) {
@@ -161,7 +163,7 @@ export async function POST(request: NextRequest) {
     if (id_categoria === undefined || id_categoria === null ||
         id_fabricante === undefined || id_fabricante === null ||
         id_unidad === undefined || id_unidad === null ||
-        !tipo || !finalCodigoProducto || !nombre ||
+        !tipoProducto || !finalCodigoProducto || !nombre ||
         precio_compra === undefined || precio_compra === null ||
         precio_venta === undefined || precio_venta === null) {
       return NextResponse.json(
@@ -221,11 +223,13 @@ export async function POST(request: NextRequest) {
         id_categoria: idCategoriaNum,
         id_fabricante: idFabricanteNum,
         id_unidad: idUnidadNum,
-        tipo,
+        tipo: tipoProducto,
         codigo_producto: finalCodigoProducto,
         nombre,
         descripcion,
-        stock: parseInt(stock) || 0,
+        // El stock inicial no se debe asignar directamente al producto.
+        // Se registrará mediante una entrada de inventario para mantener historial.
+        stock: 0,
         stock_minimo: parseInt(stock_minimo) || 0,
         precio_compra: precioCompraNum,
         precio_venta: precioVentaNum,

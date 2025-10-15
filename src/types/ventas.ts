@@ -1,7 +1,4 @@
-import { Prisma, type EstadoComprobante, type OrigenComprobante, type TipoComprobante } from '@prisma/client'
-
-type EstadoPagoVenta = Prisma.$Enums.EstadoPagoVenta
-type MetodoPagoVenta = Prisma.$Enums.MetodoPagoVenta
+import { Prisma, type EstadoComprobante, type OrigenComprobante, type TipoComprobante, EstadoPagoVenta, MetodoPagoVenta } from '@prisma/client'
 
 export type VentaListadoItem = {
   id_venta: number
@@ -29,7 +26,7 @@ export type VentaListadoItem = {
   }
   pagos: Array<{
     id_venta_pago: number
-    metodo: MetodoPagoVenta
+  metodo: MetodoPagoVenta
     monto: number
     referencia: string | null
     fecha_pago: string

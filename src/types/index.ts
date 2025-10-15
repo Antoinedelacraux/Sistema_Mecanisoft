@@ -206,11 +206,11 @@ export type ProductoFormData = {
   id_categoria: number
   id_fabricante: number
   id_unidad: number
-  tipo: string
+  tipo?: 'producto' | 'servicio'
   codigo_producto?: string
   nombre: string
   descripcion?: string
-  stock: number
+  stock?: number
   stock_minimo: number
   precio_compra: number
   precio_venta: number
@@ -266,7 +266,6 @@ export type TrabajadorFormData = {
   cargo: string
   especialidad: string
   nivel_experiencia: string
-  tarifa_hora?: number
   fecha_ingreso?: string
   sueldo_mensual?: number
 }

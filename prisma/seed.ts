@@ -71,6 +71,13 @@ async function main() {
       agrupador: 'gestion_inventario'
     },
     {
+      codigo: 'inventario.compras',
+      nombre: 'Registrar compras de inventario',
+      descripcion: 'Permite crear compras y actualizar inventario disponible',
+      modulo: 'inventario',
+      agrupador: 'gestion_inventario'
+    },
+    {
       codigo: 'ordenes.crear',
       nombre: 'Crear órdenes de trabajo',
       descripcion: 'Genera nuevas órdenes y asigna responsables',
@@ -395,6 +402,71 @@ async function main() {
   }
 
   console.log('✅ Inventario base configurado')
+
+  // Crear proveedor e inventario simplificado inicial para el nuevo módulo
+  const personaProveedorDemo = await prisma.persona.upsert({
+    where: { numero_documento: '20123450001' },
+    update: {
+      nombre: 'Distribuidora',
+      apellido_paterno: 'Andina',
+      apellido_materno: 'SAC',
+      telefono: '016543210',
+      correo: 'contacto@andina.com.pe',
+      registrar_empresa: true,
+    },
+    create: {
+      nombre: 'Distribuidora',
+      apellido_paterno: 'Andina',
+      apellido_materno: 'SAC',
+      tipo_documento: 'RUC',
+      numero_documento: '20123450001',
+      telefono: '016543210',
+      correo: 'contacto@andina.com.pe',
+      registrar_empresa: true,
+    },
+  })
+
+  const proveedorDemo = await prisma.proveedor.upsert({
+    where: { id_persona: personaProveedorDemo.id_persona },
+    update: {
+      razon_social: 'Distribuidora Andina SAC',
+      contacto: 'Lucía Salazar',
+      numero_contacto: '999556677',
+    },
+    create: {
+      id_persona: personaProveedorDemo.id_persona,
+      razon_social: 'Distribuidora Andina SAC',
+      contacto: 'Lucía Salazar',
+      numero_contacto: '999556677',
+    },
+  })
+
+  const productosParaInventario = await prisma.producto.findMany({
+    where: { estatus: true },
+    orderBy: { id_producto: 'asc' },
+    take: 3,
+  })
+
+  for (const producto of productosParaInventario) {
+    await prisma.inventario.upsert({
+      where: { id_producto: producto.id_producto },
+      update: {
+        stock_disponible: { increment: 5 },
+      },
+      create: {
+        id_producto: producto.id_producto,
+        stock_disponible: 5,
+        stock_comprometido: 0,
+        costo_promedio: producto.precio_compra,
+      },
+    })
+  }
+
+  if (productosParaInventario.length > 0) {
+    console.log(
+      `✅ Inventario simplificado inicial listo para ${productosParaInventario.length} producto(s) con proveedor ${proveedorDemo.razon_social}`,
+    )
+  }
 
   // ✅ Agregar al final del seed existente, antes de console.log('🎉 Seed completado exitosamente!')
 
