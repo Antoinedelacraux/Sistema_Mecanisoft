@@ -49,7 +49,10 @@ type PrismaMock = {
 const getSessionMock = () => getServerSession as jest.Mock;
 const getPrismaMock = () => (jest.requireMock('@/lib/prisma') as { prisma: PrismaMock }).prisma;
 
-const buildSession = (role: string = 'Administrador') => ({ user: { id: '1', role } });
+const buildSession = (
+  role: string = 'Administrador',
+  permisos: string[] = ['inventario.ver', 'inventario.movimientos']
+) => ({ user: { id: '1', role, permisos } });
 
 const buildUbicacion = () => ({
   id_almacen_ubicacion: 10,
@@ -83,7 +86,7 @@ describe('API /api/inventario/almacenes/:id/ubicaciones', () => {
 
   it('GET responde 403 sin rol autorizado', async () => {
     const request = new NextRequest('http://localhost/api/inventario/almacenes/1/ubicaciones');
-    getSessionMock().mockResolvedValue(buildSession('Recepcionista'));
+  getSessionMock().mockResolvedValue(buildSession('Recepcionista', []));
 
     const response = await listUbicaciones(request, { params: Promise.resolve({ id: '1' }) });
     expect(response.status).toBe(403);

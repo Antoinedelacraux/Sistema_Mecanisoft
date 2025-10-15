@@ -30,6 +30,10 @@ jest.mock('@/lib/permisos/service', () => ({
   setPermisosPersonalizadosDeUsuario: jest.fn()
 }))
 
+const buildSession = (id: string, permisos: string[] = ['permisos.asignar']) => ({
+  user: { id, permisos }
+})
+
 const ensureResponse = <T extends Response>(response: T | undefined): T => {
   if (!response) {
     throw new Error('La ruta devolvió una respuesta indefinida')
@@ -43,7 +47,7 @@ describe('API permisos usuario', () => {
   })
 
   it('GET retorna permisos base, personalizados y resueltos', async () => {
-    ;(getServerSession as jest.Mock).mockResolvedValue({ user: { id: '1' } })
+    ;(getServerSession as jest.Mock).mockResolvedValue(buildSession('1'))
     ;(prisma.usuario.findUnique as jest.Mock).mockResolvedValue({ id_usuario: 7, id_rol: 3 })
     ;(obtenerPermisosDeRol as jest.Mock).mockResolvedValue([{ codigo: 'clientes.listar' }])
     ;(obtenerPermisosPersonalizadosDeUsuario as jest.Mock).mockResolvedValue([])
@@ -62,7 +66,7 @@ describe('API permisos usuario', () => {
   })
 
   it('PUT actualiza personalizaciones del usuario', async () => {
-    ;(getServerSession as jest.Mock).mockResolvedValue({ user: { id: '9' } })
+    ;(getServerSession as jest.Mock).mockResolvedValue(buildSession('9'))
     ;(setPermisosPersonalizadosDeUsuario as jest.Mock).mockResolvedValue([{ codigo: 'clientes.editar' }])
     ;(obtenerPermisosResueltosDeUsuario as jest.Mock).mockResolvedValue([{ codigo: 'clientes.editar' }])
 

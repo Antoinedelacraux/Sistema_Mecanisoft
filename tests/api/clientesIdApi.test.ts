@@ -53,6 +53,10 @@ const ensureResponse = <T extends Response>(response: T | undefined): T => {
   return response
 }
 
+const buildSession = (id: string, permisos: string[] = ['clientes.editar']) => ({
+  user: { id, permisos }
+})
+
 describe('PUT /api/clientes/[id]', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -71,7 +75,7 @@ describe('PUT /api/clientes/[id]', () => {
 
   it('should return 400 if ID is invalid', async () => {
     const mockedGetServerSession = getServerSession as any;
-    mockedGetServerSession.mockResolvedValue({ user: { id: '1' } });
+    mockedGetServerSession.mockResolvedValue(buildSession('1'));
     
     const req = new NextRequest('http://localhost/api/clientes/NaN', { method: 'PUT' });
   const response = ensureResponse(await PUT(req, { params: { id: 'NaN' } }));
@@ -82,7 +86,7 @@ describe('PUT /api/clientes/[id]', () => {
 
   it('should update the cliente when valid data is provided', async () => {
     const mockedGetServerSession = getServerSession as any;
-    mockedGetServerSession.mockResolvedValue({ user: { id: '1' } });
+    mockedGetServerSession.mockResolvedValue(buildSession('1'));
 
     const mockedClienteFindUnique = prisma.cliente.findUnique as any;
     mockedClienteFindUnique

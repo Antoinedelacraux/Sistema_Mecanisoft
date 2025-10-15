@@ -223,7 +223,7 @@ export function ProductoForm({ producto, onSuccess, onCancel }: ProductoFormProp
         id_categoria: formData.id_categoria,
         id_fabricante: formData.id_fabricante,
         id_unidad: formData.id_unidad,
-        tipo: producto?.tipo ?? 'producto',
+  tipo: (producto?.tipo ?? 'producto') as ProductoFormData['tipo'],
         codigo_producto: formData.codigo_producto,
         nombre: formData.nombre,
         descripcion: formData.descripcion,

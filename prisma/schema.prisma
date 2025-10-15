@@ -232,13 +232,29 @@ model Proveedor {
 model Rol {
   id_rol         Int      @id @default(autoincrement())
   nombre_rol     String   @unique @db.VarChar(50)
+  descripcion    String?  @db.Text
   estatus        Boolean  @default(true)
   fecha_registro DateTime @default(now())
+  actualizado_en DateTime @updatedAt
 
   usuarios Usuario[]
   permisos RolPermiso[]
 
   @@map("rol")
+}
+
+model Modulo {
+  id_modulo     Int      @id @default(autoincrement())
+  clave         String   @unique @db.VarChar(100)
+  nombre        String   @db.VarChar(150)
+  descripcion   String?  @db.Text
+  activo        Boolean  @default(true)
+  creado_en     DateTime @default(now())
+  actualizado_en DateTime @updatedAt
+
+  permisos Permiso[]
+
+  @@map("modulo")
 }
 
 model Usuario {
@@ -277,6 +293,7 @@ model Usuario {
   movimientos_inventario    MovimientoInventario[]
   bitacoras_inventario      BitacoraInventario[]
   permisos                  UsuarioPermiso[]
+  permisos_asignados        RolPermiso[]          @relation("RolPermisoAsignado")
   compras_registradas       Compra[]
   movimientos_basicos       Movimiento[]
 
@@ -294,9 +311,11 @@ model Permiso {
   creado_en     DateTime @default(now())
   actualizado_en DateTime @updatedAt
 
+  moduloEntidad Modulo   @relation(fields: [modulo], references: [clave])
   roles    RolPermiso[]
   usuarios UsuarioPermiso[]
 
+  @@index([modulo])
   @@map("permiso")
 }
 
@@ -305,8 +324,12 @@ model RolPermiso {
   id_permiso Int
   creado_en  DateTime @default(now())
 
+  asignado_por Int?
+  descripcion  String? @db.Text
+
   rol     Rol     @relation(fields: [id_rol], references: [id_rol], onDelete: Cascade)
   permiso Permiso @relation(fields: [id_permiso], references: [id_permiso], onDelete: Cascade)
+  asignado Usuario? @relation("RolPermisoAsignado", fields: [asignado_por], references: [id_usuario], onDelete: SetNull)
 
   @@id([id_rol, id_permiso])
   @@map("rol_permiso")

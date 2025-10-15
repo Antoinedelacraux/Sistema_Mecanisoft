@@ -59,12 +59,19 @@ type MovimientoRecord = {
 };
 
 type TransactionClientMock = {
-  producto: { findUnique: jest.Mock<Promise<{ estatus: boolean } | null>, [unknown?]> };
+  producto: {
+    findUnique: jest.Mock<Promise<{ estatus: boolean } | null>, [unknown?]>;
+    update: jest.Mock<Promise<unknown>, [unknown?]>;
+  };
   almacenUbicacion: { findUnique: jest.Mock<Promise<{ id_almacen: number; activo: boolean } | null>, [unknown?]> };
   inventarioProducto: {
     findFirst: jest.Mock<Promise<InventarioRecord | null>, [unknown?]>;
     create: jest.Mock<Promise<InventarioRecord>, [unknown]>;
     update: jest.Mock<Promise<InventarioRecord>, [unknown]>;
+    aggregate: jest.Mock<Promise<{ _sum: { stock_disponible: Prisma.Decimal | null } }>, [unknown?]>;
+  };
+  inventario: {
+    findUnique: jest.Mock<Promise<{ stock_disponible: Prisma.Decimal } | null>, [unknown?]>;
   };
   movimientoInventario: { create: jest.Mock<Promise<MovimientoRecord>, [unknown]> };
   bitacoraInventario: { create: jest.Mock<Promise<unknown>, [unknown]> };
@@ -77,12 +84,19 @@ type PrismaMock = {
 
 jest.mock('@/lib/prisma', () => {
   const transactionClient: TransactionClientMock = {
-    producto: { findUnique: jest.fn<Promise<{ estatus: boolean } | null>, [unknown?]>() },
+    producto: {
+      findUnique: jest.fn<Promise<{ estatus: boolean } | null>, [unknown?]>(),
+      update: jest.fn().mockResolvedValue(undefined),
+    },
     almacenUbicacion: { findUnique: jest.fn<Promise<{ id_almacen: number; activo: boolean } | null>, [unknown?]>() },
     inventarioProducto: {
       findFirst: jest.fn<Promise<InventarioRecord | null>, [unknown?]>(),
       create: jest.fn<Promise<InventarioRecord>, [unknown]>(),
       update: jest.fn<Promise<InventarioRecord>, [unknown]>(),
+      aggregate: jest.fn().mockResolvedValue({ _sum: { stock_disponible: new Prisma.Decimal(0) } }),
+    },
+    inventario: {
+      findUnique: jest.fn().mockResolvedValue({ stock_disponible: new Prisma.Decimal(0) }),
     },
     movimientoInventario: { create: jest.fn<Promise<MovimientoRecord>, [unknown]>() },
     bitacoraInventario: { create: jest.fn<Promise<unknown>, [unknown]>() },
@@ -160,6 +174,9 @@ describe('Servicios de inventario', () => {
     const { prisma, tx } = getMocks();
     jest.clearAllMocks();
   prisma.$transaction.mockImplementation(async (callback: (client: TransactionClientMock) => unknown) => callback(tx));
+    tx.inventario.findUnique.mockResolvedValue({ stock_disponible: new Prisma.Decimal(0) });
+    tx.inventarioProducto.aggregate.mockResolvedValue({ _sum: { stock_disponible: new Prisma.Decimal(0) } });
+    tx.producto.update.mockResolvedValue(undefined);
   });
 
   describe('registrarIngreso', () => {

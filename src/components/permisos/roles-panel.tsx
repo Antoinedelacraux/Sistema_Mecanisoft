@@ -12,7 +12,7 @@ import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/use-toast'
-import type { PermisoCatalogoDTO } from '@/types/permisos'
+import type { ModuloPermisosDTO, PermisoCatalogoDTO, PermisoRolDTO } from '@/types/permisos'
 
 interface RolResumen {
   id_rol: number
@@ -24,13 +24,11 @@ interface RolesResponse {
 }
 
 interface RolPermisoResponse {
-  permisos: Array<{
-    codigo: string
-  }>
+  permisos: PermisoRolDTO[]
 }
 
 interface CatalogoResponse {
-  permisos: PermisoCatalogoDTO[]
+  modulos: ModuloPermisosDTO[]
 }
 
 const fetchJSON = async <T,>(input: RequestInfo | URL, init?: RequestInit) => {
@@ -44,12 +42,23 @@ const fetchJSON = async <T,>(input: RequestInfo | URL, init?: RequestInit) => {
     }
   })
 
-  if (!response.ok) {
-    const fallback = await response.text().catch(() => '')
-    throw new Error(fallback || 'Error al comunicarse con el servidor')
+  let data: unknown = null
+  try {
+    data = await response.json()
+  } catch {
+    // Ignorar si no hay cuerpo JSON
   }
 
-  return (await response.json()) as T
+  if (!response.ok) {
+    const message = typeof data === 'object' && data && 'error' in data
+      ? ((data as { error?: string }).error ?? '')
+      : typeof data === 'string'
+      ? data
+      : ''
+    throw new Error(message || 'Error al comunicarse con el servidor')
+  }
+
+  return (data ?? ({} as T)) as T
 }
 
 const normalizarTexto = (valor: string) => valor.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '')
@@ -95,13 +104,21 @@ export function RolesPermissionsPanel() {
       try {
         setPermisosRoleLoading(true)
         if (!catalogoCargado) {
-          const dataCatalogo = await fetchJSON<CatalogoResponse>('/api/permisos/catalogo')
-          setCatalogo(dataCatalogo.permisos)
+          const dataCatalogo = await fetchJSON<CatalogoResponse>('/api/roles/permisos')
+          const permisosPlano = dataCatalogo.modulos.flatMap((modulo) =>
+            modulo.permisos.map<PermisoCatalogoDTO>((permiso) => ({
+              ...permiso,
+              modulo: modulo.clave,
+              modulo_nombre: modulo.nombre,
+              modulo_descripcion: modulo.descripcion
+            }))
+          )
+          setCatalogo(permisosPlano)
           setCatalogoCargado(true)
         }
 
-        const dataRol = await fetchJSON<RolPermisoResponse>(`/api/permisos/roles/${rol.id_rol}`)
-        setCodigosRol(dataRol.permisos.map((permiso) => permiso.codigo))
+        const dataRol = await fetchJSON<RolPermisoResponse>(`/api/roles/${rol.id_rol}/permisos`)
+        setCodigosRol(dataRol.permisos.filter((permiso) => permiso.concedido).map((permiso) => permiso.codigo))
       } catch (error) {
         const message = error instanceof Error ? error.message : 'No fue posible cargar los permisos del rol'
         toast({ title: 'Error', description: message, variant: 'destructive' })
@@ -124,8 +141,14 @@ export function RolesPermissionsPanel() {
   }
 
   const modulosDisponibles = useMemo(() => {
-    const modulos = Array.from(new Set(catalogo.map((permiso) => permiso.modulo))).filter(Boolean)
-    return ['todos', ...modulos]
+    const modulos = new Map<string, string | null>()
+    catalogo.forEach((permiso) => {
+      if (!modulos.has(permiso.modulo)) {
+        modulos.set(permiso.modulo, permiso.modulo_nombre ?? null)
+      }
+    })
+    const base = Array.from(modulos.entries()).map(([clave, nombre]) => ({ clave, nombre }))
+    return [{ clave: 'todos', nombre: 'Todos los módulos' }, ...base]
   }, [catalogo])
 
   const catalogoFiltrado = useMemo(() => {
@@ -154,11 +177,16 @@ export function RolesPermissionsPanel() {
 
   const handleGuardar = async () => {
     if (!selectedRole) return
+    if (codigosRol.length === 0) {
+      if (!window.confirm('Dejar un rol sin permisos puede impedir su uso. ¿Deseas continuar?')) {
+        return
+      }
+    }
     try {
       setGuardarLoading(true)
-      await fetchJSON(`/api/permisos/roles/${selectedRole.id_rol}`, {
-        method: 'PUT',
-        body: JSON.stringify({ codigos: codigosRol, descripcion: nota || undefined })
+      await fetchJSON(`/api/roles/${selectedRole.id_rol}/permisos`, {
+        method: 'POST',
+        body: JSON.stringify({ permisos: codigosRol, nota: nota || undefined })
       })
       toast({
         title: 'Permisos actualizados',
@@ -240,8 +268,8 @@ export function RolesPermissionsPanel() {
                   </SelectTrigger>
                   <SelectContent>
                     {modulosDisponibles.map((modulo) => (
-                      <SelectItem key={modulo} value={modulo}>
-                        {modulo === 'todos' ? 'Todos los módulos' : modulo}
+                      <SelectItem key={modulo.clave} value={modulo.clave}>
+                        {modulo.nombre ?? modulo.clave}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -259,7 +287,7 @@ export function RolesPermissionsPanel() {
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-medium text-gray-900">{permiso.nombre}</span>
-                          <Badge variant="outline">{permiso.modulo}</Badge>
+                          <Badge variant="outline">{permiso.modulo_nombre ?? permiso.modulo}</Badge>
                           <Badge variant="secondary">{permiso.codigo}</Badge>
                         </div>
                         {permiso.descripcion && (

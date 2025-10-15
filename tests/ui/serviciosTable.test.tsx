@@ -58,20 +58,21 @@ describe('ServiciosTable UI', () => {
   it('oculta controles de gestión cuando canManage es falso', async () => {
     const servicio = buildServicio()
 
-    mockFetch
-      .mockResolvedValueOnce(createJsonResponse({ marcas: [] }))
-      .mockResolvedValueOnce(
-        createJsonResponse({
-          servicios: [servicio],
-          pagination: { total: 1, pages: 1, current: 1, limit: 50 }
-        })
-      )
-      .mockResolvedValueOnce(
-        createJsonResponse({
-          servicios: [servicio],
-          pagination: { total: 1, pages: 1, current: 1, limit: 50 }
-        })
-      )
+    mockFetch.mockImplementation((input) => {
+      const url = typeof input === 'string' ? input : ''
+      if (url.startsWith('/api/marcas')) {
+        return Promise.resolve(createJsonResponse({ marcas: [] }))
+      }
+      if (url.startsWith('/api/servicios')) {
+        return Promise.resolve(
+          createJsonResponse({
+            servicios: [servicio],
+            pagination: { total: 1, pages: 1, current: 1, limit: 50 }
+          })
+        )
+      }
+      return Promise.resolve(createJsonResponse({}))
+    })
 
     render(
       <ServiciosTable
@@ -92,27 +93,27 @@ describe('ServiciosTable UI', () => {
     const servicio = buildServicio()
     const servicioInactivo = buildServicio({ estatus: false })
 
-    mockFetch
-      .mockResolvedValueOnce(createJsonResponse({ marcas: [] }))
-      .mockResolvedValueOnce(
-        createJsonResponse({
-          servicios: [servicio],
-          pagination: { total: 1, pages: 1, current: 1, limit: 50 }
-        })
-      )
-      .mockResolvedValueOnce(
-        createJsonResponse({
-          servicios: [servicio],
-          pagination: { total: 1, pages: 1, current: 1, limit: 50 }
-        })
-      )
-      .mockResolvedValueOnce(createJsonResponse(servicioInactivo))
-      .mockResolvedValueOnce(
-        createJsonResponse({
-          servicios: [servicioInactivo],
-          pagination: { total: 1, pages: 1, current: 1, limit: 50 }
-        })
-      )
+    let currentServicio = servicio
+
+    mockFetch.mockImplementation((input, init) => {
+      const url = typeof input === 'string' ? input : ''
+      if (url.startsWith('/api/marcas')) {
+        return Promise.resolve(createJsonResponse({ marcas: [] }))
+      }
+      if (url.startsWith('/api/servicios/') && init?.method === 'PATCH') {
+        currentServicio = servicioInactivo
+        return Promise.resolve(createJsonResponse(servicioInactivo))
+      }
+      if (url.startsWith('/api/servicios')) {
+        return Promise.resolve(
+          createJsonResponse({
+            servicios: [currentServicio],
+            pagination: { total: 1, pages: 1, current: 1, limit: 50 }
+          })
+        )
+      }
+      return Promise.resolve(createJsonResponse({}))
+    })
 
     const onCreate = jest.fn()
     const onEdit = jest.fn()

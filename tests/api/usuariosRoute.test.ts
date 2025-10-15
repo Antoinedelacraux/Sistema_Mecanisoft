@@ -24,6 +24,10 @@ describe('API /api/usuarios', () => {
   const getListUsuariosMock = () => listUsuarios as jest.Mock
   const getCreateUsuarioMock = () => createUsuario as jest.Mock
 
+  const buildSession = (id: string, permisos: string[] = ['usuarios.administrar']) => ({
+    user: { id, permisos }
+  })
+
   beforeEach(() => {
     jest.clearAllMocks()
   })
@@ -47,7 +51,7 @@ describe('API /api/usuarios', () => {
         pagination: { total: 1, limit: 10, current: 2, pages: 1 }
       }
 
-      getSessionMock().mockResolvedValue({ user: { id: '77' } })
+  getSessionMock().mockResolvedValue(buildSession('77'))
       getListUsuariosMock().mockResolvedValue(resultado)
 
       const requestUrl = [
@@ -82,7 +86,7 @@ describe('API /api/usuarios', () => {
     })
 
     it('propaga errores de negocio', async () => {
-      getSessionMock().mockResolvedValue({ user: { id: '5' } })
+  getSessionMock().mockResolvedValue(buildSession('5'))
       getListUsuariosMock().mockRejectedValue(new ApiError(422, 'Filtros inválidos'))
 
   const response = await GET({ url: 'http://localhost/api/usuarios' } as unknown as NextRequest)
@@ -93,7 +97,7 @@ describe('API /api/usuarios', () => {
     })
 
     it('maneja errores inesperados', async () => {
-      getSessionMock().mockResolvedValue({ user: { id: '5' } })
+  getSessionMock().mockResolvedValue(buildSession('5'))
       getListUsuariosMock().mockRejectedValue(new Error('boom'))
 
   const response = await GET({ url: 'http://localhost/api/usuarios' } as unknown as NextRequest)
@@ -123,7 +127,7 @@ describe('API /api/usuarios', () => {
       const payload = { nombre_usuario: 'nuevo' }
       const resultado = { usuario: { id_usuario: 10 } }
 
-      getSessionMock().mockResolvedValue({ user: { id: '9' } })
+  getSessionMock().mockResolvedValue(buildSession('9'))
       getCreateUsuarioMock().mockResolvedValue(resultado)
 
   const response = await POST(buildRequest(payload) as unknown as NextRequest)
@@ -137,7 +141,7 @@ describe('API /api/usuarios', () => {
     it('propaga errores de negocio', async () => {
       const payload = { nombre_usuario: 'duplicado' }
 
-      getSessionMock().mockResolvedValue({ user: { id: '12' } })
+  getSessionMock().mockResolvedValue(buildSession('12'))
       getCreateUsuarioMock().mockRejectedValue(new ApiError(400, 'Ya existe'))
 
   const response = await POST(buildRequest(payload) as unknown as NextRequest)
@@ -150,7 +154,7 @@ describe('API /api/usuarios', () => {
     it('maneja errores inesperados', async () => {
       const payload = { nombre_usuario: 'algo' }
 
-      getSessionMock().mockResolvedValue({ user: { id: '12' } })
+  getSessionMock().mockResolvedValue(buildSession('12'))
       getCreateUsuarioMock().mockRejectedValue(new Error('falló'))
 
   const response = await POST(buildRequest(payload) as unknown as NextRequest)

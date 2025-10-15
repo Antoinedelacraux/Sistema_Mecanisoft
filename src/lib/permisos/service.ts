@@ -1,11 +1,15 @@
 import { PrismaClient, Permiso } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/prisma'
+import type { ModuloPermisosDTO, PermisoCatalogoDTO } from '@/types/permisos'
 
 type CatalogoFiltro = {
   incluirInactivos?: boolean
 }
 
-export type PermisoCatalogo = Permiso
+export type PermisoCatalogo = Permiso & {
+  modulo_nombre?: string | null
+  modulo_descripcion?: string | null
+}
 
 export type PermisoRol = {
   id_permiso: number
@@ -15,6 +19,45 @@ export type PermisoRol = {
   modulo: string
   agrupador: string | null
   concedido: true
+  asignadoPorId: number | null
+  nota: string | null
+  asignadoEn: Date
+}
+
+export async function listarPermisosPorModulo(
+  prismaClient?: PrismaClient
+): Promise<ModuloPermisosDTO[]> {
+  const client = getClient(prismaClient)
+
+  const modulos = await client.modulo.findMany({
+    where: { activo: true },
+    orderBy: [{ nombre: 'asc' }],
+    include: {
+      permisos: {
+        where: { activo: true },
+        orderBy: [{ codigo: 'asc' }]
+      }
+    }
+  })
+
+  return modulos.map((modulo) => ({
+    clave: modulo.clave,
+    nombre: modulo.nombre,
+    descripcion: modulo.descripcion,
+    permisos: modulo.permisos.map<PermisoCatalogoDTO>((permiso) => ({
+      id_permiso: permiso.id_permiso,
+      codigo: permiso.codigo,
+      nombre: permiso.nombre,
+      descripcion: permiso.descripcion,
+      modulo: permiso.modulo,
+      agrupador: permiso.agrupador,
+      activo: permiso.activo,
+      creado_en: permiso.creado_en.toISOString(),
+      actualizado_en: permiso.actualizado_en.toISOString(),
+      modulo_nombre: modulo.nombre,
+      modulo_descripcion: modulo.descripcion
+    }))
+  }))
 }
 
 export type PermisoPersonalizado = {
@@ -83,8 +126,18 @@ export async function listarCatalogoPermisos(
 
   return client.permiso.findMany({
     where: filtros.incluirInactivos ? undefined : { activo: true },
+    include: { moduloEntidad: true },
     orderBy: [{ modulo: 'asc' }, { codigo: 'asc' }]
-  })
+  }).then((permisos) =>
+    permisos.map((permiso) => {
+      const { moduloEntidad, ...rest } = permiso
+      return {
+        ...rest,
+        modulo_nombre: moduloEntidad?.nombre ?? null,
+        modulo_descripcion: moduloEntidad?.descripcion ?? null
+      }
+    })
+  )
 }
 
 export async function obtenerPermisosDeRol(
@@ -99,14 +152,17 @@ export async function obtenerPermisosDeRol(
     orderBy: { permiso: { codigo: 'asc' } }
   })
 
-  return permisos.map(({ permiso }) => ({
+  return permisos.map(({ permiso, descripcion, asignado_por, creado_en }) => ({
     id_permiso: permiso.id_permiso,
     codigo: permiso.codigo,
     nombre: permiso.nombre,
     descripcion: permiso.descripcion,
     modulo: permiso.modulo,
     agrupador: permiso.agrupador,
-    concedido: true
+    concedido: true,
+    asignadoPorId: asignado_por ?? null,
+    nota: descripcion ?? null,
+    asignadoEn: creado_en
   }))
 }
 
@@ -139,10 +195,28 @@ export async function setPermisosDeRol({
         }
       })
 
-      await tx.rolPermiso.createMany({
-        data: idsSeleccionados.map((id_permiso) => ({ id_rol: idRol, id_permiso })),
-        skipDuplicates: true
-      })
+      if (idsSeleccionados.length) {
+        await tx.rolPermiso.createMany({
+          data: idsSeleccionados.map((id_permiso) => ({
+            id_rol: idRol,
+            id_permiso,
+            asignado_por: usuarioActorId,
+            descripcion: descripcion ?? null
+          })),
+          skipDuplicates: true
+        })
+
+        await tx.rolPermiso.updateMany({
+          where: {
+            id_rol: idRol,
+            id_permiso: { in: idsSeleccionados }
+          },
+          data: {
+            asignado_por: usuarioActorId,
+            ...(descripcion ? { descripcion } : {})
+          }
+        })
+      }
     } else {
       await tx.rolPermiso.deleteMany({ where: { id_rol: idRol } })
     }
@@ -157,15 +231,7 @@ export async function setPermisosDeRol({
     })
   })
 
-  return permisosSeleccionados.map((permiso) => ({
-    id_permiso: permiso.id_permiso,
-    codigo: permiso.codigo,
-    nombre: permiso.nombre,
-    descripcion: permiso.descripcion,
-    modulo: permiso.modulo,
-    agrupador: permiso.agrupador,
-    concedido: true
-  }))
+  return obtenerPermisosDeRol(idRol, client)
 }
 
 export async function obtenerPermisosPersonalizadosDeUsuario(

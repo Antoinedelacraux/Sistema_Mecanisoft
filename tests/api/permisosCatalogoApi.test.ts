@@ -11,6 +11,10 @@ jest.mock('@/lib/permisos/service', () => ({
   listarCatalogoPermisos: jest.fn()
 }))
 
+const buildSession = (permisos: string[] = ['permisos.asignar']) => ({
+  user: { id: '10', permisos }
+})
+
 describe('GET /api/permisos/catalogo', () => {
   beforeEach(() => {
     jest.clearAllMocks()
@@ -26,7 +30,7 @@ describe('GET /api/permisos/catalogo', () => {
   })
 
   it('retorna catálogo de permisos', async () => {
-    ;(getServerSession as jest.Mock).mockResolvedValue({ user: { id: '10' } })
+    ;(getServerSession as jest.Mock).mockResolvedValue(buildSession())
     ;(listarCatalogoPermisos as jest.Mock).mockResolvedValue([{ codigo: 'clientes.listar' }])
 
     const request = new NextRequest('http://localhost/api/permisos/catalogo?incluirInactivos=true')

@@ -125,7 +125,7 @@ const cambiarEstadoReserva = async (
     },
   });
 
-  await syncProductoStock(tx, reserva.inventario.producto.id_producto);
+  await syncProductoStock(tx, reserva.inventario.id_producto);
 
   const reservaActualizada = await tx.reservaInventario.update({
     where: { id_reserva_inventario: reserva.id_reserva_inventario },

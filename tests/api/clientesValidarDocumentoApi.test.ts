@@ -31,6 +31,10 @@ jest.mock('@/lib/prisma', () => {
   return { prisma: prismaMock }
 })
 
+const buildSession = (id: string, permisos: string[] = ['clientes.editar']) => ({
+  user: { id, permisos }
+})
+
 describe('POST /api/clientes/validar-documento', () => {
   beforeEach(() => {
     jest.clearAllMocks()
@@ -51,7 +55,7 @@ describe('POST /api/clientes/validar-documento', () => {
   })
 
   it('should report when document already belongs to another client', async () => {
-    ;(getServerSession as jest.Mock).mockResolvedValue({ user: { id: '1' } })
+    ;(getServerSession as jest.Mock).mockResolvedValue(buildSession('1'))
     ;(prisma.persona.findUnique as jest.Mock).mockResolvedValue({
       numero_documento: '12345678',
       nombre: 'Pedro',
@@ -74,7 +78,7 @@ describe('POST /api/clientes/validar-documento', () => {
   })
 
   it('should allow document when no persona or empresa exists', async () => {
-    ;(getServerSession as jest.Mock).mockResolvedValue({ user: { id: '1' } })
+    ;(getServerSession as jest.Mock).mockResolvedValue(buildSession('1'))
     ;(prisma.persona.findUnique as jest.Mock).mockResolvedValue(null)
     ;(prisma.empresaPersona.findUnique as jest.Mock).mockResolvedValue(null)
 
@@ -91,7 +95,7 @@ describe('POST /api/clientes/validar-documento', () => {
   })
 
   it('should allow document when persona belongs to the same client', async () => {
-    ;(getServerSession as jest.Mock).mockResolvedValue({ user: { id: '1' } })
+    ;(getServerSession as jest.Mock).mockResolvedValue(buildSession('1'))
     ;(prisma.persona.findUnique as jest.Mock).mockResolvedValue({
       numero_documento: '12345678',
       nombre: 'Luis',

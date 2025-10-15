@@ -20,10 +20,14 @@ jest.mock('@/lib/prisma', () => {
   }
 })
 
+const buildSession = (permisos: string[] = ['clientes.listar']) => ({
+  user: { id: '1', permisos }
+})
+
 describe('GET /api/clientes', () => {
   it('returns clients', async () => {
     const mockedGetServerSession = getServerSession as jest.Mock
-    mockedGetServerSession.mockResolvedValue({ user: { id: '1' } })
+  mockedGetServerSession.mockResolvedValue(buildSession())
 
     const mockedClienteFindMany = prisma.cliente.findMany as jest.Mock
     const mockedClienteCount = prisma.cliente.count as jest.Mock

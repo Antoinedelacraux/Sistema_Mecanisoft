@@ -1,19 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
+import type { NextRequest } from 'next/server'
 
-import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { listRolesController } from '@/lib/roles/controllers/list-roles'
+import { createRoleController } from '@/lib/roles/controllers/create-role'
 
-export async function GET(_request: NextRequest) {
-  const session = await getServerSession(authOptions)
-  if (!session) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
-  }
+export async function GET(request: NextRequest) {
+  return listRolesController(request)
+}
 
-  const roles = await prisma.rol.findMany({
-    where: { estatus: true },
-    orderBy: { nombre_rol: 'asc' }
-  })
-
-  return NextResponse.json({ roles })
+export async function POST(request: NextRequest) {
+  return createRoleController(request)
 }

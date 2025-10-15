@@ -9,31 +9,90 @@ async function main() {
   // Crear roles
   const rolAdmin = await prisma.rol.upsert({
     where: { nombre_rol: 'Administrador' },
-    update: {},
+    update: {
+      descripcion: 'Acceso total a todas las áreas del sistema',
+      estatus: true
+    },
     create: {
       nombre_rol: 'Administrador',
+      descripcion: 'Acceso total a todas las áreas del sistema'
     }
   })
   
   const rolMecanico = await prisma.rol.upsert({
     where: { nombre_rol: 'Mecánico' },
-    update: {},
+    update: {
+      descripcion: 'Rol operativo para técnicos/mecánicos del taller',
+      estatus: true
+    },
     create: {
       nombre_rol: 'Mecánico',
+      descripcion: 'Rol operativo para técnicos/mecánicos del taller'
     }
   })
   
   const rolRecepcionista = await prisma.rol.upsert({
     where: { nombre_rol: 'Recepcionista' },
-    update: {},
+    update: {
+      descripcion: 'Rol operativo para recepción y atención al cliente',
+      estatus: true
+    },
     create: {
       nombre_rol: 'Recepcionista',
+      descripcion: 'Rol operativo para recepción y atención al cliente'
     }
   })
   
   console.log('✅ Roles creados')
 
   // Crear catálogo base de permisos
+  const moduloMetadata: Record<string, { nombre: string; descripcion: string }> = {
+    dashboard: {
+      nombre: 'Dashboard',
+      descripcion: 'Indicadores generales del taller'
+    },
+    clientes: {
+      nombre: 'Clientes',
+      descripcion: 'Gestión de clientes y personas asociadas'
+    },
+    inventario: {
+      nombre: 'Inventario',
+      descripcion: 'Stock, movimientos y compras de inventario'
+    },
+    ordenes: {
+      nombre: 'Órdenes de trabajo',
+      descripcion: 'Flujos de órdenes y tareas del taller'
+    },
+    facturacion: {
+      nombre: 'Facturación',
+      descripcion: 'Emisión de comprobantes y ventas'
+    },
+    usuarios: {
+      nombre: 'Usuarios',
+      descripcion: 'Administración de cuentas y credenciales'
+    },
+    cotizaciones: {
+      nombre: 'Cotizaciones',
+      descripcion: 'Gestión de cotizaciones comerciales'
+    },
+    servicios: {
+      nombre: 'Servicios',
+      descripcion: 'Catálogo de servicios ofrecidos'
+    },
+    tareas: {
+      nombre: 'Tareas',
+      descripcion: 'Kanban y seguimiento de tareas internas'
+    },
+    reportes: {
+      nombre: 'Reportes',
+      descripcion: 'Reportes analíticos y descargas'
+    },
+    roles: {
+      nombre: 'Roles',
+      descripcion: 'Plantillas de permisos y asignaciones'
+    }
+  }
+
   const permisosBase = [
     {
       codigo: 'dashboard.ver',
@@ -113,6 +172,20 @@ async function main() {
       agrupador: 'seguridad'
     },
     {
+      codigo: 'roles.ver',
+      nombre: 'Ver módulo de roles',
+      descripcion: 'Permite visualizar el listado de roles del sistema',
+      modulo: 'roles',
+      agrupador: 'seguridad'
+    },
+    {
+      codigo: 'roles.administrar',
+      nombre: 'Administrar roles',
+      descripcion: 'Crea, edita, asigna permisos y desactiva roles',
+      modulo: 'roles',
+      agrupador: 'seguridad'
+    },
+    {
       codigo: 'cotizaciones.listar',
       nombre: 'Listar cotizaciones',
       descripcion: 'Permite visualizar el módulo y listado de cotizaciones',
@@ -163,6 +236,29 @@ async function main() {
     }
   ]
 
+  const modulosUnicos = Array.from(new Set(permisosBase.map((permiso) => permiso.modulo)))
+
+  for (const clave of modulosUnicos) {
+    const metadata = moduloMetadata[clave] ?? {
+      nombre: clave.charAt(0).toUpperCase() + clave.slice(1),
+      descripcion: ''
+    }
+
+    await prisma.modulo.upsert({
+      where: { clave },
+      update: {
+        nombre: metadata.nombre,
+        descripcion: metadata.descripcion || null,
+        activo: true
+      },
+      create: {
+        clave,
+        nombre: metadata.nombre,
+        descripcion: metadata.descripcion || null
+      }
+    })
+  }
+
   await prisma.permiso.createMany({ data: permisosBase, skipDuplicates: true })
 
   const permisosRegistrados = await prisma.permiso.findMany({
@@ -182,6 +278,17 @@ async function main() {
       id_permiso: permisoItem.id_permiso
     })),
     skipDuplicates: true
+  })
+
+  // Asegurar que los permisos base queden únicamente en el rol Administrador.
+  // Esto elimina asignaciones previas de los mismos permisos en otros roles.
+  await prisma.rolPermiso.deleteMany({
+    where: {
+      AND: [
+        { id_rol: { not: rolAdmin.id_rol } },
+        { id_permiso: { in: permisosRegistrados.map((p: { id_permiso: number }) => p.id_permiso) } }
+      ]
+    }
   })
 
   console.log('✅ Permisos base configurados')

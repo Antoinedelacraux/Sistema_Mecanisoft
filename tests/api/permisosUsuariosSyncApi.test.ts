@@ -11,13 +11,17 @@ jest.mock('@/lib/permisos/service', () => ({
   sincronizarPermisosUsuarioConRol: jest.fn()
 }))
 
+const buildSession = (id: string, permisos: string[] = ['permisos.asignar']) => ({
+  user: { id, permisos }
+})
+
 describe('POST /api/permisos/usuarios/[id]/sincronizar', () => {
   beforeEach(() => {
     jest.clearAllMocks()
   })
 
   it('sincroniza permisos base del usuario', async () => {
-    ;(getServerSession as jest.Mock).mockResolvedValue({ user: { id: '3' } })
+    ;(getServerSession as jest.Mock).mockResolvedValue(buildSession('3'))
     ;(sincronizarPermisosUsuarioConRol as jest.Mock).mockResolvedValue({ totalBase: 4 })
 
     const request = new NextRequest('http://localhost/api/permisos/usuarios/8/sincronizar', {

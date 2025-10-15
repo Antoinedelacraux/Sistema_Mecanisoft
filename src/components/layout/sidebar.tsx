@@ -21,7 +21,8 @@ import {
   ClipboardList,
   Clock,
   Receipt,
-  Boxes
+  Boxes,
+  Shield
 } from "lucide-react"
 
 import { usePermisos } from '@/hooks/use-permisos'
@@ -84,6 +85,12 @@ const menuItems: MenuItem[] = [
     icon: Users,
     href: "/dashboard/usuarios",
     permiso: 'usuarios.administrar'
+  },
+  {
+    title: "Roles",
+    icon: Shield,
+    href: "/dashboard/roles",
+    permisos: ['roles.ver', 'roles.administrar']
   },
   {
     title: "Tareas",

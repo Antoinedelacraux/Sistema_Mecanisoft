@@ -8,6 +8,8 @@ export type PermisoCatalogoDTO = {
   activo: boolean
   creado_en: string
   actualizado_en: string
+  modulo_nombre?: string | null
+  modulo_descripcion?: string | null
 }
 
 export type PermisoRolDTO = {
@@ -18,6 +20,9 @@ export type PermisoRolDTO = {
   modulo: string
   agrupador: string | null
   concedido: boolean
+  nota?: string | null
+  asignado_por_id?: number | null
+  asignado_en?: string
 }
 
 export type PermisoPersonalizadoDTO = {
@@ -41,4 +46,11 @@ export type PermisosUsuarioResponse = {
   base: PermisoRolDTO[]
   personalizados: PermisoPersonalizadoDTO[]
   resueltos: PermisoResueltoDTO[]
+}
+
+export type ModuloPermisosDTO = {
+  clave: string
+  nombre: string
+  descripcion: string | null
+  permisos: PermisoCatalogoDTO[]
 }

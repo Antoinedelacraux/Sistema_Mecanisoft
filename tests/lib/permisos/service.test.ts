@@ -40,6 +40,16 @@ describe('permisos/service', () => {
     ]
 
     prisma.permiso.findMany.mockResolvedValue(permisos)
+    prisma.rolPermiso.findMany.mockResolvedValue(
+      permisos.map((permiso) => ({
+        id_rol: 2,
+        id_permiso: permiso.id_permiso,
+        descripcion: null,
+        asignado_por: 99,
+        creado_en: new Date(),
+        permiso
+      }))
+    )
 
     await setPermisosDeRol({
       idRol: 2,
@@ -59,8 +69,8 @@ describe('permisos/service', () => {
     })
     expect(prisma.rolPermiso.createMany).toHaveBeenCalledWith({
       data: [
-        { id_rol: 2, id_permiso: 10 },
-        { id_rol: 2, id_permiso: 11 }
+        { id_rol: 2, id_permiso: 10, asignado_por: 99, descripcion: null },
+        { id_rol: 2, id_permiso: 11, asignado_por: 99, descripcion: null }
       ],
       skipDuplicates: true
     })
@@ -233,7 +243,8 @@ function createPrismaMock() {
     findMany: jest.fn(),
     findUnique: jest.fn(),
     deleteMany: jest.fn(),
-    createMany: jest.fn()
+    createMany: jest.fn(),
+    updateMany: jest.fn()
   }
 
   const usuario = {

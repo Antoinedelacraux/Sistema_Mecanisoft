@@ -21,6 +21,10 @@ jest.mock('@/lib/prisma', () => ({
   },
 }))
 
+const buildSession = (permisos: string[] = ['tareas.ver']) => ({
+  user: { id: '1', permisos }
+})
+
 describe('GET /api/tareas', () => {
   beforeEach(() => {
     jest.clearAllMocks()
@@ -39,12 +43,12 @@ describe('GET /api/tareas', () => {
 
   it('filters tareas with trabajador null OR activo when no trabajador_id', async () => {
     const mockedGetServerSession = getServerSession as any
-    mockedGetServerSession.mockResolvedValue({ user: { id: '1' } })
+    mockedGetServerSession.mockResolvedValue(buildSession())
 
   const mockedTareaFindMany = (prisma.tarea.findMany as any)
   mockedTareaFindMany.mockResolvedValue([])
-  const mockedTrabajadorFindMany = (prisma.trabajador.findMany as any)
-  mockedTrabajadorFindMany.mockResolvedValue([{ id_trabajador: 2 }, { id_trabajador: 3 }])
+    const mockedTrabajadorFindMany = (prisma.trabajador.findMany as any)
+    mockedTrabajadorFindMany.mockResolvedValue([{ id_trabajador: 2 }, { id_trabajador: 3 }])
 
     const req = new NextRequest('http://localhost/api/tareas?estado=pendiente')
     const res = await GET(req)
@@ -55,18 +59,26 @@ describe('GET /api/tareas', () => {
     const args = mockedTareaFindMany.mock.calls[0][0]
 
     expect(args.where.OR).toBeDefined()
-    const or = args.where.OR
-    expect(or).toEqual(
-      expect.arrayContaining([
-        { id_trabajador: null },
-        { id_trabajador: { in: [2, 3] } },
-      ])
+    const or = args.where.OR as Array<Record<string, any>>
+    expect(Array.isArray(or)).toBe(true)
+
+    const nullishEntry = or.find(
+      (item) =>
+        Object.prototype.hasOwnProperty.call(item, 'id_trabajador') &&
+        (item as { id_trabajador?: unknown }).id_trabajador == null
     )
+    expect(nullishEntry).toBeDefined()
+
+    const inEntry = or.find((item) => {
+      const value = (item as { id_trabajador?: { in?: unknown } }).id_trabajador
+      return typeof value === 'object' && value !== null && Array.isArray((value as { in?: unknown[] }).in)
+    })
+    expect(inEntry?.id_trabajador?.in).toEqual([2, 3])
   })
 
   it('filters tareas by specific trabajador_id when provided', async () => {
     const mockedGetServerSession = getServerSession as any
-    mockedGetServerSession.mockResolvedValue({ user: { id: '1' } })
+    mockedGetServerSession.mockResolvedValue(buildSession())
 
   const mockedTareaFindMany = (prisma.tarea.findMany as any)
   mockedTareaFindMany.mockResolvedValue([])

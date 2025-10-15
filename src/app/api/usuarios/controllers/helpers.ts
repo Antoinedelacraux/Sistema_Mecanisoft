@@ -54,11 +54,21 @@ export function normalizeUsername(username: string) {
 }
 
 export function generateTemporalPassword(length = 12) {
-  // Base64 genera caracteres / y +, los reemplazamos.
-  return randomBytes(Math.ceil(length * 0.75))
-    .toString('base64')
-    .replace(/[^a-zA-Z0-9]/g, '')
-    .slice(0, length)
+  if (length <= 0) {
+    return ''
+  }
+
+  let resultado = ''
+
+  while (resultado.length < length) {
+    const chunk = randomBytes(Math.ceil(length * 0.75 + 1))
+      .toString('base64')
+      .replace(/[^a-zA-Z0-9]/g, '')
+
+    resultado += chunk
+  }
+
+  return resultado.slice(0, length)
 }
 
 export function hashPassword(value: string) {

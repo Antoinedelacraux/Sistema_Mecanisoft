@@ -1,15 +1,19 @@
 import { NextRequest } from 'next/server'
 import { GET, PUT } from '@/app/api/permisos/roles/[id]/route'
 import { getServerSession } from 'next-auth'
-import { obtenerPermisosDeRol, setPermisosDeRol } from '@/lib/permisos/service'
+import { obtenerPermisosDeRol } from '@/lib/permisos/service'
+import { assignPermissionsToRole } from '@/lib/roles/service'
 
 jest.mock('next-auth', () => ({
   getServerSession: jest.fn()
 }))
 
 jest.mock('@/lib/permisos/service', () => ({
-  obtenerPermisosDeRol: jest.fn(),
-  setPermisosDeRol: jest.fn()
+  obtenerPermisosDeRol: jest.fn()
+}))
+
+jest.mock('@/lib/roles/service', () => ({
+  assignPermissionsToRole: jest.fn()
 }))
 
 const ensureResponse = <T extends Response>(response: T | undefined): T => {
@@ -26,7 +30,7 @@ describe('API permisos rol', () => {
   })
 
   it('GET retorna permisos del rol', async () => {
-    ;(getServerSession as jest.Mock).mockResolvedValue({ user: { id: '1' } })
+  ;(getServerSession as jest.Mock).mockResolvedValue({ user: { id: '1', permisos: ['roles.administrar'] } })
     ;(obtenerPermisosDeRol as jest.Mock).mockResolvedValue([{ codigo: 'clientes.listar' }])
 
     const response = ensureResponse(
@@ -42,12 +46,12 @@ describe('API permisos rol', () => {
   })
 
   it('PUT actualiza permisos del rol', async () => {
-    ;(getServerSession as jest.Mock).mockResolvedValue({ user: { id: '5' } })
-    ;(setPermisosDeRol as jest.Mock).mockResolvedValue([{ codigo: 'clientes.listar' }])
+  ;(getServerSession as jest.Mock).mockResolvedValue({ user: { id: '5', permisos: ['roles.administrar'] } })
+  ;(assignPermissionsToRole as jest.Mock).mockResolvedValue([{ codigo: 'clientes.listar' }])
 
     const request = new NextRequest('http://localhost/api/permisos/roles/2', {
       method: 'PUT',
-      body: JSON.stringify({ codigos: ['clientes.listar'] }),
+      body: JSON.stringify({ permisos: ['clientes.listar'] }),
       headers: { 'Content-Type': 'application/json' }
     })
 
@@ -58,11 +62,6 @@ describe('API permisos rol', () => {
     )
 
     expect(response.status).toBe(200)
-    expect(setPermisosDeRol).toHaveBeenCalledWith({
-      idRol: 2,
-      codigosPermisos: ['clientes.listar'],
-      usuarioActorId: 5,
-      descripcion: undefined
-    })
+    expect(assignPermissionsToRole).toHaveBeenCalledWith(2, { permisos: ['clientes.listar'], nota: null }, 5)
   })
 })
