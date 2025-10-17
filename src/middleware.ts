@@ -3,6 +3,13 @@ import { NextResponse } from "next/server"
 
 export default withAuth(
   function middleware(req) {
+    try {
+      // Log minimal auth presence info for debugging in Vercel logs (no token value)
+      // eslint-disable-next-line no-console
+      console.log('[MIDDLEWARE] path=%s hasToken=%s requiresPasswordChange=%s', req.nextUrl.pathname, Boolean(req.nextauth.token), Boolean(req.nextauth.token?.requiresPasswordChange))
+    } catch (e) {
+      // ignore logging errors
+    }
     // Redirigir a dashboard si está en la raíz
     if (req.nextUrl.pathname === "/") {
       if (req.nextauth.token?.requiresPasswordChange) {

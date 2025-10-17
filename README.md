@@ -52,10 +52,32 @@ docker compose exec web npx tsx scripts/seed-sample-data.ts
 
 Más detalles y comandos en `manuales/manual_docker.md`.
 
+## ☁️ Despliegue rápido en Vercel
+
+Resumen express (consulta `manuales/manual_vercel.md` para el paso a paso completo):
+
+Live demo (instancia pública): https://sistema-mecanisoft-z2td.vercel.app/
+
+1. Provisión de base de datos administrada (Neon/Supabase/Railway) y exporta su `DATABASE_URL`.
+2. Ejecuta migraciones apuntando al remoto:
+   ```powershell
+   $env:DATABASE_URL="postgresql://..."
+   npx prisma migrate deploy
+   npm run seed
+   ```
+3. Configura las variables `DATABASE_URL`, `NEXTAUTH_SECRET` y `NEXTAUTH_URL` en Vercel.
+4. Despliega:
+   ```powershell
+   vercel --prod
+   ```
+
+El archivo `vercel.json` y el script `postinstall` (`prisma generate`) ya están preparados para la plataforma.
+
 ## 📚 Documentación adicional
 
 - `manuales/manual_instalacion.md`: guía paso a paso para preparar el entorno, ejecutar seeds y resolver problemas comunes.
 - `manuales/manual_docker.md`: instrucciones detalladas para levantar y administrar el proyecto con Docker (`docker compose`).
+- `manuales/manual_vercel.md`: procedimiento para desplegar en Vercel con una base PostgreSQL administrada.
 
 ## 🔗 Scripts útiles
 

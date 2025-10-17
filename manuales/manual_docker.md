@@ -34,6 +34,67 @@ Todos estos archivos se encuentran en la raíz del proyecto.
 
 Puedes modificar estos valores directamente en `docker-compose.yml` antes de construir.
 
+## 4. Instalación usando el Docker incluido en este repositorio
+
+Este repositorio ya incluye un `Dockerfile` y `docker-compose.yml` preparados para levantar la aplicación y una base PostgreSQL lista para desarrollo. Sigue estos pasos desde PowerShell (Windows) o tu terminal preferida.
+
+1. Clona o sitúate en la carpeta del proyecto:
+```powershell
+cd C:\ruta\a\proyecto\sistema-mecanico
+```
+
+2. Construye y levanta los contenedores en primer plano (útil para ver logs la primera vez):
+```powershell
+docker compose up --build
+```
+
+3. Comportamiento automático del contenedor `web` (definido en `docker-compose.yml`):
+   - Ejecuta `npx prisma migrate deploy` para aplicar migraciones.
+   - Corre `npm run seed` para poblar roles/permiso/catálogos básicos.
+   - Inicia el servidor con `npm run start`.
+
+4. Si quieres ejecutar el proceso en segundo plano:
+```powershell
+docker compose up -d --build
+```
+
+5. Crear usuario administrador de pruebas (si no está creado):
+   - El seed principal crea `admin` por defecto. Si prefieres `admin.pruebas` ejecuta dentro del contenedor:
+```powershell
+docker compose exec web npx tsx scripts/create-admin-user.ts
+```
+
+6. Cargar dataset de demostración (opcional):
+```powershell
+docker compose exec web npx tsx scripts/seed-sample-data.ts
+```
+
+7. Ejecutar migraciones manualmente (si necesitas forzar una re-aplicación):
+```powershell
+docker compose exec web npx prisma migrate deploy
+```
+
+8. Ver logs en vivo (útil para depurar problemas de despliegue/migraciones):
+```powershell
+docker compose logs -f web
+```
+
+9. Parar y borrar (sin borrar volúmenes):
+```powershell
+docker compose down
+```
+
+10. Borrar datos persistentes (volumen de PostgreSQL):
+```powershell
+docker compose down -v
+```
+
+Consejos y notas:
+- Si necesitas cambiar credenciales o puertos, edita `docker-compose.yml` antes de `up --build`.
+- Si al construir falla `npm install` dentro de la imagen, elimina `node_modules` locales y vuelve a intentar. En Windows, a veces `npm ci` dentro del contenedor reduce problemas de permisos.
+- El contenedor web ejecuta migraciones al inicio; si ves errores en logs relacionados con Prisma, copia el error exacto y revisa `prisma/migrations`.
+
+
 ## 4. Primer arranque
 
 1. Abre una terminal en la carpeta del proyecto.

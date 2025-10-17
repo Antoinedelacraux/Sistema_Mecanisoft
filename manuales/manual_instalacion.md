@@ -2,6 +2,8 @@
 
 Este manual explica cómo levantar el sistema **MecaniSoft** en una máquina que no tiene las herramientas instaladas. Sigue cada sección en orden.
 
+Acceso demo pública: https://sistema-mecanisoft-z2td.vercel.app/
+
 ## 1. Programas necesarios
 
 1. **Node.js 20 LTS** (incluye `npm`). Descarga desde [https://nodejs.org](https://nodejs.org) e instala con las opciones por defecto.
@@ -84,6 +86,7 @@ El sistema obliga a cambiar la contraseña si una cuenta tiene clave temporal; e
 
 1. Inicia sesión como `admin.pruebas`.
 2. Revisa el dashboard, el módulo de órdenes y el inventario para confirmar que los datos de prueba aparecen.
+   - También puedes verificar la instancia desplegada en Vercel: https://sistema-mecanisoft-z2td.vercel.app/
 3. Si necesitas recalcular datos, puedes relanzar el script de demo (`npx tsx scripts/seed-sample-data.ts`).
 
 ## 8. Problemas comunes
