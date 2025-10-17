@@ -51,9 +51,17 @@ async function main() {
       nombre: 'Dashboard',
       descripcion: 'Indicadores generales del taller'
     },
+    indicadores: {
+      nombre: 'Indicadores',
+      descripcion: 'Paneles analíticos y KPIs operativos'
+    },
     clientes: {
       nombre: 'Clientes',
       descripcion: 'Gestión de clientes y personas asociadas'
+    },
+    mantenimientos: {
+      nombre: 'Mantenimientos',
+      descripcion: 'Planificación y seguimiento de mantenimientos'
     },
     inventario: {
       nombre: 'Inventario',
@@ -100,6 +108,13 @@ async function main() {
       descripcion: 'Acceso al panel principal con indicadores del taller',
       modulo: 'dashboard',
       agrupador: 'general'
+    },
+    {
+      codigo: 'indicadores.ver',
+      nombre: 'Ver indicadores avanzados',
+      descripcion: 'Acceso al módulo de indicadores y analítica de mantenimientos',
+      modulo: 'indicadores',
+      agrupador: 'analitica'
     },
     {
       codigo: 'clientes.listar',
@@ -149,6 +164,13 @@ async function main() {
       descripcion: 'Permite marcar órdenes como completadas y registrar cierre',
       modulo: 'ordenes',
       agrupador: 'gestion_ordenes'
+    },
+    {
+      codigo: 'mantenimientos.ver',
+      nombre: 'Ver mantenimientos planificados',
+      descripcion: 'Permite acceder al módulo y reportes de mantenimientos',
+      modulo: 'mantenimientos',
+      agrupador: 'gestion_mantenimientos'
     },
     {
       codigo: 'facturacion.emitir',

@@ -86,3 +86,11 @@ Internamente ejecuta:
 3. `npm run test:critical`
 
 ⚠️ El chequeo de tipos (`tsc --noEmit`) expone deuda técnica previa (principalmente sesiones opcionales) y hoy rompe la cadena. Mantuvimos ese comportamiento para visibilizar los pendientes; corrige los errores reportados antes de abrir PRs.
+
+## Módulo de indicadores (MVP)
+
+- Al ejecutar `npm run seed:indicadores` se genera un dataset sintético (~100 registros) con órdenes demo, mantenimientos reprogramados, técnicos y repuestos críticos para validar los KPIs.
+- Los indicadores viven en `src/lib/indicadores/mantenimientos.ts`; hay endpoints REST bajo `/api/indicadores/*` protegidos por los permisos `indicadores.ver` o `mantenimientos.ver`.
+- La vista `/dashboard/indicadores` consume directamente esos servicios en el servidor e incluye cards KPI, donut por prioridad y heatmap de utilización.
+- Pruebas unitarias en `tests/lib/indicadores/mantenimientos.test.ts` cubren cálculos principales (coverage, on-schedule, utilización y cierre en SLA).
+- Puedes precargar el cache de KPIs con `npm run indicadores:warm-cache`. Acepta flags opcionales (`--from`, `--to`, `--window-days`, `--ttl-hours`, `--indicators`, `--sla`) y, por defecto, recalcula los últimos 30 días con `force=true`.

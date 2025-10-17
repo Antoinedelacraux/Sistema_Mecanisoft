@@ -22,7 +22,8 @@ import {
   Clock,
   Receipt,
   Boxes,
-  Shield
+  Shield,
+  BarChart3
 } from "lucide-react"
 
 import { usePermisos } from '@/hooks/use-permisos'
@@ -41,6 +42,12 @@ const menuItems: MenuItem[] = [
     icon: Home,
     href: "/dashboard",
     permiso: 'dashboard.ver'
+  },
+  {
+    title: "Indicadores",
+    icon: BarChart3,
+    href: "/dashboard/indicadores",
+    permisos: ['indicadores.ver', 'mantenimientos.ver']
   },
   {
     title: "Clientes",
@@ -215,8 +222,8 @@ export function Sidebar() {
         <nav className="flex-1 p-4">
           <ul className="space-y-1">
             {visibleItems.map((item) => {
-              const isActive = pathname === item.href
               const Icon = item.icon
+              const isActive = !!pathname && (pathname === item.href || pathname.startsWith(item.href + '/'))
               
               return (
                 <li key={item.href}>

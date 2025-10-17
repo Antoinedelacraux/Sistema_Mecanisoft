@@ -210,6 +210,7 @@ model Cliente {
   vehiculos                 Vehiculo[]
   cotizaciones              Cotizacion[]
   comprobantes              Comprobante[]
+  mantenimientos            Mantenimiento[]
 
   @@map("cliente")
 }
@@ -296,6 +297,8 @@ model Usuario {
   permisos_asignados        RolPermiso[]          @relation("RolPermisoAsignado")
   compras_registradas       Compra[]
   movimientos_basicos       Movimiento[]
+  ordenes_historial         OrdenHistorial[]      @relation("OrdenHistorialUsuario")
+  mantenimientos_historial  MantenimientoHistorial[] @relation("MantenimientoHistorialUsuario")
 
   @@map("usuario")
 }
@@ -530,6 +533,7 @@ model Vehiculo {
   modelo                Modelo                @relation(fields: [id_modelo], references: [id_modelo])
   transaccion_vehiculos TransaccionVehiculo[]
   cotizaciones          Cotizacion[]
+  mantenimientos        Mantenimiento[]
 
   @@map("vehiculo")
 }
@@ -560,6 +564,7 @@ model Transaccion {
   fecha_inicio       DateTime?
   fecha_fin_estimada DateTime?
   fecha_fin_real     DateTime?
+  fecha_cierre       DateTime?
   // Duración total estimada de la orden
   duracion_min       Int?
   duracion_max       Int?
@@ -584,8 +589,12 @@ model Transaccion {
   pagos                    Pago[]
   comprobantes             Comprobante[]
   reservas_inventario      ReservaInventario[]
+  historial                OrdenHistorial[]
+  mantenimiento            Mantenimiento?        @relation("OrdenMantenimiento")
+  feedback                 Feedback[]
 
   @@map("transaccion")
+  @@index([fecha_cierre])
 }
 
 model Pago {
@@ -881,6 +890,7 @@ model InventarioProducto {
   costo_promedio         Decimal  @default(0) @db.Decimal(14, 4)
   creado_en              DateTime @default(now())
   actualizado_en         DateTime @updatedAt
+  es_critico             Boolean  @default(false)
 
   producto  Producto          @relation(fields: [id_producto], references: [id_producto])
   almacen   Almacen           @relation(fields: [id_almacen], references: [id_almacen])
@@ -889,7 +899,95 @@ model InventarioProducto {
   reservas   ReservaInventario[]
 
   @@unique([id_producto, id_almacen, id_almacen_ubicacion])
+  @@index([es_critico])
   @@map("inventario_producto")
+}
+
+model OrdenHistorial {
+  id_orden_historial Int      @id @default(autoincrement())
+  orden_id           Int
+  old_status         String?  @db.VarChar(30)
+  new_status         String   @db.VarChar(30)
+  nota               String?  @db.Text
+  created_at         DateTime @default(now())
+  changed_by         Int?
+
+  orden  Transaccion @relation(fields: [orden_id], references: [id_transaccion], onDelete: Cascade)
+  usuario Usuario?   @relation("OrdenHistorialUsuario", fields: [changed_by], references: [id_usuario])
+
+  @@index([orden_id, created_at])
+  @@map("orden_historial")
+}
+
+model Mantenimiento {
+  id_mantenimiento  Int      @id @default(autoincrement())
+  codigo            String   @unique @db.VarChar(50)
+  id_vehiculo       Int
+  id_cliente        Int?
+  id_transaccion    Int?     @unique(map: "mantenimiento_id_transaccion_key")
+  titulo            String?  @db.VarChar(150)
+  descripcion       String?  @db.Text
+  estado            String   @default("planificado") @db.VarChar(30)
+  prioridad         String   @default("media") @db.VarChar(20)
+  fecha_programada  DateTime
+  fecha_inicio      DateTime?
+  fecha_realizada   DateTime?
+  motivo_cancelacion String? @db.Text
+  creado_en         DateTime @default(now())
+  actualizado_en    DateTime @updatedAt
+
+  vehiculo    Vehiculo     @relation(fields: [id_vehiculo], references: [id_vehiculo])
+  cliente     Cliente?     @relation(fields: [id_cliente], references: [id_cliente])
+  orden       Transaccion? @relation("OrdenMantenimiento", fields: [id_transaccion], references: [id_transaccion])
+  historial   MantenimientoHistorial[]
+
+  @@index([fecha_programada])
+  @@index([estado])
+  @@map("mantenimiento")
+}
+
+model MantenimientoHistorial {
+  id_mantenimiento_historial Int      @id @default(autoincrement())
+  mantenimiento_id           Int
+  old_fecha                  DateTime?
+  new_fecha                  DateTime?
+  reason                     String?  @db.Text
+  created_at                 DateTime @default(now())
+  changed_by                 Int?
+
+  mantenimiento Mantenimiento @relation(fields: [mantenimiento_id], references: [id_mantenimiento], onDelete: Cascade)
+  usuario       Usuario?      @relation("MantenimientoHistorialUsuario", fields: [changed_by], references: [id_usuario])
+
+  @@index([mantenimiento_id, created_at])
+  @@map("mantenimiento_historial")
+}
+
+model Feedback {
+  id_feedback Int      @id @default(autoincrement())
+  orden_id    Int
+  score       Int
+  comentario  String?  @db.Text
+  creado_en   DateTime @default(now())
+
+  orden Transaccion @relation(fields: [orden_id], references: [id_transaccion], onDelete: Cascade)
+
+  @@index([orden_id])
+  @@map("feedback")
+}
+
+model IndicadorCache {
+  id_indicador_cache Int      @id @default(autoincrement())
+  indicador          String   @db.VarChar(60)
+  hash               String   @unique @db.VarChar(64)
+  rango_desde        DateTime
+  rango_hasta        DateTime
+  parametros         Json?
+  payload            Json
+  computed_at        DateTime @default(now())
+  expires_at         DateTime?
+
+  @@index([indicador, rango_desde, rango_hasta])
+  @@map("indicador_cache")
 }
 
 model MovimientoInventario {

@@ -9,7 +9,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { authOptions } from "@/lib/auth"
-import { parseDashboardParams } from "@/lib/dashboard-params"
+import { parseDashboardParams, type DashboardSearchParamsInput } from "@/lib/dashboard-params"
 import { prisma } from "@/lib/prisma"
 import { asegurarPermiso, PermisoDenegadoError, SesionInvalidaError } from "@/lib/permisos/guards"
 import { getDashboardSummary, getTopProductos, getVentasPorMetodoPago, getVentasSeries } from "@/lib/dashboard"
@@ -74,7 +74,7 @@ const emptySummary: DashboardSummary = {
 }
 
 type DashboardPageProps = {
-  searchParams: Record<string, string | string[] | undefined>
+  searchParams: Promise<DashboardSearchParamsInput> | DashboardSearchParamsInput
 }
 
 const DashboardPage = async ({ searchParams }: DashboardPageProps) => {
@@ -106,7 +106,8 @@ const DashboardPage = async ({ searchParams }: DashboardPageProps) => {
     throw error
   }
 
-  const { filters, granularity, topLimit } = parseDashboardParams(searchParams)
+  const resolvedSearchParams = await searchParams
+  const { filters, granularity, topLimit } = parseDashboardParams(resolvedSearchParams)
 
   let summary: DashboardSummary = emptySummary
   let ventasSeries: VentasSeriesPoint[] = []

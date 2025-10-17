@@ -6,6 +6,15 @@ const DEFAULT_RANGE_DAYS = 30
 const MAX_TOP_LIMIT = 50
 const DEFAULT_TOP_LIMIT = 10
 
+type SearchParamsRecord = Record<string, string | string[] | undefined>
+
+type SearchParamsIterable = {
+  get(name: string): string | null
+  entries(): IterableIterator<[string, string]>
+}
+
+export type DashboardSearchParamsInput = SearchParamsRecord | URLSearchParams | SearchParamsIterable | null | undefined
+
 const isValidGranularity = (value: string | null): value is VentasSeriesGranularity =>
   value === 'day' || value === 'week' || value === 'month'
 
@@ -30,11 +39,31 @@ const parseDate = (value: string | null): Date | undefined => {
   return parsed
 }
 
-const ensureURLSearchParams = (
-  params: URLSearchParams | Record<string, string | string[] | undefined>
-): URLSearchParams => {
+const isIterableParams = (value: unknown): value is SearchParamsIterable => {
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
+  const candidate = value as Record<string, unknown>
+  return typeof candidate.entries === 'function' && typeof candidate.get === 'function'
+}
+
+const ensureURLSearchParams = (params: DashboardSearchParamsInput): URLSearchParams => {
+  if (!params) {
+    return new URLSearchParams()
+  }
+
   if (params instanceof URLSearchParams) {
     return params
+  }
+
+  if (isIterableParams(params)) {
+    const searchParams = new URLSearchParams()
+    for (const [key, value] of params.entries()) {
+      if (typeof value === 'string') {
+        searchParams.append(key, value)
+      }
+    }
+    return searchParams
   }
 
   const searchParams = new URLSearchParams()
@@ -63,9 +92,7 @@ export type ParsedDashboardParams = {
   topLimit: number
 }
 
-export const parseDashboardParams = (
-  params: URLSearchParams | Record<string, string | string[] | undefined>
-): ParsedDashboardParams => {
+export const parseDashboardParams = (params: DashboardSearchParamsInput): ParsedDashboardParams => {
   const searchParams = ensureURLSearchParams(params)
   const to = parseDate(searchParams.get('to')) ?? new Date()
   const from = parseDate(searchParams.get('from')) ?? subDays(to, DEFAULT_RANGE_DAYS - 1)

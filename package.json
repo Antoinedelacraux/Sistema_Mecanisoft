@@ -11,10 +11,12 @@
     "test:critical": "jest tests/api/serviciosApi.test.ts tests/api/serviciosIdApi.test.ts tests/api/inventarioReportesApi.test.ts tests/ui/serviciosTable.test.tsx",
     "verify": "npm run lint && npm run typecheck && npm run test:critical",
     "seed": "tsx prisma/seed.ts",
+    "seed:indicadores": "tsx prisma/seed-indicadores.ts",
     "backfill:ventas": "tsx scripts/backfill-ventas.ts",
-  "grant:inventario": "tsx scripts/grant-inventario-permissions.ts",
+    "grant:inventario": "tsx scripts/grant-inventario-permissions.ts",
     "grant:ventas": "tsx scripts/grant-ventas-permissions.ts",
-    "prisma:fix-locks": "tsx scripts/fix-prisma-locks.ts"
+    "prisma:fix-locks": "tsx scripts/fix-prisma-locks.ts",
+    "indicadores:warm-cache": "tsx scripts/warm-indicadores-cache.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
