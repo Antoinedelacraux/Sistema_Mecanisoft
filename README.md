@@ -1,41 +1,83 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# MecaniSoft – Sistema de Gestión de Taller
 
-## Getting Started
+Aplicación web construida con **Next.js 15**, **TypeScript** y **Prisma** para gestionar clientes, vehículos, órdenes de trabajo, inventario y facturación de un taller mecánico. Incluye indicadores operativos, manejo de permisos por rol, seeds de datos realistas y soporte para despliegue vía Docker.
 
-First, run the development server:
+## ⚡️ Puntos clave
+- Arquitectura App Router (Next.js) con componentes shadcn UI.
+- Autenticación con NextAuth y permisos granulares (roles y asignaciones manuales).
+- Integración con PostgreSQL mediante Prisma ORM.
+- Scripts para poblar datos base y dataset de demostración completo.
+- KPIs de mantenimiento con caché y visualizaciones (line chart, donut, heatmap).
+- Soporte de despliegue local y por contenedor (`docker compose`).
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## 🚀 Primeros pasos (entorno local)
+
+1. Instala dependencias:
+   ```powershell
+   npm install
+   ```
+2. Configura `.env` con al menos:
+   ```env
+   DATABASE_URL="postgresql://USER:PASS@localhost:5432/taller_mecanico?schema=public"
+   NEXTAUTH_SECRET="clave-aleatoria"
+   NEXTAUTH_URL="http://localhost:3000"
+   ```
+3. Inicializa la base:
+   ```powershell
+   npx prisma migrate reset --force
+   npm run seed
+   npx tsx scripts/create-admin-user.ts
+   # Opcional: dataset de demo completo
+   npx tsx scripts/seed-sample-data.ts
+   ```
+4. Levanta el servidor de desarrollo:
+   ```powershell
+   npm run dev
+   ```
+5. Abre `http://localhost:3000` y accede con las credenciales demo (`admin.pruebas` / `Admin123!`).
+
+## 🐳 Levantar con Docker
+
+Incluimos `Dockerfile`, `.dockerignore` y `docker-compose.yml`. Con Docker Desktop activo:
+
+```powershell
+docker compose up --build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Esto levanta PostgreSQL + app, aplica migraciones y ejecuta `npm run seed`. Para cargar datos de demo dentro del contenedor:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```powershell
+docker compose exec web npx tsx scripts/seed-sample-data.ts
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Más detalles y comandos en `manuales/manual_docker.md`.
 
-## Learn More
+## 📚 Documentación adicional
 
-To learn more about Next.js, take a look at the following resources:
+- `manuales/manual_instalacion.md`: guía paso a paso para preparar el entorno, ejecutar seeds y resolver problemas comunes.
+- `manuales/manual_docker.md`: instrucciones detalladas para levantar y administrar el proyecto con Docker (`docker compose`).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 🔗 Scripts útiles
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Script | Descripción |
+|--------|-------------|
+| `npm run dev` | Servidor de desarrollo con Turbopack |
+| `npm run build` | Build de producción |
+| `npm run seed` | Datos base (roles, permisos, catálogos) |
+| `npx tsx scripts/seed-sample-data.ts` | Dataset de demostración integral |
+| `npm run indicadores:warm-cache` | Precálculo de KPIs de mantenimiento |
+| `npm run verify` | Lint + typecheck + pruebas críticas |
 
-## Deploy on Vercel
+## ✅ Checklist rápida antes de entregar
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- [ ] `.env` configurado (al menos `DATABASE_URL`, `NEXTAUTH_SECRET`).
+- [ ] Migraciones ejecutadas (`npx prisma migrate deploy`).
+- [ ] Seeds básicos aplicados (`npm run seed`).
+- [ ] Usuario admin generado (`npx tsx scripts/create-admin-user.ts`).
+- [ ] Datos demo cargados si aplica (`npx tsx scripts/seed-sample-data.ts`).
+- [ ] Servidor funcionando (`npm run dev` o `docker compose up`).
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-
-## Ordenes de trabajo
+## 🧰 Órdenes de trabajo
 
 - Los servicios de orden (`src/lib/ordenes/crear.ts` y `src/lib/ordenes/actualizar.ts`) utilizan validaciones con [Zod](https://zod.dev). El esquema `actualizarOrdenSchema` asegura que cualquier actualización incluya identificadores válidos, estados permitidos y montos positivos.
 - Las pruebas unitarias de estos servicios viven en `tests/lib/ordenes/crearOrden.test.ts` y `tests/lib/ordenes/actualizarOrden.test.ts`, donde se mockean las dependencias de Prisma e inventario.
@@ -49,9 +91,9 @@ npx jest tests/lib/ordenes
 
 - El seed (`npm run seed`) ahora crea también los permisos `servicios.*`, `cotizaciones.*`, `tareas.*` y `reportes.ver`. Después de reseed recuerda volver a iniciar sesión para que la sesión consuma los permisos actualizados.
 - Agregamos un set de pruebas enfocadas en los guardas de permisos:
-	- API servicios: `tests/api/serviciosApi.test.ts` y `tests/api/serviciosIdApi.test.ts`
-	- API reportes de inventario: `tests/api/inventarioReportesApi.test.ts`
-	- UI `ServiciosTable`: `tests/ui/serviciosTable.test.tsx`
+   - API servicios: `tests/api/serviciosApi.test.ts` y `tests/api/serviciosIdApi.test.ts`
+   - API reportes de inventario: `tests/api/inventarioReportesApi.test.ts`
+   - UI `ServiciosTable`: `tests/ui/serviciosTable.test.tsx`
 
 Para ejecutar todas ellas en bloque:
 

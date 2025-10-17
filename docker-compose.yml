@@ -1,0 +1,30 @@
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: taller_mecanico
+      POSTGRES_USER: mecanisoft
+      POSTGRES_PASSWORD: mecanisoft123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - db
+    environment:
+      NODE_ENV: production
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: change-me
+      DATABASE_URL: postgres://mecanisoft:mecanisoft123@db:5432/taller_mecanico?schema=public
+    ports:
+      - "3000:3000"
+    command: ["sh", "-c", "npx prisma migrate deploy && npm run seed && npm run start"]
+
+volumes:
+  postgres-data:

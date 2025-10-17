@@ -132,9 +132,27 @@ export default function LoginPage() {
               <p className="text-sm font-medium text-gray-700 mb-2">
                 Credenciales de prueba:
               </p>
-              <div className="text-xs text-gray-600 space-y-1">
-                <p><strong>Usuario:</strong> admin</p>
-                <p><strong>Contraseña:</strong> admin123</p>
+              <div className="text-xs text-gray-600 space-y-2">
+                <div>
+                  <p className="font-semibold text-gray-700">Administrador</p>
+                  <p><strong>Usuario:</strong> admin.pruebas</p>
+                  <p><strong>Contraseña:</strong> Admin123!</p>
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-700">Recepción</p>
+                  <p><strong>Usuario:</strong> recepcion.lucia</p>
+                  <p><strong>Contraseña:</strong> Taller123!</p>
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-700">Mecánico senior</p>
+                  <p><strong>Usuario:</strong> mecanico.jorge</p>
+                  <p><strong>Contraseña:</strong> Taller123!</p>
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-700">Diagnóstico</p>
+                  <p><strong>Usuario:</strong> mecanico.sofia</p>
+                  <p><strong>Contraseña:</strong> Taller123!</p>
+                </div>
               </div>
             </div>
           </CardContent>
