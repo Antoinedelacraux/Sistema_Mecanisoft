@@ -48,15 +48,18 @@ export async function PATCH(
         }
       })
 
-      // Registrar en bitácora
-      await prisma.bitacora.create({
-        data: {
-          id_usuario: parseInt(session.user.id),
+      // Registrar en bitácora (mejor esfuerzo)
+      try {
+        const { logEvent } = await import('@/lib/bitacora/log-event')
+        await logEvent({
+          usuarioId: parseInt(session.user.id),
           accion: 'TOGGLE_STATUS_CATEGORIA',
           descripcion: `Categoría ${estatus ? 'activada' : 'desactivada'}: ${categoria.nombre}`,
           tabla: 'categoria'
-        }
-      })
+        })
+      } catch (err) {
+        console.error('No fue posible registrar en bitácora (TOGGLE_STATUS_CATEGORIA):', err)
+      }
 
       return NextResponse.json(categoriaActualizada)
     }

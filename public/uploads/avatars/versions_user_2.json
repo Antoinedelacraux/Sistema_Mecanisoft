@@ -1,0 +1,61 @@
+[
+  {
+    "id": "1f35635b-1f76-417e-8261-a9f1807ee6c9",
+    "image": "/uploads/avatars/avatar_2_1761279504096_256.webp",
+    "variants": [
+      "/uploads/avatars/avatar_2_1761279504096_64.webp",
+      "/uploads/avatars/avatar_2_1761279504096_128.webp",
+      "/uploads/avatars/avatar_2_1761279504096_256.webp"
+    ],
+    "original": "avatar_2_1761279504096.png",
+    "created_at": "2025-10-24T04:18:24.213Z"
+  },
+  {
+    "id": "5647b6f2-ccf8-4ffa-a2c5-c87f65b572d4",
+    "image": "/uploads/avatars/avatar_2_1761277770405_256.webp",
+    "variants": [
+      "/uploads/avatars/avatar_2_1761277770405_64.webp",
+      "/uploads/avatars/avatar_2_1761277770405_128.webp",
+      "/uploads/avatars/avatar_2_1761277770405_256.webp"
+    ],
+    "created_at": "2025-10-24T04:18:24.178Z"
+  },
+  {
+    "id": "7d7a1034-7796-42c6-b861-30da61220d95",
+    "image": "/uploads/avatars/avatar_2_1761279479616_256.webp",
+    "variants": [
+      "/uploads/avatars/avatar_2_1761279479616_64.webp",
+      "/uploads/avatars/avatar_2_1761279479616_128.webp",
+      "/uploads/avatars/avatar_2_1761279479616_256.webp"
+    ],
+    "original": "avatar_2_1761279479616.png",
+    "created_at": "2025-10-24T04:17:59.813Z"
+  },
+  {
+    "id": "6b2fa9db-59b2-4eeb-9a00-c08ce22e01ea",
+    "image": "/uploads/avatars/avatar_2_1761278723525_256.webp",
+    "variants": [
+      "/uploads/avatars/avatar_2_1761278723525_64.webp",
+      "/uploads/avatars/avatar_2_1761278723525_128.webp",
+      "/uploads/avatars/avatar_2_1761278723525_256.webp"
+    ],
+    "created_at": "2025-10-24T04:17:59.781Z"
+  },
+  {
+    "id": "cc7c8d93-5570-49c1-86ae-6744329f3fcb",
+    "image": "/uploads/avatars/avatar_2_1761278723525_256.webp",
+    "variants": [
+      "/uploads/avatars/avatar_2_1761278723525_64.webp",
+      "/uploads/avatars/avatar_2_1761278723525_128.webp",
+      "/uploads/avatars/avatar_2_1761278723525_256.webp"
+    ],
+    "original": "avatar_2_1761278723525.png",
+    "created_at": "2025-10-24T04:05:23.683Z"
+  },
+  {
+    "id": "e0fb4167-9523-466c-beab-311a87169b7e",
+    "image": "/uploads/avatars/avatar_2_1761275005182.jpg",
+    "variants": [],
+    "created_at": "2025-10-24T04:05:23.655Z"
+  }
+]

@@ -70,7 +70,7 @@ export async function prepararOrdenParaFacturacion(
     throw new FacturacionError('La orden ya se encuentra pagada.')
   }
 
-  if (orden.comprobantes.length > 0) {
+  if (Array.isArray(orden.comprobantes) && orden.comprobantes.length > 0) {
     throw new FacturacionError('La orden ya tiene un comprobante registrado.', 409)
   }
 

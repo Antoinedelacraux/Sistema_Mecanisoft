@@ -329,14 +329,12 @@ export async function crearOrden(prisma: PrismaClient, data: CrearOrdenInput, us
     throw new OrdenServiceError(500, 'No se pudo generar código de orden único')
   }
 
-  await prisma.bitacora.create({
-    data: {
-      id_usuario: usuarioId,
-      accion: 'CREATE_ORDEN',
-      descripcion: `Orden creada: ${codigoFinal} - Cliente: ${cliente.persona.nombre} ${cliente.persona.apellido_paterno}`,
-      tabla: 'transaccion'
-    }
-  })
+  try {
+  const { logEvent } = await import('@/lib/bitacora/log-event')
+  await logEvent({ prismaClient: prisma, usuarioId, accion: 'CREATE_ORDEN', descripcion: `Orden creada: ${codigoFinal} - Cliente: ${cliente.persona.nombre} ${cliente.persona.apellido_paterno}`, tabla: 'transaccion' })
+  } catch (err) {
+    console.error('[ordenes] no se pudo registrar en bitácora:', err)
+  }
 
   const ordenCompleta = await prisma.transaccion.findUnique({
     where: { id_transaccion: transaccionCreada.id_transaccion },

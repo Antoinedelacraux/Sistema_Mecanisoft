@@ -135,15 +135,18 @@ export async function PUT(
       }
     })
 
-    // Registrar en bitácora
-    await prisma.bitacora.create({
-      data: {
-        id_usuario: parseInt(session.user.id),
+    // Registrar en bitácora (mejor esfuerzo)
+    try {
+      const { logEvent } = await import('@/lib/bitacora/log-event')
+      await logEvent({
+        usuarioId: parseInt(session.user.id),
         accion: 'UPDATE_MODELO',
         descripcion: `Modelo actualizado: ${marca.nombre_marca} ${nombre_modelo}`,
         tabla: 'modelo'
-      }
-    })
+      })
+    } catch (err) {
+      console.error('No fue posible registrar en bitácora (UPDATE_MODELO):', err)
+    }
 
     return NextResponse.json(modeloActualizado)
 
@@ -198,15 +201,18 @@ export async function DELETE(
       data: { estado: false }
     })
 
-    // Registrar en bitácora
-    await prisma.bitacora.create({
-      data: {
-        id_usuario: parseInt(session.user.id),
+    // Registrar en bitácora (mejor esfuerzo)
+    try {
+      const { logEvent } = await import('@/lib/bitacora/log-event')
+      await logEvent({
+        usuarioId: parseInt(session.user.id),
         accion: 'DELETE_MODELO',
         descripcion: `Modelo eliminado: ${modelo.marca.nombre_marca} ${modelo.nombre_modelo}`,
         tabla: 'modelo'
-      }
-    })
+      })
+    } catch (err) {
+      console.error('No fue posible registrar en bitácora (DELETE_MODELO):', err)
+    }
 
     return NextResponse.json({ message: 'Modelo eliminado correctamente' })
 

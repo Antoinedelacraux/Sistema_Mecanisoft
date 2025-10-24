@@ -60,15 +60,13 @@ export async function POST(request: NextRequest) {
     // URL relativa para guardar en BD
     const imageUrl = `/uploads/productos/${fileName}`
 
-    // Registrar en bitácora
-    await prisma.bitacora.create({
-      data: {
-        id_usuario: parseInt(session.user.id),
-        accion: 'UPLOAD_IMAGE',
-        descripcion: `Imagen subida: ${fileName}`,
-        tabla: 'sistema'
-      }
-    })
+    // Registrar en bitácora (no bloquear la subida si falla)
+    try {
+      const { logEvent } = await import('@/lib/bitacora/log-event')
+      await logEvent({ usuarioId: parseInt(session.user.id), accion: 'UPLOAD_IMAGE', descripcion: `Imagen subida: ${fileName}`, tabla: 'sistema' })
+    } catch (err) {
+      console.error('[upload] no se pudo registrar en bitácora:', err)
+    }
 
     return NextResponse.json({ 
       success: true, 

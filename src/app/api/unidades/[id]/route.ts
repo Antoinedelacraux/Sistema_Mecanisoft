@@ -50,15 +50,13 @@ export async function PATCH(
 
       const unidadActualizada = { ...unidadActualizadaDb }
 
-      // Registrar en bitácora
-      await prisma.bitacora.create({
-        data: {
-          id_usuario: parseInt(session.user.id),
-          accion: 'TOGGLE_STATUS_UNIDAD',
-          descripcion: `Unidad ${estatus ? 'activada' : 'desactivada'}: ${unidad.nombre_unidad}`,
-          tabla: 'unidad_medida'
-        }
-      })
+      // Registrar en bitácora (no bloquear si falla)
+      try {
+        const { logEvent } = await import('@/lib/bitacora/log-event')
+        await logEvent({ usuarioId: parseInt(session.user.id), accion: 'TOGGLE_STATUS_UNIDAD', descripcion: `Unidad ${estatus ? 'activada' : 'desactivada'}: ${unidad.nombre_unidad}`, tabla: 'unidad_medida' })
+      } catch (err) {
+        console.error('[unidades] no se pudo registrar en bitácora:', err)
+      }
 
       return NextResponse.json(unidadActualizada)
     }

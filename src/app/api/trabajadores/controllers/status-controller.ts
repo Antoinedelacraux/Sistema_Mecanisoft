@@ -73,16 +73,12 @@ export async function handleTrabajadorStatus(id: number, payload: unknown, sessi
       })
     })
 
-    await prisma.bitacora.create({
-      data: {
-        id_usuario: sessionUserId,
-        accion: 'TOGGLE_STATUS_TRABAJADOR',
-        descripcion: `Trabajador ${nuevoEstado ? 'activado' : 'desactivado'}: ${trabajadorActual.codigo_empleado}${
-          !nuevoEstado ? ` - Motivo: ${motivoBloqueo}` : ''
-        }`,
-        tabla: 'trabajador'
-      }
-    })
+    try {
+      const { logEvent } = await import('@/lib/bitacora/log-event')
+      await logEvent({ usuarioId: sessionUserId, accion: 'TOGGLE_STATUS_TRABAJADOR', descripcion: `Trabajador ${nuevoEstado ? 'activado' : 'desactivado'}: ${trabajadorActual.codigo_empleado}${!nuevoEstado ? ` - Motivo: ${motivoBloqueo}` : ''}`, tabla: 'trabajador' })
+    } catch (err) {
+      console.error('[trabajadores] no se pudo registrar en bitácora:', err)
+    }
 
     return trabajadorActualizado
   }
@@ -121,14 +117,12 @@ export async function handleTrabajadorStatus(id: number, payload: unknown, sessi
       })
     })
 
-    await prisma.bitacora.create({
-      data: {
-        id_usuario: sessionUserId,
-        accion: 'DELETE_TRABAJADOR',
-        descripcion: `Trabajador dado de baja: ${trabajadorActual.codigo_empleado} - Motivo: ${motivoBaja}`,
-        tabla: 'trabajador'
-      }
-    })
+    try {
+      const { logEvent } = await import('@/lib/bitacora/log-event')
+      await logEvent({ usuarioId: sessionUserId, accion: 'DELETE_TRABAJADOR', descripcion: `Trabajador dado de baja: ${trabajadorActual.codigo_empleado} - Motivo: ${motivoBaja}`, tabla: 'trabajador' })
+    } catch (err) {
+      console.error('[trabajadores] no se pudo registrar en bitácora:', err)
+    }
 
     return trabajadorActualizado
   }
@@ -162,14 +156,12 @@ export async function handleTrabajadorStatus(id: number, payload: unknown, sessi
     })
   })
 
-  await prisma.bitacora.create({
-    data: {
-      id_usuario: sessionUserId,
-      accion: 'RESTORE_TRABAJADOR',
-      descripcion: `Trabajador restaurado: ${trabajadorActual.codigo_empleado}`,
-      tabla: 'trabajador'
-    }
-  })
+  try {
+    const { logEvent } = await import('@/lib/bitacora/log-event')
+    await logEvent({ usuarioId: sessionUserId, accion: 'RESTORE_TRABAJADOR', descripcion: `Trabajador restaurado: ${trabajadorActual.codigo_empleado}`, tabla: 'trabajador' })
+  } catch (err) {
+    console.error('[trabajadores] no se pudo registrar en bitácora:', err)
+  }
 
   return trabajadorRestaurado
 }

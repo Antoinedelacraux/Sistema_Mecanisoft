@@ -188,14 +188,13 @@ export async function POST(request: NextRequest) {
       include: { marca: true, modelo: true }
     })
 
-    await prisma.bitacora.create({
-      data: {
-        id_usuario: usuarioId,
-        accion: 'CREATE_SERVICIO',
-        descripcion: `Servicio creado: ${creado.codigo_servicio} - ${creado.nombre}`,
-        tabla: 'servicio'
-      }
-    })
+    // Registrar en bitácora (mejor esfuerzo)
+    try {
+      const { logEvent } = await import('@/lib/bitacora/log-event')
+      await logEvent({ prismaClient: prisma, usuarioId, accion: 'CREATE_SERVICIO', descripcion: `Servicio creado: ${creado.codigo_servicio} - ${creado.nombre}`, tabla: 'servicio' })
+    } catch (err) {
+      console.error('No fue posible registrar en bitácora (CREATE_SERVICIO):', err)
+    }
 
     return NextResponse.json(creado, { status: 201 })
   } catch (e) {

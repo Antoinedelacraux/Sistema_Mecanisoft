@@ -137,14 +137,12 @@ export async function createTrabajador(payload: unknown, sessionUserId: number) 
     })
   })
 
-  await prisma.bitacora.create({
-    data: {
-      id_usuario: sessionUserId,
-      accion: 'CREATE_TRABAJADOR',
-      descripcion: `Trabajador creado: ${trabajador.codigo_empleado} - ${data.nombre} ${data.apellido_paterno}`,
-      tabla: 'trabajador'
-    }
-  })
+  try {
+    const { logEvent } = await import('@/lib/bitacora/log-event')
+    await logEvent({ usuarioId: sessionUserId, accion: 'CREATE_TRABAJADOR', descripcion: `Trabajador creado: ${trabajador.codigo_empleado} - ${data.nombre} ${data.apellido_paterno}`, tabla: 'trabajador' })
+  } catch (err) {
+    console.error('[trabajadores] no se pudo registrar en bitácora:', err)
+  }
 
   let credencialesEnviadas = false
   let credencialesError: string | null = null

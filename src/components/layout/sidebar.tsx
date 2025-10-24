@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { signOut, useSession } from "next-auth/react"
@@ -140,6 +140,12 @@ const menuItems: MenuItem[] = [
     permiso: 'reportes.ver'
   },
   {
+    title: "Bitácora",
+    icon: FileText,
+    href: "/dashboard/bitacora",
+    permiso: 'bitacora.ver'
+  },
+  {
     title: "Configuración",
     icon: Settings,
     href: "/dashboard/configuracion",
@@ -151,6 +157,9 @@ export function Sidebar() {
   const pathname = usePathname()
   const { data: session } = useSession()
   const { puede } = usePermisos()
+  const [usuarioProfile, setUsuarioProfile] = useState<any | null>(null)
+  const [loadingProfile, setLoadingProfile] = useState<boolean>(true)
+  const [imageLoaded, setImageLoaded] = useState<boolean>(false)
 
   const visibleItems = useMemo<MenuItem[]>(() => (
     menuItems.filter((item) => {
@@ -167,6 +176,56 @@ export function Sidebar() {
   const handleLogout = () => {
     signOut({ callbackUrl: "/login" })
   }
+
+  // fetch current usuario profile (includes imagen_usuario and persona/rol)
+  useEffect(() => {
+    let mounted = true
+
+    async function fetchProfile() {
+      setLoadingProfile(true)
+      try {
+        const res = await fetch('/api/usuarios/me')
+        if (!res.ok) return
+        const data = await res.json()
+        if (mounted && data?.usuario) setUsuarioProfile(data.usuario)
+      } catch (e) {
+        // ignore
+      } finally {
+        if (mounted) setLoadingProfile(false)
+      }
+    }
+
+    fetchProfile()
+
+    const handler = (e: Event) => {
+      const c = e as CustomEvent
+      const detail = c?.detail
+      if (detail) {
+        // if the event includes the full usuario, replace; if it includes only imagen_usuario, patch it
+        if (detail.usuario) {
+          setUsuarioProfile(detail.usuario)
+          setLoadingProfile(false)
+          return
+        }
+        if (detail.imagen_usuario) {
+          setUsuarioProfile((prev: any) => ({ ...(prev ?? {}), imagen_usuario: detail.imagen_usuario }))
+          // reset imageLoaded so new image fades in
+          setImageLoaded(false)
+          setLoadingProfile(false)
+          return
+        }
+      }
+      // fallback: re-fetch
+      void fetchProfile()
+    }
+
+  window.addEventListener('user-profile-updated', handler as EventListener)
+
+    return () => {
+      mounted = false
+      window.removeEventListener('user-profile-updated', handler as EventListener)
+    }
+  }, [])
 
   return (
     <>
@@ -206,14 +265,26 @@ export function Sidebar() {
         {/* User info */}
         <div className="p-4 border-b border-gray-100">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
-              <span className="text-sm font-semibold text-gray-700">
-                {session?.user?.name?.charAt(0)}
-              </span>
+            {/** Avatar: prefer profile image from /api/usuarios/me, fallback to session.user.image, then initials */}
+            <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center">
+                {loadingProfile ? (
+                  <div className="animate-pulse w-full h-full bg-gray-300" data-testid="sidebar-avatar-skeleton" />
+                ) : usuarioProfile?.imagen_usuario ? (
+                  // imageUrl stored as '/uploads/avatars/...' so can be used directly
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={usuarioProfile.imagen_usuario} alt="Avatar" className={cn('w-full h-full object-cover transition-opacity duration-300', imageLoaded ? 'opacity-100' : 'opacity-0')} onLoad={() => setImageLoaded(true)} />
+                ) : session?.user?.image ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={session.user.image as string} alt="Avatar" className={cn('w-full h-full object-cover transition-opacity duration-300', imageLoaded ? 'opacity-100' : 'opacity-0')} onLoad={() => setImageLoaded(true)} />
+                ) : (
+                  <span className="text-sm font-semibold text-gray-700">
+                    {session?.user?.name?.charAt(0) ?? ''}
+                  </span>
+                )}
             </div>
             <div>
-              <p className="font-medium text-sm">{session?.user?.name}</p>
-              <p className="text-xs text-gray-500">{session?.user?.role}</p>
+              <p className="font-medium text-sm">{loadingProfile ? <span className="inline-block w-28 h-4 bg-gray-200 animate-pulse" data-testid="sidebar-name-skeleton" /> : (usuarioProfile?.persona ? `${usuarioProfile.persona.nombre} ${usuarioProfile.persona.apellido_paterno ?? ''}` : session?.user?.name)}</p>
+              <p className="text-xs text-gray-500">{loadingProfile ? <span className="inline-block w-20 h-3 bg-gray-200 animate-pulse" data-testid="sidebar-role-skeleton" /> : (usuarioProfile?.rol?.nombre ?? session?.user?.role)}</p>
             </div>
           </div>
         </div>

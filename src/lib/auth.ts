@@ -135,14 +135,13 @@ export const authOptions: NextAuthOptions = {
             .map((permiso) => permiso.codigo)
 
           // Registrar en bitácora
-          await prisma.bitacora.create({
-            data: {
-              id_usuario: usuario.id_usuario,
-              accion: "LOGIN",
-              descripcion: `Usuario ${usuario.nombre_usuario} inició sesión`,
-              tabla: "usuario"
-            }
-          })
+          try {
+            const { logEvent } = await import('@/lib/bitacora/log-event')
+            await logEvent({ usuarioId: usuario.id_usuario, accion: 'LOGIN', descripcion: `Usuario ${usuario.nombre_usuario} inició sesión`, tabla: 'usuario' })
+          } catch (err) {
+            // best-effort logging, don't fail authentication if bitácora write fails
+            console.error('[AUTH] no se pudo registrar en bitácora:', err)
+          }
 
           // Retornar datos del usuario para la sesión
           return {
@@ -167,6 +166,7 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.username = user.username
         token.role = user.role
+        token.image = (user as any).image ?? null
         token.requiresPasswordChange = (user as unknown as { requiresPasswordChange?: boolean }).requiresPasswordChange ?? false
         token.permisos = (user as unknown as { permisos?: string[] }).permisos ?? []
       }
@@ -177,6 +177,7 @@ export const authOptions: NextAuthOptions = {
         session.user.id = token.sub || ""
         session.user.username = token.username as string
         session.user.role = token.role as string
+        session.user.image = token.image as string | undefined
         session.user.requiresPasswordChange = Boolean(token.requiresPasswordChange)
         session.user.permisos = Array.isArray(token.permisos) ? token.permisos : []
       }

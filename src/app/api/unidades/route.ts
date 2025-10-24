@@ -98,15 +98,13 @@ export async function POST(request: NextRequest) {
 
     const unidad = { ...unidadCreada }
 
-    // Registrar en bitácora
-    await prisma.bitacora.create({
-      data: {
-        id_usuario: parseInt(session.user.id),
-        accion: 'CREATE_UNIDAD',
-        descripcion: `Unidad creada: ${nombre_unidad} (${abreviatura})`,
-        tabla: 'unidad_medida'
-      }
-    })
+    // Registrar en bitácora (no bloquear creación si falla)
+    try {
+      const { logEvent } = await import('@/lib/bitacora/log-event')
+      await logEvent({ usuarioId: parseInt(session.user.id), accion: 'CREATE_UNIDAD', descripcion: `Unidad creada: ${nombre_unidad} (${abreviatura})`, tabla: 'unidad_medida' })
+    } catch (err) {
+      console.error('[unidades] no se pudo registrar en bitácora:', err)
+    }
 
   return NextResponse.json(unidad, { status: 201 })
 

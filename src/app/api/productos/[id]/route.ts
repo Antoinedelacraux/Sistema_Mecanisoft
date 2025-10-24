@@ -119,15 +119,18 @@ export async function PUT(
       }
     })
 
-    // Registrar en bitácora
-    await prisma.bitacora.create({
-      data: {
-        id_usuario: parseInt(session.user.id),
+    // Registrar en bitácora (mejor esfuerzo)
+    try {
+      const { logEvent } = await import('@/lib/bitacora/log-event')
+      await logEvent({
+        usuarioId: parseInt(session.user.id),
         accion: 'UPDATE_PRODUCTO',
         descripcion: `Producto actualizado: ${data.codigo_producto} - ${data.nombre}`,
         tabla: 'producto'
-      }
-    })
+      })
+    } catch (err) {
+      console.error('No fue posible registrar en bitácora (UPDATE_PRODUCTO):', err)
+    }
 
     return NextResponse.json(productoActualizado)
 
@@ -175,15 +178,18 @@ export async function DELETE(
       data: { estatus: false }
     })
 
-    // Registrar en bitácora
-    await prisma.bitacora.create({
-      data: {
-        id_usuario: parseInt(session.user.id),
+    // Registrar en bitácora (mejor esfuerzo)
+    try {
+      const { logEvent } = await import('@/lib/bitacora/log-event')
+      await logEvent({
+        usuarioId: parseInt(session.user.id),
         accion: 'DELETE_PRODUCTO',
         descripcion: `Producto eliminado: ${producto.codigo_producto} - ${producto.nombre}`,
         tabla: 'producto'
-      }
-    })
+      })
+    } catch (err) {
+      console.error('No fue posible registrar en bitácora (DELETE_PRODUCTO):', err)
+    }
 
     return NextResponse.json({ message: 'Producto eliminado correctamente' })
 
@@ -233,15 +239,18 @@ export async function PATCH(
         }
       })
 
-      // Registrar en bitácora
-      await prisma.bitacora.create({
-        data: {
-          id_usuario: parseInt(session.user.id),
+      // Registrar en bitácora (mejor esfuerzo)
+      try {
+        const { logEvent } = await import('@/lib/bitacora/log-event')
+        await logEvent({
+          usuarioId: parseInt(session.user.id),
           accion: 'TOGGLE_STATUS_PRODUCTO',
           descripcion: `Producto ${estatus ? 'activado' : 'desactivado'}: ${producto.nombre}`,
           tabla: 'producto'
-        }
-      })
+        })
+      } catch (err) {
+        console.error('No fue posible registrar en bitácora (TOGGLE_STATUS_PRODUCTO):', err)
+      }
 
       return NextResponse.json(productoActualizado)
     }

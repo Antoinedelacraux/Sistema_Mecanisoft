@@ -158,15 +158,13 @@ export async function PATCH(
       })
     }
 
-    // Bitácora
-    await prisma.bitacora.create({
-      data: {
-          id_usuario: usuarioId,
-        accion: 'UPDATE_TAREA',
-        descripcion: bitacoraDescripcion || 'Actualización de tarea',
-        tabla: 'tarea'
-      }
-    })
+    // Bitácora (no bloquear la respuesta si falla)
+    try {
+      const { logEvent } = await import('@/lib/bitacora/log-event')
+      await logEvent({ usuarioId, accion: 'UPDATE_TAREA', descripcion: bitacoraDescripcion || 'Actualización de tarea', tabla: 'tarea' })
+    } catch (err) {
+      console.error('[tareas] no se pudo registrar en bitácora:', err)
+    }
 
     return NextResponse.json(tareaActualizada)
 

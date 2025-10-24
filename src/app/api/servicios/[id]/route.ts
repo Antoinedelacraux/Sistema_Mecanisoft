@@ -142,14 +142,13 @@ export async function PUT(request: NextRequest, ctx: ParamsInput) {
       include: { marca: true, modelo: true }
     })
 
-    await prisma.bitacora.create({
-      data: {
-        id_usuario: usuarioId,
-        accion: 'UPDATE_SERVICIO',
-        descripcion: `Servicio actualizado: ${updated.codigo_servicio} - ${updated.nombre}`,
-        tabla: 'servicio'
-      }
-    })
+    // Registrar en bitácora (mejor esfuerzo)
+    try {
+      const { logEvent } = await import('@/lib/bitacora/log-event')
+      await logEvent({ prismaClient: prisma, usuarioId, accion: 'UPDATE_SERVICIO', descripcion: `Servicio actualizado: ${updated.codigo_servicio} - ${updated.nombre}`, tabla: 'servicio' })
+    } catch (err) {
+      console.error('No fue posible registrar en bitácora (UPDATE_SERVICIO):', err)
+    }
 
     return NextResponse.json(updated)
   } catch (e) {
@@ -195,14 +194,13 @@ export async function PATCH(request: NextRequest, ctx: ParamsInput) {
       include: { marca: true, modelo: true }
     })
 
-    await prisma.bitacora.create({
-      data: {
-        id_usuario: usuarioId,
-        accion: 'TOGGLE_STATUS_SERVICIO',
-        descripcion: `Servicio ${estatus ? 'activado' : 'desactivado'}: ${servicio.nombre}`,
-        tabla: 'servicio'
-      }
-    })
+    // Registrar en bitácora (mejor esfuerzo)
+    try {
+      const { logEvent } = await import('@/lib/bitacora/log-event')
+      await logEvent({ prismaClient: prisma, usuarioId, accion: 'TOGGLE_STATUS_SERVICIO', descripcion: `Servicio ${estatus ? 'activado' : 'desactivado'}: ${servicio.nombre}`, tabla: 'servicio' })
+    } catch (err) {
+      console.error('No fue posible registrar en bitácora (TOGGLE_STATUS_SERVICIO):', err)
+    }
 
     return NextResponse.json(updated)
   } catch (e) {

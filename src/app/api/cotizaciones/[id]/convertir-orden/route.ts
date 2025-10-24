@@ -202,15 +202,12 @@ export async function POST(
       return transaccion
     })
 
-    // Registrar en bitácora
-    await prisma.bitacora.create({
-      data: {
-        id_usuario: usuarioId,
-        accion: 'CONVERT_COTIZACION_ORDEN',
-        descripcion: `Cotización ${cotizacion.codigo_cotizacion} convertida a orden ${codigoOrden}`,
-        tabla: 'cotizacion'
-      }
-    })
+    try {
+      const { logEvent } = await import('@/lib/bitacora/log-event')
+      await logEvent({ usuarioId, accion: 'CONVERT_COTIZACION_ORDEN', descripcion: `Cotización ${cotizacion.codigo_cotizacion} convertida a orden ${codigoOrden}`, tabla: 'cotizacion' })
+    } catch (err) {
+      console.error('[cotizaciones] no se pudo registrar en bitácora (convert):', err)
+    }
 
     // Marcar la cotización como en_ordenes para reflejar que fue convertida
     await prisma.cotizacion.update({
@@ -218,14 +215,12 @@ export async function POST(
       data: { estado: 'en_ordenes' }
     })
 
-    await prisma.bitacora.create({
-      data: {
-        id_usuario: usuarioId,
-        accion: 'COTIZACION_PASO_A_EN_ORDENES',
-        descripcion: `Cotización ${cotizacion.codigo_cotizacion} marcada como en_ordenes tras conversión`,
-        tabla: 'cotizacion'
-      }
-    })
+    try {
+      const { logEvent } = await import('@/lib/bitacora/log-event')
+      await logEvent({ usuarioId, accion: 'COTIZACION_PASO_A_EN_ORDENES', descripcion: `Cotización ${cotizacion.codigo_cotizacion} marcada como en_ordenes tras conversión`, tabla: 'cotizacion' })
+    } catch (err) {
+      console.error('[cotizaciones] no se pudo registrar en bitácora (marcar en_ordenes):', err)
+    }
 
     return NextResponse.json({ 
       success: true,

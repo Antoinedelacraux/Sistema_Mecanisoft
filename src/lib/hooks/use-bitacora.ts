@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { logEvent } from '@/lib/bitacora/log-event'
 
 export const useBitacora = () => {
   const registrarAccion = async (
@@ -9,15 +10,7 @@ export const useBitacora = () => {
     ip?: string
   ) => {
     try {
-      await prisma.bitacora.create({
-        data: {
-          id_usuario,
-          accion,
-          descripcion,
-          tabla,
-          ip_publica: ip
-        }
-      })
+      await logEvent({ usuarioId: id_usuario, accion, descripcion, tabla, ip })
     } catch (error) {
       console.error('Error registrando en bitácora:', error)
     }

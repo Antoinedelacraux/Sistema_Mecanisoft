@@ -167,15 +167,13 @@ export async function POST(request: NextRequest) {
       })
     })
 
-    // Registrar en bitácora
-    await prisma.bitacora.create({
-      data: {
-        id_usuario: parseInt(session.user.id),
-        accion: 'CREATE_CLIENTE',
-        descripcion: `Cliente creado: ${validated.nombre} ${validated.apellido_paterno}`,
-        tabla: 'cliente'
-      }
-    })
+    // Registrar en bitácora (no bloquear la creación si falla)
+    try {
+      const { logEvent } = await import('@/lib/bitacora/log-event')
+      await logEvent({ usuarioId: parseInt(session.user.id), accion: 'CREATE_CLIENTE', descripcion: `Cliente creado: ${validated.nombre} ${validated.apellido_paterno}`, tabla: 'cliente' })
+    } catch (err) {
+      console.error('[clientes] no se pudo registrar en bitácora:', err)
+    }
 
     return NextResponse.json(resultado, { status: 201 })
 

@@ -514,14 +514,12 @@ export async function actualizarOrden(
 
   const progreso = await calcularProgresoOrden(prisma, updated.id_transaccion)
 
-  await prisma.bitacora.create({
-    data: {
-      id_usuario: usuarioId,
-      accion: 'UPDATE_ORDEN',
-      descripcion: `Actualización orden ${updated.codigo_transaccion}: ${JSON.stringify(Object.keys(dataUpdate))}`,
-      tabla: 'transaccion'
-    }
-  })
+  try {
+  const { logEvent } = await import('@/lib/bitacora/log-event')
+  await logEvent({ prismaClient: prisma, usuarioId, accion: 'UPDATE_ORDEN', descripcion: `Actualización orden ${updated.codigo_transaccion}: ${JSON.stringify(Object.keys(dataUpdate))}`, tabla: 'transaccion' })
+  } catch (err) {
+    console.error('[ordenes] no se pudo registrar en bitácora:', err)
+  }
 
   return {
     status: 200,

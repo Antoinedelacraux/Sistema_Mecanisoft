@@ -119,15 +119,18 @@ export async function PUT(
       }
     })
 
-    // Registrar en bitácora
-    await prisma.bitacora.create({
-      data: {
-        id_usuario: parseInt(session.user.id),
+    // Registrar en bitácora (mejor esfuerzo)
+    try {
+      const { logEvent } = await import('@/lib/bitacora/log-event')
+      await logEvent({
+        usuarioId: parseInt(session.user.id),
         accion: 'UPDATE_MARCA',
         descripcion: `Marca actualizada: ${nombre_marca}`,
         tabla: 'marca'
-      }
-    })
+      })
+    } catch (err) {
+      console.error('No fue posible registrar en bitácora (UPDATE_MARCA):', err)
+    }
 
     return NextResponse.json(marcaActualizada)
 
@@ -182,15 +185,18 @@ export async function DELETE(
       data: { estado: false }
     })
 
-    // Registrar en bitácora
-    await prisma.bitacora.create({
-      data: {
-        id_usuario: parseInt(session.user.id),
+    // Registrar en bitácora (mejor esfuerzo)
+    try {
+      const { logEvent } = await import('@/lib/bitacora/log-event')
+      await logEvent({
+        usuarioId: parseInt(session.user.id),
         accion: 'DELETE_MARCA',
         descripcion: `Marca eliminada: ${marca.nombre_marca}`,
         tabla: 'marca'
-      }
-    })
+      })
+    } catch (err) {
+      console.error('No fue posible registrar en bitácora (DELETE_MARCA):', err)
+    }
 
     return NextResponse.json({ message: 'Marca eliminada correctamente' })
 

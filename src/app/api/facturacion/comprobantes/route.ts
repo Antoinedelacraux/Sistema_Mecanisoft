@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
 
         // If the order already marked as entregado or already has comprobantes,
         // prevent creating another one.
-        if (orden.estado_orden === 'entregado' || (orden.comprobantes && orden.comprobantes.length > 0)) {
+        if (orden.estado_orden === 'entregado' || (Array.isArray(orden.comprobantes) && orden.comprobantes.length > 0)) {
           throw new FacturacionError('La orden ya fue enviada a facturación o está marcada como entregada.', 409)
         }
       }

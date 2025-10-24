@@ -1,11 +1,997 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Cotizacion {
+  id_cotizacion       Int                 @id @default(autoincrement())
+  codigo_cotizacion   String              @unique @db.VarChar(50)
+  id_cliente          Int
+  id_vehiculo         Int
+  id_usuario          Int
+  estado              String              @default("borrador") @db.VarChar(30)
+  vigencia_hasta      DateTime
+  fecha_aprobacion    DateTime?
+  aprobado_por        String?             @db.VarChar(50)
+  comentarios_cliente String?
+  razon_rechazo       String?
+  approval_token      String?             @unique @db.VarChar(255)
+  subtotal            Decimal             @db.Decimal(10, 2)
+  descuento_global    Decimal             @default(0) @db.Decimal(10, 2)
+  impuesto            Decimal             @db.Decimal(10, 2)
+  total               Decimal             @db.Decimal(10, 2)
+  created_at          DateTime            @default(now())
+  updated_at          DateTime            @updatedAt
+  comprobantes        Comprobante?
+  cliente             Cliente             @relation(fields: [id_cliente], references: [id_cliente])
+  usuario             Usuario             @relation(fields: [id_usuario], references: [id_usuario])
+  vehiculo            Vehiculo            @relation(fields: [id_vehiculo], references: [id_vehiculo])
+  detalle_cotizacion  DetalleCotizacion[]
+
+  @@map("cotizacion")
+}
+
+model DetalleCotizacion {
+  id_detalle_cotizacion Int        @id @default(autoincrement())
+  id_cotizacion         Int
+  id_producto           Int?
+  cantidad              Int
+  precio_unitario       Decimal    @db.Decimal(10, 2)
+  descuento             Decimal    @default(0) @db.Decimal(10, 2)
+  total                 Decimal    @db.Decimal(10, 2)
+  id_servicio           Int?
+  servicio_ref          Int?
+  cotizacion            Cotizacion @relation(fields: [id_cotizacion], references: [id_cotizacion], onDelete: Cascade)
+  producto              Producto?  @relation(fields: [id_producto], references: [id_producto])
+  servicio              Servicio?  @relation(fields: [id_servicio], references: [id_servicio])
+
+  @@map("detalle_cotizacion")
+}
+
+model Persona {
+  id_persona        Int             @id @default(autoincrement())
+  nombre            String          @db.VarChar(100)
+  apellido_paterno  String          @db.VarChar(100)
+  apellido_materno  String?         @db.VarChar(100)
+  tipo_documento    TipoDocumento
+  numero_documento  String          @unique @db.VarChar(20)
+  sexo              String?         @db.VarChar(10)
+  telefono          String?         @db.VarChar(15)
+  correo            String?         @db.VarChar(100)
+  fecha_registro    DateTime        @default(now())
+  estatus           Boolean         @default(true)
+  registrar_empresa Boolean         @default(false)
+  fecha_nacimiento  DateTime?       @db.Date
+  nombre_comercial  String?         @db.VarChar(150)
+  direccion         String?         @db.VarChar(200)
+  cliente           Cliente?
+  comprobantes      Comprobante[]
+  empresa_persona   EmpresaPersona?
+  proveedor         Proveedor?
+  trabajador        Trabajador?
+  transacciones     Transaccion[]
+  usuario           Usuario?
+
+  @@map("persona")
+}
+
+model EmpresaPersona {
+  id_empresa_persona Int           @id @default(autoincrement())
+  persona_id         Int           @unique
+  ruc                String        @unique @db.VarChar(11)
+  razon_social       String        @db.VarChar(150)
+  nombre_comercial   String?       @db.VarChar(100)
+  direccion_fiscal   String?       @db.VarChar(200)
+  created_at         DateTime      @default(now())
+  updated_at         DateTime      @updatedAt
+  comprobantes       Comprobante[]
+  persona            Persona       @relation(fields: [persona_id], references: [id_persona], onDelete: Cascade)
+
+  @@map("empresa_persona")
+}
+
+model Cliente {
+  id_cliente                Int              @id @default(autoincrement())
+  id_persona                Int              @unique
+  fecha_registro            DateTime         @default(now())
+  estatus                   Boolean          @default(true)
+  motivo_override           String?
+  override_tipo_comprobante TipoComprobante?
+  persona                   Persona          @relation(fields: [id_persona], references: [id_persona], onDelete: Cascade)
+  comprobantes              Comprobante[]
+  cotizaciones              Cotizacion[]
+  mantenimientos            Mantenimiento[]
+  vehiculos                 Vehiculo[]
+
+  @@map("cliente")
+}
+
+model Proveedor {
+  id_proveedor            Int                    @id @default(autoincrement())
+  id_persona              Int                    @unique
+  razon_social            String                 @db.VarChar(200)
+  contacto                String?                @db.VarChar(100)
+  numero_contacto         String?                @db.VarChar(15)
+  estatus                 Boolean                @default(true)
+  compras                 Compra[]
+  persona                 Persona                @relation(fields: [id_persona], references: [id_persona], onDelete: Cascade)
+  transaccion_proveedores TransaccionProveedor[]
+
+  @@map("proveedor")
+}
+
+model Rol {
+  id_rol         Int          @id @default(autoincrement())
+  nombre_rol     String       @unique @db.VarChar(50)
+  estatus        Boolean      @default(true)
+  fecha_registro DateTime     @default(now())
+  descripcion    String?
+  actualizado_en DateTime     @default(now()) @updatedAt
+  permisos       RolPermiso[]
+  usuarios       Usuario[]
+
+  @@map("rol")
+}
+
+model Modulo {
+  id_modulo      Int       @id @default(autoincrement())
+  clave          String    @unique @db.VarChar(100)
+  nombre         String    @db.VarChar(150)
+  descripcion    String?
+  activo         Boolean   @default(true)
+  creado_en      DateTime  @default(now())
+  actualizado_en DateTime  @default(now()) @updatedAt
+  permisos       Permiso[]
+
+  @@map("modulo")
+}
+
+model Usuario {
+  id_usuario                   Int                      @id @default(autoincrement())
+  id_persona                   Int                      @unique
+  id_rol                       Int
+  nombre_usuario               String                   @unique @db.VarChar(50)
+  password                     String                   @db.VarChar(255)
+  imagen_usuario               String?
+  fecha_creacion               DateTime                 @default(now())
+  estado                       Boolean                  @default(true)
+  estatus                      Boolean                  @default(true)
+  bloqueado_en                 DateTime?
+  envio_credenciales_pendiente Boolean                  @default(false)
+  motivo_bloqueo               String?
+  password_temporal            String?                  @db.VarChar(255)
+  password_temporal_expira     DateTime?
+  requiere_cambio_password     Boolean                  @default(false)
+  ultimo_cambio_password       DateTime?
+  ultimo_envio_credenciales    DateTime?
+  ultimo_error_envio           String?
+  bitacoras                    Bitacora[]
+  bitacoras_inventario         BitacoraInventario[]
+  compras_registradas          Compra[]
+  comprobantes_actualizados    Comprobante[]            @relation("ComprobanteActualizadoPor")
+  comprobantes_creados         Comprobante[]            @relation("ComprobanteCreadoPor")
+  bitacoras_comprobantes       ComprobanteBitacora[]
+  cotizaciones                 Cotizacion[]
+  mantenimientos_historial     MantenimientoHistorial[] @relation("MantenimientoHistorialUsuario")
+  movimientos_basicos          Movimiento[]
+  movimientos_inventario       MovimientoInventario[]
+  ordenes_historial            OrdenHistorial[]         @relation("OrdenHistorialUsuario")
+  pagos_registrados            Pago[]                   @relation("PagoUsuario")
+  permisos_asignados           RolPermiso[]             @relation("RolPermisoAsignado")
+  trabajador                   Trabajador?
+  entregas_realizadas          Transaccion[]            @relation("EntregaUsuario")
+  transacciones                Transaccion[]
+  transaccion_vehiculos        TransaccionVehiculo[]
+  persona                      Persona                  @relation(fields: [id_persona], references: [id_persona], onDelete: Cascade)
+  rol                          Rol                      @relation(fields: [id_rol], references: [id_rol])
+  permisos                     UsuarioPermiso[]
+  ventas_registradas           VentaPago[]
+
+  @@map("usuario")
+}
+
+model Permiso {
+  id_permiso     Int              @id @default(autoincrement())
+  codigo         String           @unique @db.VarChar(100)
+  nombre         String           @db.VarChar(150)
+  descripcion    String?
+  modulo         String           @db.VarChar(100)
+  agrupador      String?          @db.VarChar(100)
+  activo         Boolean          @default(true)
+  creado_en      DateTime         @default(now())
+  actualizado_en DateTime         @updatedAt
+  moduloEntidad  Modulo           @relation(fields: [modulo], references: [clave])
+  roles          RolPermiso[]
+  usuarios       UsuarioPermiso[]
+
+  @@index([modulo])
+  @@map("permiso")
+}
+
+model RolPermiso {
+  id_rol       Int
+  id_permiso   Int
+  creado_en    DateTime @default(now())
+  asignado_por Int?
+  descripcion  String?
+  asignado     Usuario? @relation("RolPermisoAsignado", fields: [asignado_por], references: [id_usuario], onUpdate: NoAction)
+  permiso      Permiso  @relation(fields: [id_permiso], references: [id_permiso], onDelete: Cascade)
+  rol          Rol      @relation(fields: [id_rol], references: [id_rol], onDelete: Cascade)
+
+  @@id([id_rol, id_permiso])
+  @@map("rol_permiso")
+}
+
+model UsuarioPermiso {
+  id_usuario     Int
+  id_permiso     Int
+  concedido      Boolean  @default(true)
+  origen         String   @db.VarChar(20)
+  comentario     String?
+  actualizado_en DateTime @default(now()) @updatedAt
+  permiso        Permiso  @relation(fields: [id_permiso], references: [id_permiso], onDelete: Cascade)
+  usuario        Usuario  @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade)
+
+  @@id([id_usuario, id_permiso])
+  @@map("usuario_permiso")
+}
+
+model Trabajador {
+  id_trabajador                Int                     @id @default(autoincrement())
+  id_usuario                   Int?                    @unique
+  codigo_empleado              String                  @unique
+  especialidad                 String                  @db.VarChar(100)
+  nivel_experiencia            String                  @db.VarChar(20)
+  tarifa_hora                  Decimal                 @default(0) @db.Decimal(8, 2)
+  fecha_ingreso                DateTime                @default(now())
+  activo                       Boolean                 @default(true)
+  created_at                   DateTime                @default(now())
+  updated_at                   DateTime                @updatedAt
+  cargo                        String                  @db.VarChar(100)
+  sueldo_mensual               Decimal?                @db.Decimal(10, 2)
+  eliminado                    Boolean                 @default(false)
+  id_persona                   Int                     @unique
+  tareas_asignadas             Tarea[]
+  persona                      Persona                 @relation(fields: [id_persona], references: [id_persona], onDelete: Cascade)
+  usuario                      Usuario?                @relation(fields: [id_usuario], references: [id_usuario])
+  ordenes_principales_directas Transaccion[]           @relation("TrabajadorPrincipal")
+  ordenes_principales          TransaccionTrabajador[] @relation("Trabajador_Ordenes")
+
+  @@map("trabajador")
+}
+
+model TransaccionTrabajador {
+  id_transaccion Int
+  id_trabajador  Int
+  rol            String?     @db.VarChar(50)
+  asignado_en    DateTime?   @default(now())
+  trabajador     Trabajador  @relation("Trabajador_Ordenes", fields: [id_trabajador], references: [id_trabajador])
+  transaccion    Transaccion @relation("Transaccion_Trabajador", fields: [id_transaccion], references: [id_transaccion])
+
+  @@id([id_transaccion, id_trabajador])
+  @@map("transaccion_trabajador")
+}
+
+model Categoria {
+  id_categoria   Int        @id @default(autoincrement())
+  nombre         String     @db.VarChar(100)
+  estatus        Boolean    @default(true)
+  fecha_registro DateTime   @default(now())
+  productos      Producto[]
+
+  @@map("categoria")
+}
+
+model UnidadMedida {
+  id_unidad     Int        @id @default(autoincrement())
+  nombre_unidad String     @db.VarChar(50)
+  abreviatura   String     @db.VarChar(10)
+  estatus       Boolean    @default(true)
+  productos     Producto[]
+
+  @@map("unidad_medida")
+}
+
+model Fabricante {
+  id_fabricante     Int        @id @default(autoincrement())
+  nombre_fabricante String     @db.VarChar(100)
+  descripcion       String?
+  estado            Boolean    @default(true)
+  fecha_registro    DateTime   @default(now())
+  productos         Producto[]
+
+  @@map("fabricante")
+}
+
+model Producto {
+  id_producto            Int                    @id @default(autoincrement())
+  id_categoria           Int
+  id_fabricante          Int
+  id_unidad              Int
+  tipo                   String                 @db.VarChar(20)
+  codigo_producto        String                 @unique @db.VarChar(50)
+  nombre                 String                 @db.VarChar(200)
+  descripcion            String?
+  stock                  Int                    @default(0)
+  stock_minimo           Int                    @default(0)
+  precio_compra          Decimal                @db.Decimal(10, 2)
+  precio_venta           Decimal                @db.Decimal(10, 2)
+  descuento              Decimal                @default(0) @db.Decimal(5, 2)
+  oferta                 Boolean                @default(false)
+  estatus                Boolean                @default(true)
+  foto                   String?
+  fecha_registro         DateTime               @default(now())
+  compras_detalles       CompraDetalle[]
+  ComprobanteDetalle     ComprobanteDetalle[]
+  detalle_cotizaciones   DetalleCotizacion[]
+  detalles_transaccion   DetalleTransaccion[]
+  inventario_basico      Inventario?
+  inventarios            InventarioProducto[]
+  movimientos_basicos    Movimiento[]
+  movimientos_inventario MovimientoInventario[]
+  categoria              Categoria              @relation(fields: [id_categoria], references: [id_categoria])
+  fabricante             Fabricante             @relation(fields: [id_fabricante], references: [id_fabricante])
+  unidad_medida          UnidadMedida           @relation(fields: [id_unidad], references: [id_unidad])
+
+  @@map("producto")
+}
+
+model Servicio {
+  id_servicio          Int                  @id @default(autoincrement())
+  codigo_servicio      String               @unique @db.VarChar(50)
+  nombre               String               @db.VarChar(200)
+  descripcion          String?
+  es_general           Boolean              @default(false)
+  id_marca             Int?
+  id_modelo            Int?
+  precio_base          Decimal              @db.Decimal(10, 2)
+  descuento            Decimal              @default(0) @db.Decimal(5, 2)
+  oferta               Boolean              @default(false)
+  estatus              Boolean              @default(true)
+  fecha_registro       DateTime             @default(now())
+  tiempo_maximo        Int                  @default(1)
+  tiempo_minimo        Int                  @default(1)
+  unidad_tiempo        String               @default("minutos") @db.VarChar(10)
+  ComprobanteDetalle   ComprobanteDetalle[]
+  detalle_cotizacion   DetalleCotizacion[]
+  detalles_transaccion DetalleTransaccion[]
+  marca                Marca?               @relation(fields: [id_marca], references: [id_marca])
+  modelo               Modelo?              @relation(fields: [id_modelo], references: [id_modelo])
+
+  @@map("servicio")
+}
+
+model Marca {
+  id_marca     Int        @id @default(autoincrement())
+  nombre_marca String     @db.VarChar(50)
+  estado       Boolean    @default(true)
+  descripcion  String?
+  modelos      Modelo[]
+  servicios    Servicio[]
+
+  @@map("marca")
+}
+
+model Modelo {
+  id_modelo     Int        @id @default(autoincrement())
+  id_marca      Int
+  nombre_modelo String     @db.VarChar(50)
+  estado        Boolean    @default(true)
+  descripcion   String?
+  marca         Marca      @relation(fields: [id_marca], references: [id_marca])
+  servicios     Servicio[]
+  vehiculos     Vehiculo[]
+
+  @@map("modelo")
+}
+
+model Vehiculo {
+  id_vehiculo           Int                   @id @default(autoincrement())
+  id_cliente            Int
+  id_modelo             Int
+  placa                 String                @unique @db.VarChar(10)
+  tipo                  String                @db.VarChar(50)
+  año                  Int
+  tipo_combustible      String                @db.VarChar(30)
+  transmision           String                @db.VarChar(30)
+  numero_chasis         String?               @db.VarChar(50)
+  numero_motor          String?               @db.VarChar(50)
+  observaciones         String?
+  imagen                String?
+  estado                Boolean               @default(true)
+  cotizaciones          Cotizacion[]
+  mantenimientos        Mantenimiento[]
+  transaccion_vehiculos TransaccionVehiculo[]
+  cliente               Cliente               @relation(fields: [id_cliente], references: [id_cliente])
+  modelo                Modelo                @relation(fields: [id_modelo], references: [id_modelo])
+
+  @@map("vehiculo")
+}
+
+model Transaccion {
+  id_transaccion           Int                     @id @default(autoincrement())
+  id_persona               Int
+  id_usuario               Int
+  tipo_transaccion         String                  @db.VarChar(50)
+  tipo_comprobante         String                  @db.VarChar(50)
+  serie_comprobante        String?                 @db.VarChar(10)
+  numero_comprobante       String?                 @db.VarChar(20)
+  codigo_transaccion       String                  @unique @db.VarChar(50)
+  fecha                    DateTime                @default(now())
+  descuento                Decimal                 @default(0) @db.Decimal(10, 2)
+  impuesto                 Decimal                 @default(0) @db.Decimal(10, 2)
+  porcentaje               Decimal                 @default(0) @db.Decimal(5, 2)
+  total                    Decimal                 @db.Decimal(10, 2)
+  cantidad_pago            Decimal                 @default(0) @db.Decimal(10, 2)
+  observaciones            String?
+  estatus                  String                  @default("activo") @db.VarChar(20)
+  estado_orden             String                  @default("pendiente") @db.VarChar(30)
+  prioridad                String                  @default("media") @db.VarChar(20)
+  created_at               DateTime                @default(now())
+  updated_at               DateTime                @updatedAt
+  entregado_por            Int?
+  estado_pago              String                  @default("pendiente") @db.VarChar(20)
+  fecha_entrega            DateTime?
+  fecha_fin_estimada       DateTime?
+  fecha_fin_real           DateTime?
+  fecha_inicio             DateTime?
+  id_trabajador_principal  Int?
+  duracion_max             Int?
+  duracion_min             Int?
+  unidad_tiempo            String?                 @db.VarChar(10)
+  fecha_cierre             DateTime?
+  comprobantes             Comprobante?
+  detalles_transaccion     DetalleTransaccion[]
+  feedback                 Feedback[]
+  mantenimiento            Mantenimiento[]         @relation("OrdenMantenimiento")
+  historial                OrdenHistorial[]
+  pagos                    Pago[]
+  reservas_inventario      ReservaInventario[]
+  usuario_entrega          Usuario?                @relation("EntregaUsuario", fields: [entregado_por], references: [id_usuario])
+  persona                  Persona                 @relation(fields: [id_persona], references: [id_persona])
+  trabajador_principal     Trabajador?             @relation("TrabajadorPrincipal", fields: [id_trabajador_principal], references: [id_trabajador])
+  usuario                  Usuario                 @relation(fields: [id_usuario], references: [id_usuario])
+  transaccion_proveedores  TransaccionProveedor[]
+  transaccion_trabajadores TransaccionTrabajador[] @relation("Transaccion_Trabajador")
+  transaccion_vehiculos    TransaccionVehiculo[]
+
+  @@index([fecha_cierre])
+  @@map("transaccion")
+}
+
+model Pago {
+  id_pago          Int         @id @default(autoincrement())
+  id_transaccion   Int
+  tipo_pago        String      @db.VarChar(30)
+  monto            Decimal     @db.Decimal(10, 2)
+  numero_operacion String?     @db.VarChar(50)
+  fecha_pago       DateTime    @default(now())
+  registrado_por   Int
+  observaciones    String?
+  transaccion      Transaccion @relation(fields: [id_transaccion], references: [id_transaccion])
+  usuario_registro Usuario     @relation("PagoUsuario", fields: [registrado_por], references: [id_usuario])
+
+  @@map("pago")
+}
+
+model FacturacionConfig {
+  id_config                    Int      @id @default(1)
+  afecta_igv                   Boolean  @default(true)
+  igv_porcentaje               Decimal  @default(0.18) @db.Decimal(5, 4)
+  serie_boleta_default         String   @db.VarChar(10)
+  serie_factura_default        String   @db.VarChar(10)
+  precios_incluyen_igv_default Boolean  @default(true)
+  moneda_default               String   @default("PEN") @db.VarChar(3)
+  created_at                   DateTime @default(now())
+  updated_at                   DateTime @updatedAt
+
+  @@map("facturacion_config")
+}
+
+model FacturacionSerie {
+  id_facturacion_serie Int             @id @default(autoincrement())
+  tipo                 TipoComprobante
+  serie                String          @db.VarChar(10)
+  correlativo_actual   Int             @default(0)
+  activo               Boolean         @default(true)
+  descripcion          String?         @db.VarChar(150)
+  created_at           DateTime        @default(now())
+  updated_at           DateTime        @updatedAt
+  comprobantes         Comprobante[]
+
+  @@unique([tipo, serie])
+  @@map("facturacion_serie")
+}
+
+model Comprobante {
+  id_comprobante            Int                   @id @default(autoincrement())
+  id_facturacion_serie      Int?
+  tipo                      TipoComprobante
+  serie                     String                @db.VarChar(10)
+  numero                    Int
+  origen_tipo               OrigenComprobante
+  origen_id                 Int
+  estado_pago               String                @default("pendiente") @db.VarChar(20)
+  codigo                    String?               @db.VarChar(30)
+  estado                    EstadoComprobante     @default(BORRADOR)
+  incluye_igv               Boolean               @default(true)
+  moneda                    String                @default("PEN") @db.VarChar(3)
+  subtotal                  Decimal               @db.Decimal(12, 2)
+  igv                       Decimal               @db.Decimal(12, 2)
+  total                     Decimal               @db.Decimal(12, 2)
+  receptor_nombre           String                @db.VarChar(200)
+  receptor_documento        String                @db.VarChar(20)
+  receptor_direccion        String?               @db.VarChar(200)
+  descripcion               String?
+  notas                     String?
+  precios_incluyen_igv      Boolean               @default(true)
+  fecha_emision             DateTime?
+  pdf_url                   String?
+  xml_url                   String?
+  override_tipo_comprobante TipoComprobante?
+  motivo_override           String?
+  creado_en                 DateTime              @default(now())
+  actualizado_en            DateTime              @updatedAt
+  creado_por                Int
+  actualizado_por           Int?
+  id_persona                Int
+  id_empresa_persona        Int?
+  id_cliente                Int
+  id_cotizacion             Int?                  @unique
+  id_transaccion            Int?                  @unique
+  actualizado_por_usuario   Usuario?              @relation("ComprobanteActualizadoPor", fields: [actualizado_por], references: [id_usuario])
+  creado_por_usuario        Usuario               @relation("ComprobanteCreadoPor", fields: [creado_por], references: [id_usuario])
+  cliente                   Cliente               @relation(fields: [id_cliente], references: [id_cliente])
+  cotizacion                Cotizacion?           @relation(fields: [id_cotizacion], references: [id_cotizacion])
+  empresa                   EmpresaPersona?       @relation(fields: [id_empresa_persona], references: [id_empresa_persona])
+  serie_rel                 FacturacionSerie?     @relation(fields: [id_facturacion_serie], references: [id_facturacion_serie])
+  persona                   Persona               @relation(fields: [id_persona], references: [id_persona])
+  transaccion               Transaccion?          @relation(fields: [id_transaccion], references: [id_transaccion])
+  bitacoras                 ComprobanteBitacora[]
+  detalles                  ComprobanteDetalle[]
+  venta                     Venta?
+
+  @@unique([serie, numero])
+  @@unique([origen_tipo, origen_id])
+  @@map("comprobante")
+}
+
+model Venta {
+  id_venta         Int              @id @default(autoincrement())
+  id_comprobante   Int              @unique
+  fecha            DateTime         @default(now())
+  total            Decimal          @db.Decimal(12, 2)
+  total_pagado     Decimal          @default(0) @db.Decimal(12, 2)
+  saldo            Decimal          @default(0) @db.Decimal(12, 2)
+  metodo_principal MetodoPagoVenta?
+  estado_pago      EstadoPagoVenta  @default(pendiente)
+  metadata         Json?
+  creado_en        DateTime         @default(now())
+  actualizado_en   DateTime         @updatedAt
+  comprobante      Comprobante      @relation(fields: [id_comprobante], references: [id_comprobante], onDelete: Cascade)
+  pagos            VentaPago[]
+
+  @@index([fecha])
+  @@index([metodo_principal])
+  @@index([estado_pago])
+  @@map("venta")
+}
+
+model VentaPago {
+  id_venta_pago  Int             @id @default(autoincrement())
+  id_venta       Int
+  metodo         MetodoPagoVenta
+  monto          Decimal         @db.Decimal(12, 2)
+  referencia     String?         @db.VarChar(120)
+  fecha_pago     DateTime        @default(now())
+  notas          String?
+  registrado_por Int
+  venta          Venta           @relation(fields: [id_venta], references: [id_venta], onDelete: Cascade)
+  usuario        Usuario         @relation(fields: [registrado_por], references: [id_usuario])
+
+  @@index([id_venta, fecha_pago])
+  @@map("venta_pago")
+}
+
+model ComprobanteDetalle {
+  id_comprobante_detalle Int                 @id @default(autoincrement())
+  id_comprobante         Int
+  tipo_item              TipoItemComprobante
+  descripcion            String              @db.VarChar(200)
+  cantidad               Decimal             @db.Decimal(12, 3)
+  unidad_medida          String?             @db.VarChar(10)
+  precio_unitario        Decimal             @db.Decimal(12, 2)
+  descuento              Decimal             @default(0) @db.Decimal(12, 2)
+  subtotal               Decimal             @db.Decimal(12, 2)
+  igv                    Decimal             @db.Decimal(12, 2)
+  total                  Decimal             @db.Decimal(12, 2)
+  id_producto            Int?
+  id_servicio            Int?
+  metadata               Json?
+  comprobante            Comprobante         @relation(fields: [id_comprobante], references: [id_comprobante], onDelete: Cascade)
+  producto               Producto?           @relation(fields: [id_producto], references: [id_producto])
+  servicio               Servicio?           @relation(fields: [id_servicio], references: [id_servicio])
+
+  @@map("comprobante_detalle")
+}
+
+model ComprobanteBitacora {
+  id_comprobante_bitacora Int         @id @default(autoincrement())
+  id_comprobante          Int
+  id_usuario              Int
+  accion                  String      @db.VarChar(50)
+  descripcion             String?
+  metadata                Json?
+  created_at              DateTime    @default(now())
+  comprobante             Comprobante @relation(fields: [id_comprobante], references: [id_comprobante], onDelete: Cascade)
+  usuario                 Usuario     @relation(fields: [id_usuario], references: [id_usuario])
+
+  @@map("comprobante_bitacora")
+}
+
+model DetalleTransaccion {
+  id_detalle_transaccion       Int                 @id @default(autoincrement())
+  id_transaccion               Int
+  id_producto                  Int?
+  cantidad                     Int
+  precio                       Decimal             @db.Decimal(10, 2)
+  descuento                    Decimal             @default(0) @db.Decimal(10, 2)
+  total                        Decimal             @db.Decimal(10, 2)
+  estatus                      Boolean             @default(true)
+  id_servicio                  Int?
+  id_detalle_servicio_asociado Int?                @unique
+  servicio_asociado            DetalleTransaccion? @relation("ProductoAsociadoServicio", fields: [id_detalle_servicio_asociado], references: [id_detalle_transaccion])
+  productos_asociados          DetalleTransaccion? @relation("ProductoAsociadoServicio")
+  producto                     Producto?           @relation(fields: [id_producto], references: [id_producto])
+  servicio                     Servicio?           @relation(fields: [id_servicio], references: [id_servicio])
+  transaccion                  Transaccion         @relation(fields: [id_transaccion], references: [id_transaccion], onDelete: Cascade)
+  reservas                     ReservaInventario[]
+  tareas                       Tarea[]
+
+  @@map("detalle_transaccion")
+}
+
+model Tarea {
+  id_tarea               Int                @id @default(autoincrement())
+  id_detalle_transaccion Int
+  estado                 String             @default("pendiente") @db.VarChar(30)
+  fecha_inicio           DateTime?
+  fecha_fin              DateTime?
+  tiempo_estimado        Int?
+  tiempo_real            Int?
+  created_at             DateTime           @default(now())
+  id_trabajador          Int?
+  notas_trabajador       String?
+  updated_at             DateTime           @updatedAt
+  detalle_transaccion    DetalleTransaccion @relation(fields: [id_detalle_transaccion], references: [id_detalle_transaccion])
+  trabajador             Trabajador?        @relation(fields: [id_trabajador], references: [id_trabajador])
+
+  @@map("tarea")
+}
+
+model TransaccionProveedor {
+  id_transaccion Int
+  id_proveedor   Int
+  proveedor      Proveedor   @relation(fields: [id_proveedor], references: [id_proveedor])
+  transaccion    Transaccion @relation(fields: [id_transaccion], references: [id_transaccion])
+
+  @@id([id_transaccion, id_proveedor])
+  @@map("transaccion_proveedor")
+}
+
+model TransaccionVehiculo {
+  id_transaccion     Int
+  id_vehiculo        Int
+  id_usuario         Int
+  nivel_combustible  String?     @db.VarChar(20)
+  kilometraje_millas Int?
+  descripcion        String?
+  transaccion        Transaccion @relation(fields: [id_transaccion], references: [id_transaccion])
+  usuario            Usuario     @relation(fields: [id_usuario], references: [id_usuario])
+  vehiculo           Vehiculo    @relation(fields: [id_vehiculo], references: [id_vehiculo])
+
+  @@id([id_transaccion, id_vehiculo])
+  @@map("transaccion_vehiculo")
+}
+
+model Almacen {
+  id_almacen     Int                  @id @default(autoincrement())
+  nombre         String               @db.VarChar(100)
+  descripcion    String?
+  direccion      String?
+  activo         Boolean              @default(true)
+  creado_en      DateTime             @default(now())
+  actualizado_en DateTime             @updatedAt
+  ubicaciones    AlmacenUbicacion[]
+  inventarios    InventarioProducto[]
+
+  @@map("almacen")
+}
+
+model AlmacenUbicacion {
+  id_almacen_ubicacion Int                  @id @default(autoincrement())
+  id_almacen           Int
+  codigo               String               @unique @db.VarChar(50)
+  descripcion          String?
+  activo               Boolean              @default(true)
+  creado_en            DateTime             @default(now())
+  actualizado_en       DateTime             @updatedAt
+  almacen              Almacen              @relation(fields: [id_almacen], references: [id_almacen])
+  inventarios          InventarioProducto[]
+
+  @@map("almacen_ubicacion")
+}
+
+model InventarioProducto {
+  id_inventario_producto Int                    @id @default(autoincrement())
+  id_producto            Int
+  id_almacen             Int
+  id_almacen_ubicacion   Int?
+  stock_disponible       Decimal                @default(0) @db.Decimal(14, 4)
+  stock_comprometido     Decimal                @default(0) @db.Decimal(14, 4)
+  stock_minimo           Decimal                @default(0) @db.Decimal(14, 4)
+  stock_maximo           Decimal?               @db.Decimal(14, 4)
+  costo_promedio         Decimal                @default(0) @db.Decimal(14, 4)
+  creado_en              DateTime               @default(now())
+  actualizado_en         DateTime               @updatedAt
+  es_critico             Boolean                @default(false)
+  almacen                Almacen                @relation(fields: [id_almacen], references: [id_almacen])
+  ubicacion              AlmacenUbicacion?      @relation(fields: [id_almacen_ubicacion], references: [id_almacen_ubicacion])
+  producto               Producto               @relation(fields: [id_producto], references: [id_producto])
+  movimientos            MovimientoInventario[]
+  reservas               ReservaInventario[]
+
+  @@unique([id_producto, id_almacen, id_almacen_ubicacion])
+  @@index([es_critico])
+  @@map("inventario_producto")
+}
+
+model OrdenHistorial {
+  id_orden_historial Int         @id @default(autoincrement())
+  orden_id           Int
+  old_status         String?     @db.VarChar(30)
+  new_status         String      @db.VarChar(30)
+  nota               String?
+  created_at         DateTime    @default(now())
+  changed_by         Int?
+  usuario            Usuario?    @relation("OrdenHistorialUsuario", fields: [changed_by], references: [id_usuario])
+  orden              Transaccion @relation(fields: [orden_id], references: [id_transaccion], onDelete: Cascade)
+
+  @@index([orden_id, created_at], map: "orden_historial_orden_created_idx")
+  @@map("orden_historial")
+}
+
+model Mantenimiento {
+  id_mantenimiento   Int                      @id @default(autoincrement())
+  codigo             String                   @unique @db.VarChar(50)
+  id_vehiculo        Int
+  id_cliente         Int?
+  id_transaccion     Int?
+  titulo             String?                  @db.VarChar(150)
+  descripcion        String?
+  estado             String                   @default("planificado") @db.VarChar(30)
+  prioridad          String                   @default("media") @db.VarChar(20)
+  fecha_programada   DateTime
+  fecha_inicio       DateTime?
+  fecha_realizada    DateTime?
+  motivo_cancelacion String?
+  creado_en          DateTime                 @default(now())
+  actualizado_en     DateTime                 @default(now()) @updatedAt
+  cliente            Cliente?                 @relation(fields: [id_cliente], references: [id_cliente])
+  orden              Transaccion?             @relation("OrdenMantenimiento", fields: [id_transaccion], references: [id_transaccion])
+  vehiculo           Vehiculo                 @relation(fields: [id_vehiculo], references: [id_vehiculo])
+  historial          MantenimientoHistorial[]
+
+  @@index([fecha_programada])
+  @@index([estado])
+  @@map("mantenimiento")
+}
+
+model MantenimientoHistorial {
+  id_mantenimiento_historial Int           @id @default(autoincrement())
+  mantenimiento_id           Int
+  old_fecha                  DateTime?
+  new_fecha                  DateTime?
+  reason                     String?
+  created_at                 DateTime      @default(now())
+  changed_by                 Int?
+  usuario                    Usuario?      @relation("MantenimientoHistorialUsuario", fields: [changed_by], references: [id_usuario])
+  mantenimiento              Mantenimiento @relation(fields: [mantenimiento_id], references: [id_mantenimiento], onDelete: Cascade)
+
+  @@index([mantenimiento_id, created_at], map: "mantenimiento_historial_mantenimiento_created_idx")
+  @@map("mantenimiento_historial")
+}
+
+model Feedback {
+  id_feedback Int         @id @default(autoincrement())
+  orden_id    Int
+  score       Int
+  comentario  String?
+  creado_en   DateTime    @default(now())
+  orden       Transaccion @relation(fields: [orden_id], references: [id_transaccion], onDelete: Cascade)
+
+  @@index([orden_id])
+  @@map("feedback")
+}
+
+model IndicadorCache {
+  id_indicador_cache Int       @id @default(autoincrement())
+  indicador          String    @db.VarChar(60)
+  hash               String    @unique @db.VarChar(64)
+  rango_desde        DateTime
+  rango_hasta        DateTime
+  parametros         Json?
+  payload            Json
+  computed_at        DateTime  @default(now())
+  expires_at         DateTime?
+
+  @@index([indicador, rango_desde, rango_hasta], map: "indicador_cache_indicador_rango_idx")
+  @@map("indicador_cache")
+}
+
+model MovimientoInventario {
+  id_movimiento_inventario Int                      @id @default(autoincrement())
+  tipo                     MovimientoTipo
+  id_producto              Int
+  id_inventario_producto   Int
+  cantidad                 Decimal                  @db.Decimal(14, 4)
+  costo_unitario           Decimal                  @db.Decimal(14, 4)
+  referencia_origen        String?                  @db.VarChar(100)
+  origen_tipo              MovimientoOrigen?
+  observaciones            String?
+  id_usuario               Int
+  fecha                    DateTime                 @default(now())
+  bitacoras                BitacoraInventario[]
+  inventario               InventarioProducto       @relation(fields: [id_inventario_producto], references: [id_inventario_producto])
+  producto                 Producto                 @relation(fields: [id_producto], references: [id_producto])
+  usuario                  Usuario                  @relation(fields: [id_usuario], references: [id_usuario])
+  transferencia_envio      MovimientoTransferencia? @relation("TransferenciaEnvio")
+  transferencia_recepcion  MovimientoTransferencia? @relation("TransferenciaRecepcion")
+
+  @@map("movimiento_inventario")
+}
+
+model MovimientoTransferencia {
+  id_movimiento_transferencia Int                  @id @default(autoincrement())
+  id_movimiento_envio         Int                  @unique
+  id_movimiento_recepcion     Int                  @unique
+  estado                      TransferenciaEstado  @default(PENDIENTE_RECEPCION)
+  creado_en                   DateTime             @default(now())
+  actualizado_en              DateTime             @updatedAt
+  movimiento_envio            MovimientoInventario @relation("TransferenciaEnvio", fields: [id_movimiento_envio], references: [id_movimiento_inventario])
+  movimiento_recepcion        MovimientoInventario @relation("TransferenciaRecepcion", fields: [id_movimiento_recepcion], references: [id_movimiento_inventario])
+
+  @@map("movimiento_transferencia")
+}
+
+model BitacoraInventario {
+  id_bitacora_inventario Int                  @id @default(autoincrement())
+  id_movimiento          Int
+  id_usuario             Int
+  accion                 String               @db.VarChar(100)
+  descripcion            String?
+  metadata               Json?
+  creado_en              DateTime             @default(now())
+  movimiento             MovimientoInventario @relation(fields: [id_movimiento], references: [id_movimiento_inventario], onDelete: Cascade)
+  usuario                Usuario              @relation(fields: [id_usuario], references: [id_usuario])
+
+  @@map("bitacora_inventario")
+}
+
+model ReservaInventario {
+  id_reserva_inventario  Int                 @id @default(autoincrement())
+  id_inventario_producto Int
+  id_transaccion         Int?
+  id_detalle_transaccion Int?
+  cantidad               Decimal             @db.Decimal(14, 4)
+  estado                 ReservaEstado       @default(PENDIENTE)
+  motivo                 String?
+  metadata               Json?
+  creado_en              DateTime            @default(now())
+  actualizado_en         DateTime            @updatedAt
+  detalle_transaccion    DetalleTransaccion? @relation(fields: [id_detalle_transaccion], references: [id_detalle_transaccion])
+  inventario             InventarioProducto  @relation(fields: [id_inventario_producto], references: [id_inventario_producto])
+  transaccion            Transaccion?        @relation(fields: [id_transaccion], references: [id_transaccion])
+
+  @@map("reserva_inventario")
+}
+
+model Inventario {
+  id_inventario      Int      @id @default(autoincrement())
+  id_producto        Int      @unique
+  stock_disponible   Decimal  @default(0) @db.Decimal(14, 4)
+  stock_comprometido Decimal  @default(0) @db.Decimal(14, 4)
+  costo_promedio     Decimal  @default(0) @db.Decimal(14, 4)
+  creado_en          DateTime @default(now())
+  actualizado_en     DateTime @updatedAt
+  producto           Producto @relation(fields: [id_producto], references: [id_producto])
+
+  @@map("inventario")
+}
+
+model Compra {
+  id_compra      Int             @id @default(autoincrement())
+  id_proveedor   Int
+  fecha          DateTime        @default(now())
+  total          Decimal         @default(0) @db.Decimal(14, 4)
+  estado         CompraEstado    @default(RECIBIDO)
+  creado_por     Int
+  creado_en      DateTime        @default(now())
+  actualizado_en DateTime        @updatedAt
+  usuario        Usuario         @relation(fields: [creado_por], references: [id_usuario])
+  proveedor      Proveedor       @relation(fields: [id_proveedor], references: [id_proveedor])
+  detalles       CompraDetalle[]
+
+  @@map("compra")
+}
+
+model CompraDetalle {
+  id_compra_detalle Int      @id @default(autoincrement())
+  id_compra         Int
+  id_producto       Int
+  cantidad          Decimal  @db.Decimal(14, 4)
+  precio_unitario   Decimal  @db.Decimal(14, 4)
+  subtotal          Decimal  @db.Decimal(14, 4)
+  compra            Compra   @relation(fields: [id_compra], references: [id_compra], onDelete: Cascade)
+  producto          Producto @relation(fields: [id_producto], references: [id_producto])
+
+  @@unique([id_compra, id_producto])
+  @@map("compra_detalle")
+}
+
+model Movimiento {
+  id_movimiento  Int                  @id @default(autoincrement())
+  tipo           MovimientoBasicoTipo
+  id_producto    Int
+  cantidad       Decimal              @db.Decimal(14, 4)
+  costo_unitario Decimal?             @db.Decimal(14, 4)
+  referencia     String?              @db.VarChar(120)
+  id_usuario     Int
+  creado_en      DateTime             @default(now())
+  producto       Producto             @relation(fields: [id_producto], references: [id_producto])
+  usuario        Usuario              @relation(fields: [id_usuario], references: [id_usuario])
+
+  @@index([id_producto])
+  @@map("movimiento")
+}
+
+model Bitacora {
+  id_bitacora Int      @id @default(autoincrement())
+  id_usuario  Int
+  accion      String   @db.VarChar(100)
+  descripcion String?
+  fecha_hora  DateTime @default(now())
+  tabla       String?  @db.VarChar(50)
+  ip_publica  String?  @db.VarChar(45)
+  usuario     Usuario  @relation(fields: [id_usuario], references: [id_usuario])
+
+  @@map("bitacora")
+}
+
+model Configuracion {
+  id_conf              Int       @id @default(autoincrement())
+  nombre_empresa       String    @db.VarChar(200)
+  direccion            String?
+  telefono             String?   @db.VarChar(15)
+  celular              String?   @db.VarChar(15)
+  correo               String?   @db.VarChar(100)
+  rtn                  String?   @db.VarChar(20)
+  isv                  String?   @db.VarChar(20)
+  precio_dolar         Decimal?  @db.Decimal(10, 4)
+  cai                  String?   @db.VarChar(50)
+  cantidad_facturas    Int?
+  numero_inicial       Int?
+  numero_final         Int?
+  fecha_limite_emision DateTime?
+  imagen_logo          String?
+  created_at           DateTime  @default(now())
+  updated_at           DateTime  @updatedAt
+
+  @@map("configuracion")
 }
 
 enum TipoDocumento {
@@ -92,1072 +1078,4 @@ enum CompraEstado {
   PENDIENTE
   RECIBIDO
   ANULADO
-}
-
-// ✅ Modelo para Cotizaciones:
-model Cotizacion {
-  id_cotizacion     Int      @id @default(autoincrement())
-  codigo_cotizacion String   @unique @db.VarChar(50)
-  id_cliente        Int
-  id_vehiculo       Int
-  id_usuario        Int // Usuario que creó la cotización
-  estado            String   @default("borrador") @db.VarChar(30) // borrador, enviada, aprobada, rechazada, vencida
-  vigencia_hasta    DateTime
-
-  // Aprobación
-  fecha_aprobacion    DateTime?
-  aprobado_por        String?   @db.VarChar(50) // 'cliente_presencial', 'cliente_digital'
-  comentarios_cliente String?   @db.Text
-  razon_rechazo       String?   @db.Text
-  approval_token      String?   @unique @db.VarChar(255) // Para aprobación digital
-
-  // Totales
-  subtotal         Decimal @db.Decimal(10, 2)
-  descuento_global Decimal @default(0) @db.Decimal(10, 2)
-  impuesto         Decimal @db.Decimal(10, 2)
-  total            Decimal @db.Decimal(10, 2)
-
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-
-  cliente            Cliente             @relation(fields: [id_cliente], references: [id_cliente])
-  vehiculo           Vehiculo            @relation(fields: [id_vehiculo], references: [id_vehiculo])
-  usuario            Usuario             @relation(fields: [id_usuario], references: [id_usuario])
-  detalle_cotizacion DetalleCotizacion[]
-  comprobantes       Comprobante[]
-
-  @@map("cotizacion")
-}
-
-model DetalleCotizacion {
-  id_detalle_cotizacion Int     @id @default(autoincrement())
-  id_cotizacion         Int
-  id_producto           Int?
-  id_servicio           Int?
-  cantidad              Int
-  precio_unitario       Decimal @db.Decimal(10, 2)
-  descuento             Decimal @default(0) @db.Decimal(10, 2)
-  total                 Decimal @db.Decimal(10, 2)
-  servicio_ref          Int?
-
-  cotizacion Cotizacion @relation(fields: [id_cotizacion], references: [id_cotizacion], onDelete: Cascade)
-  producto   Producto?  @relation(fields: [id_producto], references: [id_producto])
-  servicio   Servicio?  @relation(fields: [id_servicio], references: [id_servicio])
-
-  @@map("detalle_cotizacion")
-}
-
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-// Entidad base para personas
-model Persona {
-  id_persona        Int             @id @default(autoincrement())
-  nombre            String          @db.VarChar(100)
-  apellido_paterno  String          @db.VarChar(100)
-  apellido_materno  String?         @db.VarChar(100)
-  tipo_documento    TipoDocumento
-  numero_documento  String          @unique @db.VarChar(20)
-  sexo              String?         @db.VarChar(10)
-  telefono          String?         @db.VarChar(15)
-  correo            String?         @db.VarChar(100)
-  nombre_comercial  String?         @db.VarChar(150)
-  registrar_empresa Boolean         @default(false)
-  fecha_nacimiento  DateTime?       @db.Date
-  direccion         String?         @db.VarChar(200)
-  fecha_registro    DateTime        @default(now())
-  estatus           Boolean         @default(true)
-  empresa_persona   EmpresaPersona?
-
-  // Relaciones - Una persona puede ser cliente, proveedor o usuario
-  cliente       Cliente?
-  proveedor     Proveedor?
-  usuario       Usuario?
-  trabajador    Trabajador?
-  transacciones Transaccion[]
-  comprobantes  Comprobante[]
-
-  @@map("persona")
-}
-
-model EmpresaPersona {
-  id_empresa_persona Int      @id @default(autoincrement())
-  persona_id         Int      @unique
-  ruc                String   @unique @db.VarChar(11)
-  razon_social       String   @db.VarChar(150)
-  nombre_comercial   String?  @db.VarChar(100)
-  direccion_fiscal   String?  @db.VarChar(200)
-  created_at         DateTime @default(now())
-  updated_at         DateTime @updatedAt
-
-  persona      Persona       @relation(fields: [persona_id], references: [id_persona], onDelete: Cascade)
-  comprobantes Comprobante[]
-
-  @@map("empresa_persona")
-}
-
-model Cliente {
-  id_cliente     Int      @id @default(autoincrement())
-  id_persona     Int      @unique
-  fecha_registro DateTime @default(now())
-  estatus        Boolean  @default(true)
-
-  override_tipo_comprobante TipoComprobante?
-  motivo_override           String?          @db.Text
-  persona                   Persona          @relation(fields: [id_persona], references: [id_persona], onDelete: Cascade)
-  vehiculos                 Vehiculo[]
-  cotizaciones              Cotizacion[]
-  comprobantes              Comprobante[]
-  mantenimientos            Mantenimiento[]
-
-  @@map("cliente")
-}
-
-model Proveedor {
-  id_proveedor    Int     @id @default(autoincrement())
-  id_persona      Int     @unique
-  razon_social    String  @db.VarChar(200)
-  contacto        String? @db.VarChar(100)
-  numero_contacto String? @db.VarChar(15)
-  estatus         Boolean @default(true)
-
-  persona                 Persona                @relation(fields: [id_persona], references: [id_persona], onDelete: Cascade)
-  transaccion_proveedores TransaccionProveedor[]
-  compras                 Compra[]
-
-  @@map("proveedor")
-}
-
-model Rol {
-  id_rol         Int      @id @default(autoincrement())
-  nombre_rol     String   @unique @db.VarChar(50)
-  descripcion    String?  @db.Text
-  estatus        Boolean  @default(true)
-  fecha_registro DateTime @default(now())
-  actualizado_en DateTime @updatedAt
-
-  usuarios Usuario[]
-  permisos RolPermiso[]
-
-  @@map("rol")
-}
-
-model Modulo {
-  id_modulo     Int      @id @default(autoincrement())
-  clave         String   @unique @db.VarChar(100)
-  nombre        String   @db.VarChar(150)
-  descripcion   String?  @db.Text
-  activo        Boolean  @default(true)
-  creado_en     DateTime @default(now())
-  actualizado_en DateTime @updatedAt
-
-  permisos Permiso[]
-
-  @@map("modulo")
-}
-
-model Usuario {
-  id_usuario     Int      @id @default(autoincrement())
-  id_persona     Int      @unique
-  id_rol         Int
-  nombre_usuario String   @unique @db.VarChar(50)
-  password       String   @db.VarChar(255)
-  password_temporal        String?   @db.VarChar(255)
-  password_temporal_expira DateTime?
-  requiere_cambio_password Boolean   @default(false)
-  ultimo_cambio_password   DateTime?
-  imagen_usuario String?  @db.Text
-  fecha_creacion DateTime @default(now())
-  estado         Boolean  @default(true)
-  estatus        Boolean  @default(true)
-  envio_credenciales_pendiente Boolean  @default(false)
-  ultimo_envio_credenciales    DateTime?
-  ultimo_error_envio          String?   @db.Text
-  bloqueado_en                DateTime?
-  motivo_bloqueo              String?   @db.Text
-
-  persona                   Persona               @relation(fields: [id_persona], references: [id_persona], onDelete: Cascade)
-  rol                       Rol                   @relation(fields: [id_rol], references: [id_rol])
-  transacciones             Transaccion[]
-  bitacoras                 Bitacora[]
-  transaccion_vehiculos     TransaccionVehiculo[]
-  trabajador                Trabajador?
-  cotizaciones              Cotizacion[]
-  entregas_realizadas       Transaccion[]         @relation("EntregaUsuario")
-  pagos_registrados         Pago[]                @relation("PagoUsuario")
-  ventas_registradas        VentaPago[]
-  comprobantes_creados      Comprobante[]         @relation("ComprobanteCreadoPor")
-  comprobantes_actualizados Comprobante[]         @relation("ComprobanteActualizadoPor")
-  bitacoras_comprobantes    ComprobanteBitacora[]
-  movimientos_inventario    MovimientoInventario[]
-  bitacoras_inventario      BitacoraInventario[]
-  permisos                  UsuarioPermiso[]
-  permisos_asignados        RolPermiso[]          @relation("RolPermisoAsignado")
-  compras_registradas       Compra[]
-  movimientos_basicos       Movimiento[]
-  ordenes_historial         OrdenHistorial[]      @relation("OrdenHistorialUsuario")
-  mantenimientos_historial  MantenimientoHistorial[] @relation("MantenimientoHistorialUsuario")
-
-  @@map("usuario")
-}
-
-model Permiso {
-  id_permiso    Int      @id @default(autoincrement())
-  codigo        String   @unique @db.VarChar(100)
-  nombre        String   @db.VarChar(150)
-  descripcion   String?  @db.Text
-  modulo        String   @db.VarChar(100)
-  agrupador     String?  @db.VarChar(100)
-  activo        Boolean  @default(true)
-  creado_en     DateTime @default(now())
-  actualizado_en DateTime @updatedAt
-
-  moduloEntidad Modulo   @relation(fields: [modulo], references: [clave])
-  roles    RolPermiso[]
-  usuarios UsuarioPermiso[]
-
-  @@index([modulo])
-  @@map("permiso")
-}
-
-model RolPermiso {
-  id_rol     Int
-  id_permiso Int
-  creado_en  DateTime @default(now())
-
-  asignado_por Int?
-  descripcion  String? @db.Text
-
-  rol     Rol     @relation(fields: [id_rol], references: [id_rol], onDelete: Cascade)
-  permiso Permiso @relation(fields: [id_permiso], references: [id_permiso], onDelete: Cascade)
-  asignado Usuario? @relation("RolPermisoAsignado", fields: [asignado_por], references: [id_usuario], onDelete: SetNull)
-
-  @@id([id_rol, id_permiso])
-  @@map("rol_permiso")
-}
-
-model UsuarioPermiso {
-  id_usuario Int
-  id_permiso Int
-  concedido  Boolean @default(true)
-  origen     String  @db.VarChar(20) // EXTRA, REVOCADO
-  comentario String? @db.Text
-  actualizado_en DateTime @default(now()) @updatedAt
-
-  usuario Usuario @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade)
-  permiso Permiso @relation(fields: [id_permiso], references: [id_permiso], onDelete: Cascade)
-
-  @@id([id_usuario, id_permiso])
-  @@map("usuario_permiso")
-}
-
-model Trabajador {
-  id_trabajador     Int      @id @default(autoincrement())
-  id_usuario        Int?     @unique
-  id_persona        Int      @unique
-  codigo_empleado   String   @unique
-  cargo             String   @db.VarChar(100)
-  especialidad      String   @db.VarChar(100)
-  nivel_experiencia String   @db.VarChar(20) // 'Junior', 'Senior', 'Especialista'
-  tarifa_hora       Decimal  @default(0) @db.Decimal(8, 2)
-  fecha_ingreso     DateTime @default(now())
-  sueldo_mensual    Decimal? @db.Decimal(10, 2)
-  activo            Boolean  @default(true)
-  eliminado         Boolean  @default(false)
-  created_at        DateTime @default(now())
-  updated_at        DateTime @updatedAt
-
-  usuario                      Usuario?                @relation(fields: [id_usuario], references: [id_usuario], onDelete: SetNull)
-  persona                      Persona                 @relation(fields: [id_persona], references: [id_persona], onDelete: Cascade)
-  tareas_asignadas             Tarea[]
-  ordenes_principales          TransaccionTrabajador[] @relation("Trabajador_Ordenes")
-  ordenes_principales_directas Transaccion[]           @relation("TrabajadorPrincipal")
-
-  @@map("trabajador")
-}
-
-// Gestión de productos
-model TransaccionTrabajador {
-  id_transaccion Int
-  id_trabajador  Int
-  rol            String?   @db.VarChar(50)
-  asignado_en    DateTime? @default(now())
-
-  transaccion Transaccion @relation("Transaccion_Trabajador", fields: [id_transaccion], references: [id_transaccion])
-  trabajador  Trabajador  @relation("Trabajador_Ordenes", fields: [id_trabajador], references: [id_trabajador])
-
-  @@id([id_transaccion, id_trabajador])
-  @@map("transaccion_trabajador")
-}
-
-model Categoria {
-  id_categoria   Int      @id @default(autoincrement())
-  nombre         String   @db.VarChar(100)
-  estatus        Boolean  @default(true)
-  fecha_registro DateTime @default(now())
-
-  productos Producto[]
-
-  @@map("categoria")
-}
-
-model UnidadMedida {
-  id_unidad     Int     @id @default(autoincrement())
-  nombre_unidad String  @db.VarChar(50)
-  abreviatura   String  @db.VarChar(10)
-  estatus       Boolean @default(true)
-
-  productos Producto[]
-
-  @@map("unidad_medida")
-}
-
-model Fabricante {
-  id_fabricante     Int      @id @default(autoincrement())
-  nombre_fabricante String   @db.VarChar(100)
-  descripcion       String?  @db.Text
-  estado            Boolean  @default(true)
-  fecha_registro    DateTime @default(now())
-
-  productos Producto[]
-
-  @@map("fabricante")
-}
-
-model Producto {
-  id_producto     Int      @id @default(autoincrement())
-  id_categoria    Int
-  id_fabricante   Int
-  id_unidad       Int
-  tipo            String   @db.VarChar(20) // 'producto' o 'servicio'
-  codigo_producto String   @unique @db.VarChar(50)
-  nombre          String   @db.VarChar(200)
-  descripcion     String?  @db.Text
-  stock           Int      @default(0)
-  stock_minimo    Int      @default(0)
-  precio_compra   Decimal  @db.Decimal(10, 2)
-  precio_venta    Decimal  @db.Decimal(10, 2)
-  descuento       Decimal  @default(0) @db.Decimal(5, 2)
-  oferta          Boolean  @default(false)
-  estatus         Boolean  @default(true)
-  foto            String?  @db.Text
-  fecha_registro  DateTime @default(now())
-
-  categoria            Categoria            @relation(fields: [id_categoria], references: [id_categoria])
-  fabricante           Fabricante           @relation(fields: [id_fabricante], references: [id_fabricante])
-  unidad_medida        UnidadMedida         @relation(fields: [id_unidad], references: [id_unidad])
-  detalles_transaccion DetalleTransaccion[]
-  detalle_cotizaciones DetalleCotizacion[]
-  ComprobanteDetalle   ComprobanteDetalle[]
-  inventarios          InventarioProducto[]
-  movimientos_inventario MovimientoInventario[]
-  inventario_basico    Inventario?
-  compras_detalles     CompraDetalle[]
-  movimientos_basicos  Movimiento[]
-
-  @@map("producto")
-}
-
-// Gestión de servicios
-model Servicio {
-  id_servicio     Int      @id @default(autoincrement())
-  codigo_servicio String   @unique @db.VarChar(50)
-  nombre          String   @db.VarChar(200)
-  descripcion     String?  @db.Text
-  es_general      Boolean  @default(false)
-  id_marca        Int?
-  id_modelo       Int?
-  precio_base     Decimal  @db.Decimal(10, 2)
-  descuento       Decimal  @default(0) @db.Decimal(5, 2)
-  oferta          Boolean  @default(false)
-  tiempo_minimo   Int      @default(1)
-  tiempo_maximo   Int      @default(1)
-  unidad_tiempo   String   @default("minutos") @db.VarChar(10)
-  estatus         Boolean  @default(true)
-  fecha_registro  DateTime @default(now())
-
-  marca                Marca?               @relation(fields: [id_marca], references: [id_marca])
-  modelo               Modelo?              @relation(fields: [id_modelo], references: [id_modelo])
-  detalle_cotizacion   DetalleCotizacion[]
-  detalles_transaccion DetalleTransaccion[]
-  ComprobanteDetalle   ComprobanteDetalle[]
-
-  @@map("servicio")
-}
-
-// Gestión de vehículos
-model Marca {
-  id_marca     Int     @id @default(autoincrement())
-  nombre_marca String  @db.VarChar(50)
-  estado       Boolean @default(true)
-  descripcion  String? @db.Text
-
-  modelos   Modelo[]
-  servicios Servicio[]
-
-  @@map("marca")
-}
-
-model Modelo {
-  id_modelo     Int     @id @default(autoincrement())
-  id_marca      Int
-  nombre_modelo String  @db.VarChar(50)
-  estado        Boolean @default(true)
-  descripcion   String? @db.Text
-
-  marca     Marca      @relation(fields: [id_marca], references: [id_marca])
-  vehiculos Vehiculo[]
-  servicios Servicio[]
-
-  @@map("modelo")
-}
-
-model Vehiculo {
-  id_vehiculo      Int     @id @default(autoincrement())
-  id_cliente       Int
-  id_modelo        Int
-  placa            String  @unique @db.VarChar(10)
-  tipo             String  @db.VarChar(50)
-  año             Int
-  tipo_combustible String  @db.VarChar(30)
-  transmision      String  @db.VarChar(30)
-  numero_chasis    String? @db.VarChar(50)
-  numero_motor     String? @db.VarChar(50)
-  observaciones    String? @db.Text
-  imagen           String? @db.Text
-  estado           Boolean @default(true)
-
-  cliente               Cliente               @relation(fields: [id_cliente], references: [id_cliente])
-  modelo                Modelo                @relation(fields: [id_modelo], references: [id_modelo])
-  transaccion_vehiculos TransaccionVehiculo[]
-  cotizaciones          Cotizacion[]
-  mantenimientos        Mantenimiento[]
-
-  @@map("vehiculo")
-}
-
-// Sistema de transacciones
-model Transaccion {
-  id_transaccion          Int      @id @default(autoincrement())
-  id_persona              Int
-  id_usuario              Int
-  id_trabajador_principal Int?
-  tipo_transaccion        String   @db.VarChar(50) // 'venta', 'compra', 'cotizacion', 'orden'
-  tipo_comprobante        String   @db.VarChar(50)
-  serie_comprobante       String?  @db.VarChar(10)
-  numero_comprobante      String?  @db.VarChar(20)
-  codigo_transaccion      String   @unique @db.VarChar(50)
-  fecha                   DateTime @default(now())
-  descuento               Decimal  @default(0) @db.Decimal(10, 2)
-  impuesto                Decimal  @default(0) @db.Decimal(10, 2)
-  porcentaje              Decimal  @default(0) @db.Decimal(5, 2)
-  total                   Decimal  @db.Decimal(10, 2)
-  cantidad_pago           Decimal  @default(0) @db.Decimal(10, 2)
-  observaciones           String?  @db.Text
-  estatus                 String   @default("activo") @db.VarChar(20)
-
-  // Campos para órdenes de trabajo
-  estado_orden       String    @default("pendiente") @db.VarChar(30) // pendiente, por_hacer, en_proceso, pausado, completado
-  prioridad          String    @default("media") @db.VarChar(20) // baja, media, alta, urgente
-  fecha_inicio       DateTime?
-  fecha_fin_estimada DateTime?
-  fecha_fin_real     DateTime?
-  fecha_cierre       DateTime?
-  // Duración total estimada de la orden
-  duracion_min       Int?
-  duracion_max       Int?
-  unidad_tiempo      String?   @db.VarChar(10) // minutos, horas, días, semanas
-
-  // ✅ Campos para pagos
-  estado_pago   String    @default("pendiente") @db.VarChar(20) // pendiente, parcial, pagado
-  fecha_entrega DateTime?
-  entregado_por Int?
-
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-
-  persona                  Persona                 @relation(fields: [id_persona], references: [id_persona])
-  usuario                  Usuario                 @relation(fields: [id_usuario], references: [id_usuario])
-  trabajador_principal     Trabajador?             @relation("TrabajadorPrincipal", fields: [id_trabajador_principal], references: [id_trabajador])
-  transaccion_trabajadores TransaccionTrabajador[] @relation("Transaccion_Trabajador")
-  usuario_entrega          Usuario?                @relation("EntregaUsuario", fields: [entregado_por], references: [id_usuario])
-  detalles_transaccion     DetalleTransaccion[]
-  transaccion_proveedores  TransaccionProveedor[]
-  transaccion_vehiculos    TransaccionVehiculo[]
-  pagos                    Pago[]
-  comprobantes             Comprobante[]
-  reservas_inventario      ReservaInventario[]
-  historial                OrdenHistorial[]
-  mantenimiento            Mantenimiento?        @relation("OrdenMantenimiento")
-  feedback                 Feedback[]
-
-  @@map("transaccion")
-  @@index([fecha_cierre])
-}
-
-model Pago {
-  id_pago          Int      @id @default(autoincrement())
-  id_transaccion   Int
-  tipo_pago        String   @db.VarChar(30) // efectivo, tarjeta, transferencia, yape_plin
-  monto            Decimal  @db.Decimal(10, 2)
-  numero_operacion String?  @db.VarChar(50) // Para tarjetas/transferencias
-  fecha_pago       DateTime @default(now())
-  registrado_por   Int
-  observaciones    String?  @db.Text
-
-  transaccion      Transaccion @relation(fields: [id_transaccion], references: [id_transaccion])
-  usuario_registro Usuario     @relation("PagoUsuario", fields: [registrado_por], references: [id_usuario])
-
-  @@map("pago")
-}
-
-model FacturacionConfig {
-  id_config                    Int      @id @default(1)
-  afecta_igv                   Boolean  @default(true)
-  igv_porcentaje               Decimal  @default(0.18) @db.Decimal(5, 4)
-  serie_boleta_default         String   @db.VarChar(10)
-  serie_factura_default        String   @db.VarChar(10)
-  precios_incluyen_igv_default Boolean  @default(true)
-  moneda_default               String   @default("PEN") @db.VarChar(3)
-  created_at                   DateTime @default(now())
-  updated_at                   DateTime @updatedAt
-
-  @@map("facturacion_config")
-}
-
-model FacturacionSerie {
-  id_facturacion_serie Int             @id @default(autoincrement())
-  tipo                 TipoComprobante
-  serie                String          @db.VarChar(10)
-  correlativo_actual   Int             @default(0)
-  activo               Boolean         @default(true)
-  descripcion          String?         @db.VarChar(150)
-  created_at           DateTime        @default(now())
-  updated_at           DateTime        @updatedAt
-
-  comprobantes Comprobante[]
-
-  @@unique([tipo, serie])
-  @@map("facturacion_serie")
-}
-
-model Comprobante {
-  id_comprobante            Int               @id @default(autoincrement())
-  id_facturacion_serie      Int?
-  tipo                      TipoComprobante
-  serie                     String            @db.VarChar(10)
-  numero                    Int
-  origen_tipo               OrigenComprobante
-  origen_id                 Int
-  estado_pago               String            @default("pendiente") @db.VarChar(20)
-  codigo                    String?           @db.VarChar(30)
-  estado                    EstadoComprobante @default(BORRADOR)
-  incluye_igv               Boolean           @default(true)
-  moneda                    String            @default("PEN") @db.VarChar(3)
-  subtotal                  Decimal           @db.Decimal(12, 2)
-  igv                       Decimal           @db.Decimal(12, 2)
-  total                     Decimal           @db.Decimal(12, 2)
-  receptor_nombre           String            @db.VarChar(200)
-  receptor_documento        String            @db.VarChar(20)
-  receptor_direccion        String?           @db.VarChar(200)
-  descripcion               String?           @db.Text
-  notas                     String?           @db.Text
-  precios_incluyen_igv      Boolean           @default(true)
-  fecha_emision             DateTime?
-  pdf_url                   String?           @db.Text
-  xml_url                   String?           @db.Text
-  override_tipo_comprobante TipoComprobante?
-  motivo_override           String?           @db.Text
-  creado_en                 DateTime          @default(now())
-  actualizado_en            DateTime          @updatedAt
-  creado_por                Int
-  actualizado_por           Int?
-  id_persona                Int
-  id_empresa_persona        Int?
-  id_cliente                Int
-  id_cotizacion             Int?              @unique
-  id_transaccion            Int?              @unique
-
-  serie_rel               FacturacionSerie?     @relation(fields: [id_facturacion_serie], references: [id_facturacion_serie])
-  persona                 Persona               @relation(fields: [id_persona], references: [id_persona])
-  empresa                 EmpresaPersona?       @relation(fields: [id_empresa_persona], references: [id_empresa_persona])
-  cliente                 Cliente               @relation(fields: [id_cliente], references: [id_cliente])
-  cotizacion              Cotizacion?           @relation(fields: [id_cotizacion], references: [id_cotizacion])
-  transaccion             Transaccion?          @relation(fields: [id_transaccion], references: [id_transaccion])
-  creado_por_usuario      Usuario               @relation("ComprobanteCreadoPor", fields: [creado_por], references: [id_usuario])
-  actualizado_por_usuario Usuario?              @relation("ComprobanteActualizadoPor", fields: [actualizado_por], references: [id_usuario])
-  detalles                ComprobanteDetalle[]
-  bitacoras               ComprobanteBitacora[]
-  venta                   Venta?
-
-  @@unique([serie, numero])
-  @@unique([origen_tipo, origen_id])
-  @@map("comprobante")
-}
-
-model Venta {
-  id_venta         Int             @id @default(autoincrement())
-  id_comprobante   Int             @unique
-  fecha            DateTime        @default(now())
-  total            Decimal         @db.Decimal(12, 2)
-  total_pagado     Decimal         @default(0) @db.Decimal(12, 2)
-  saldo            Decimal         @default(0) @db.Decimal(12, 2)
-  metodo_principal MetodoPagoVenta?
-  estado_pago      EstadoPagoVenta @default(pendiente)
-  metadata         Json?
-  creado_en        DateTime        @default(now())
-  actualizado_en   DateTime        @updatedAt
-
-  comprobante Comprobante @relation(fields: [id_comprobante], references: [id_comprobante], onDelete: Cascade)
-  pagos       VentaPago[]
-
-  @@index([fecha])
-  @@index([metodo_principal])
-  @@index([estado_pago])
-  @@map("venta")
-}
-
-model VentaPago {
-  id_venta_pago  Int             @id @default(autoincrement())
-  id_venta       Int
-  metodo         MetodoPagoVenta
-  monto          Decimal         @db.Decimal(12, 2)
-  referencia     String?         @db.VarChar(120)
-  fecha_pago     DateTime        @default(now())
-  notas          String?         @db.Text
-  registrado_por Int
-
-  venta   Venta   @relation(fields: [id_venta], references: [id_venta], onDelete: Cascade)
-  usuario Usuario @relation(fields: [registrado_por], references: [id_usuario])
-
-  @@index([id_venta, fecha_pago])
-  @@map("venta_pago")
-}
-
-model ComprobanteDetalle {
-  id_comprobante_detalle Int                 @id @default(autoincrement())
-  id_comprobante         Int
-  tipo_item              TipoItemComprobante
-  descripcion            String              @db.VarChar(200)
-  cantidad               Decimal             @db.Decimal(12, 3)
-  unidad_medida          String?             @db.VarChar(10)
-  precio_unitario        Decimal             @db.Decimal(12, 2)
-  descuento              Decimal             @default(0) @db.Decimal(12, 2)
-  subtotal               Decimal             @db.Decimal(12, 2)
-  igv                    Decimal             @db.Decimal(12, 2)
-  total                  Decimal             @db.Decimal(12, 2)
-  id_producto            Int?
-  id_servicio            Int?
-  metadata               Json?
-
-  comprobante Comprobante @relation(fields: [id_comprobante], references: [id_comprobante], onDelete: Cascade)
-  producto    Producto?   @relation(fields: [id_producto], references: [id_producto])
-  servicio    Servicio?   @relation(fields: [id_servicio], references: [id_servicio])
-
-  @@map("comprobante_detalle")
-}
-
-model ComprobanteBitacora {
-  id_comprobante_bitacora Int      @id @default(autoincrement())
-  id_comprobante          Int
-  id_usuario              Int
-  accion                  String   @db.VarChar(50)
-  descripcion             String?  @db.Text
-  metadata                Json?
-  created_at              DateTime @default(now())
-
-  comprobante Comprobante @relation(fields: [id_comprobante], references: [id_comprobante], onDelete: Cascade)
-  usuario     Usuario     @relation(fields: [id_usuario], references: [id_usuario])
-
-  @@map("comprobante_bitacora")
-}
-
-model DetalleTransaccion {
-  id_detalle_transaccion       Int     @id @default(autoincrement())
-  id_transaccion               Int
-  id_producto                  Int?
-  id_servicio                  Int?
-  cantidad                     Int
-  precio                       Decimal @db.Decimal(10, 2)
-  descuento                    Decimal @default(0) @db.Decimal(10, 2)
-  total                        Decimal @db.Decimal(10, 2)
-  estatus                      Boolean @default(true)
-  // Asociación opcional: vincula un producto a un detalle de servicio específico
-  id_detalle_servicio_asociado Int?
-
-  transaccion         Transaccion          @relation(fields: [id_transaccion], references: [id_transaccion], onDelete: Cascade)
-  producto            Producto?            @relation(fields: [id_producto], references: [id_producto])
-  servicio            Servicio?            @relation(fields: [id_servicio], references: [id_servicio])
-  // Relación auto-referenciada para asociar producto->servicio
-  servicio_asociado   DetalleTransaccion?  @relation("ProductoAsociadoServicio", fields: [id_detalle_servicio_asociado], references: [id_detalle_transaccion])
-  productos_asociados DetalleTransaccion[] @relation("ProductoAsociadoServicio")
-  tareas              Tarea[]
-  reservas            ReservaInventario[]
-
-  // Garantiza como máximo un producto asociado por cada detalle de servicio
-  @@unique([id_detalle_servicio_asociado])
-  @@map("detalle_transaccion")
-}
-
-model Tarea {
-  id_tarea               Int       @id @default(autoincrement())
-  id_detalle_transaccion Int
-  id_trabajador          Int? // referencia al trabajador responsable (puede quedar sin asignar)
-  estado                 String    @default("pendiente") @db.VarChar(30) // pendiente, en_proceso, pausado, completado, verificado
-  fecha_inicio           DateTime?
-  fecha_fin              DateTime?
-  tiempo_estimado        Int? // en minutos
-  tiempo_real            Int? // en minutos
-  notas_trabajador       String?   @db.Text
-  created_at             DateTime  @default(now())
-  updated_at             DateTime  @updatedAt
-
-  detalle_transaccion DetalleTransaccion @relation(fields: [id_detalle_transaccion], references: [id_detalle_transaccion])
-  trabajador          Trabajador?        @relation(fields: [id_trabajador], references: [id_trabajador])
-
-  @@map("tarea")
-}
-
-// Tablas de relación
-model TransaccionProveedor {
-  id_transaccion Int
-  id_proveedor   Int
-
-  transaccion Transaccion @relation(fields: [id_transaccion], references: [id_transaccion])
-  proveedor   Proveedor   @relation(fields: [id_proveedor], references: [id_proveedor])
-
-  @@id([id_transaccion, id_proveedor])
-  @@map("transaccion_proveedor")
-}
-
-model TransaccionVehiculo {
-  id_transaccion     Int
-  id_vehiculo        Int
-  id_usuario         Int
-  nivel_combustible  String? @db.VarChar(20)
-  kilometraje_millas Int?
-  descripcion        String? @db.Text
-
-  transaccion Transaccion @relation(fields: [id_transaccion], references: [id_transaccion])
-  vehiculo    Vehiculo    @relation(fields: [id_vehiculo], references: [id_vehiculo])
-  usuario     Usuario     @relation(fields: [id_usuario], references: [id_usuario])
-
-  @@id([id_transaccion, id_vehiculo])
-  @@map("transaccion_vehiculo")
-}
-
-model Almacen {
-  id_almacen     Int      @id @default(autoincrement())
-  nombre         String   @db.VarChar(100)
-  descripcion    String?  @db.Text
-  direccion      String?  @db.Text
-  activo         Boolean  @default(true)
-  creado_en      DateTime @default(now())
-  actualizado_en DateTime @updatedAt
-
-  ubicaciones AlmacenUbicacion[]
-  inventarios InventarioProducto[]
-
-  @@map("almacen")
-}
-
-model AlmacenUbicacion {
-  id_almacen_ubicacion Int      @id @default(autoincrement())
-  id_almacen           Int
-  codigo               String   @unique @db.VarChar(50)
-  descripcion          String?  @db.Text
-  activo               Boolean  @default(true)
-  creado_en            DateTime @default(now())
-  actualizado_en       DateTime @updatedAt
-
-  almacen    Almacen             @relation(fields: [id_almacen], references: [id_almacen])
-  inventarios InventarioProducto[]
-
-  @@map("almacen_ubicacion")
-}
-
-model InventarioProducto {
-  id_inventario_producto Int      @id @default(autoincrement())
-  id_producto            Int
-  id_almacen             Int
-  id_almacen_ubicacion   Int?
-  stock_disponible       Decimal  @default(0) @db.Decimal(14, 4)
-  stock_comprometido     Decimal  @default(0) @db.Decimal(14, 4)
-  stock_minimo           Decimal  @default(0) @db.Decimal(14, 4)
-  stock_maximo           Decimal? @db.Decimal(14, 4)
-  costo_promedio         Decimal  @default(0) @db.Decimal(14, 4)
-  creado_en              DateTime @default(now())
-  actualizado_en         DateTime @updatedAt
-  es_critico             Boolean  @default(false)
-
-  producto  Producto          @relation(fields: [id_producto], references: [id_producto])
-  almacen   Almacen           @relation(fields: [id_almacen], references: [id_almacen])
-  ubicacion AlmacenUbicacion? @relation(fields: [id_almacen_ubicacion], references: [id_almacen_ubicacion])
-  movimientos MovimientoInventario[]
-  reservas   ReservaInventario[]
-
-  @@unique([id_producto, id_almacen, id_almacen_ubicacion])
-  @@index([es_critico])
-  @@map("inventario_producto")
-}
-
-model OrdenHistorial {
-  id_orden_historial Int      @id @default(autoincrement())
-  orden_id           Int
-  old_status         String?  @db.VarChar(30)
-  new_status         String   @db.VarChar(30)
-  nota               String?  @db.Text
-  created_at         DateTime @default(now())
-  changed_by         Int?
-
-  orden  Transaccion @relation(fields: [orden_id], references: [id_transaccion], onDelete: Cascade)
-  usuario Usuario?   @relation("OrdenHistorialUsuario", fields: [changed_by], references: [id_usuario])
-
-  @@index([orden_id, created_at])
-  @@map("orden_historial")
-}
-
-model Mantenimiento {
-  id_mantenimiento  Int      @id @default(autoincrement())
-  codigo            String   @unique @db.VarChar(50)
-  id_vehiculo       Int
-  id_cliente        Int?
-  id_transaccion    Int?     @unique(map: "mantenimiento_id_transaccion_key")
-  titulo            String?  @db.VarChar(150)
-  descripcion       String?  @db.Text
-  estado            String   @default("planificado") @db.VarChar(30)
-  prioridad         String   @default("media") @db.VarChar(20)
-  fecha_programada  DateTime
-  fecha_inicio      DateTime?
-  fecha_realizada   DateTime?
-  motivo_cancelacion String? @db.Text
-  creado_en         DateTime @default(now())
-  actualizado_en    DateTime @updatedAt
-
-  vehiculo    Vehiculo     @relation(fields: [id_vehiculo], references: [id_vehiculo])
-  cliente     Cliente?     @relation(fields: [id_cliente], references: [id_cliente])
-  orden       Transaccion? @relation("OrdenMantenimiento", fields: [id_transaccion], references: [id_transaccion])
-  historial   MantenimientoHistorial[]
-
-  @@index([fecha_programada])
-  @@index([estado])
-  @@map("mantenimiento")
-}
-
-model MantenimientoHistorial {
-  id_mantenimiento_historial Int      @id @default(autoincrement())
-  mantenimiento_id           Int
-  old_fecha                  DateTime?
-  new_fecha                  DateTime?
-  reason                     String?  @db.Text
-  created_at                 DateTime @default(now())
-  changed_by                 Int?
-
-  mantenimiento Mantenimiento @relation(fields: [mantenimiento_id], references: [id_mantenimiento], onDelete: Cascade)
-  usuario       Usuario?      @relation("MantenimientoHistorialUsuario", fields: [changed_by], references: [id_usuario])
-
-  @@index([mantenimiento_id, created_at])
-  @@map("mantenimiento_historial")
-}
-
-model Feedback {
-  id_feedback Int      @id @default(autoincrement())
-  orden_id    Int
-  score       Int
-  comentario  String?  @db.Text
-  creado_en   DateTime @default(now())
-
-  orden Transaccion @relation(fields: [orden_id], references: [id_transaccion], onDelete: Cascade)
-
-  @@index([orden_id])
-  @@map("feedback")
-}
-
-model IndicadorCache {
-  id_indicador_cache Int      @id @default(autoincrement())
-  indicador          String   @db.VarChar(60)
-  hash               String   @unique @db.VarChar(64)
-  rango_desde        DateTime
-  rango_hasta        DateTime
-  parametros         Json?
-  payload            Json
-  computed_at        DateTime @default(now())
-  expires_at         DateTime?
-
-  @@index([indicador, rango_desde, rango_hasta])
-  @@map("indicador_cache")
-}
-
-model MovimientoInventario {
-  id_movimiento_inventario Int               @id @default(autoincrement())
-  tipo                     MovimientoTipo
-  id_producto              Int
-  id_inventario_producto   Int
-  cantidad                 Decimal           @db.Decimal(14, 4)
-  costo_unitario           Decimal           @db.Decimal(14, 4)
-  referencia_origen        String?           @db.VarChar(100)
-  origen_tipo              MovimientoOrigen?
-  observaciones            String?           @db.Text
-  id_usuario               Int
-  fecha                    DateTime          @default(now())
-
-  producto          Producto          @relation(fields: [id_producto], references: [id_producto])
-  inventario        InventarioProducto @relation(fields: [id_inventario_producto], references: [id_inventario_producto])
-  usuario           Usuario           @relation(fields: [id_usuario], references: [id_usuario])
-  transferencia_envio     MovimientoTransferencia? @relation("TransferenciaEnvio")
-  transferencia_recepcion MovimientoTransferencia? @relation("TransferenciaRecepcion")
-  bitacoras          BitacoraInventario[]
-
-  @@map("movimiento_inventario")
-}
-
-model MovimientoTransferencia {
-  id_movimiento_transferencia Int                 @id @default(autoincrement())
-  id_movimiento_envio         Int                 @unique
-  id_movimiento_recepcion     Int                 @unique
-  estado                      TransferenciaEstado @default(PENDIENTE_RECEPCION)
-  creado_en                   DateTime            @default(now())
-  actualizado_en              DateTime            @updatedAt
-
-  movimiento_envio     MovimientoInventario @relation("TransferenciaEnvio", fields: [id_movimiento_envio], references: [id_movimiento_inventario])
-  movimiento_recepcion MovimientoInventario @relation("TransferenciaRecepcion", fields: [id_movimiento_recepcion], references: [id_movimiento_inventario])
-
-  @@map("movimiento_transferencia")
-}
-
-model BitacoraInventario {
-  id_bitacora_inventario Int      @id @default(autoincrement())
-  id_movimiento          Int
-  id_usuario             Int
-  accion                 String   @db.VarChar(100)
-  descripcion            String?  @db.Text
-  metadata               Json?
-  creado_en              DateTime @default(now())
-
-  movimiento MovimientoInventario @relation(fields: [id_movimiento], references: [id_movimiento_inventario], onDelete: Cascade)
-  usuario    Usuario             @relation(fields: [id_usuario], references: [id_usuario])
-
-  @@map("bitacora_inventario")
-}
-
-model ReservaInventario {
-  id_reserva_inventario   Int                @id @default(autoincrement())
-  id_inventario_producto  Int
-  id_transaccion          Int?
-  id_detalle_transaccion  Int?
-  cantidad                Decimal            @db.Decimal(14, 4)
-  estado                  ReservaEstado      @default(PENDIENTE)
-  motivo                  String?            @db.Text
-  metadata                Json?
-  creado_en               DateTime           @default(now())
-  actualizado_en          DateTime           @updatedAt
-
-  inventario        InventarioProducto @relation(fields: [id_inventario_producto], references: [id_inventario_producto])
-  transaccion       Transaccion?       @relation(fields: [id_transaccion], references: [id_transaccion])
-  detalle_transaccion DetalleTransaccion? @relation(fields: [id_detalle_transaccion], references: [id_detalle_transaccion])
-
-  @@map("reserva_inventario")
-}
-
-model Inventario {
-  id_inventario        Int      @id @default(autoincrement())
-  id_producto          Int      @unique
-  stock_disponible     Decimal  @default(0) @db.Decimal(14, 4)
-  stock_comprometido   Decimal  @default(0) @db.Decimal(14, 4)
-  costo_promedio       Decimal  @default(0) @db.Decimal(14, 4)
-  creado_en            DateTime @default(now())
-  actualizado_en       DateTime @updatedAt
-
-  producto Producto @relation(fields: [id_producto], references: [id_producto])
-
-  @@map("inventario")
-}
-
-model Compra {
-  id_compra      Int           @id @default(autoincrement())
-  id_proveedor   Int
-  fecha          DateTime      @default(now())
-  total          Decimal       @default(0) @db.Decimal(14, 4)
-  estado         CompraEstado  @default(RECIBIDO)
-  creado_por     Int
-  creado_en      DateTime      @default(now())
-  actualizado_en DateTime      @updatedAt
-
-  proveedor Proveedor @relation(fields: [id_proveedor], references: [id_proveedor])
-  detalles  CompraDetalle[]
-  usuario   Usuario   @relation(fields: [creado_por], references: [id_usuario])
-
-  @@map("compra")
-}
-
-model CompraDetalle {
-  id_compra_detalle Int     @id @default(autoincrement())
-  id_compra         Int
-  id_producto       Int
-  cantidad          Decimal @db.Decimal(14, 4)
-  precio_unitario   Decimal @db.Decimal(14, 4)
-  subtotal          Decimal @db.Decimal(14, 4)
-
-  compra   Compra   @relation(fields: [id_compra], references: [id_compra], onDelete: Cascade)
-  producto Producto @relation(fields: [id_producto], references: [id_producto])
-
-  @@unique([id_compra, id_producto])
-  @@map("compra_detalle")
-}
-
-model Movimiento {
-  id_movimiento  Int                 @id @default(autoincrement())
-  tipo           MovimientoBasicoTipo
-  id_producto    Int
-  cantidad       Decimal             @db.Decimal(14, 4)
-  costo_unitario Decimal?            @db.Decimal(14, 4)
-  referencia     String?             @db.VarChar(120)
-  id_usuario     Int
-  creado_en      DateTime            @default(now())
-
-  producto Producto @relation(fields: [id_producto], references: [id_producto])
-  usuario  Usuario  @relation(fields: [id_usuario], references: [id_usuario])
-
-  @@index([id_producto])
-  @@map("movimiento")
-}
-
-// Sistema de auditoría
-model Bitacora {
-  id_bitacora Int      @id @default(autoincrement())
-  id_usuario  Int
-  accion      String   @db.VarChar(100)
-  descripcion String?  @db.Text
-  fecha_hora  DateTime @default(now())
-  tabla       String?  @db.VarChar(50)
-  ip_publica  String?  @db.VarChar(45)
-
-  usuario Usuario @relation(fields: [id_usuario], references: [id_usuario])
-
-  @@map("bitacora")
-}
-
-// Configuración del sistema
-model Configuracion {
-  id_conf              Int       @id @default(autoincrement())
-  nombre_empresa       String    @db.VarChar(200)
-  direccion            String?   @db.Text
-  telefono             String?   @db.VarChar(15)
-  celular              String?   @db.VarChar(15)
-  correo               String?   @db.VarChar(100)
-  rtn                  String?   @db.VarChar(20)
-  isv                  String?   @db.VarChar(20)
-  precio_dolar         Decimal?  @db.Decimal(10, 4)
-  cai                  String?   @db.VarChar(50)
-  cantidad_facturas    Int?
-  numero_inicial       Int?
-  numero_final         Int?
-  fecha_limite_emision DateTime?
-  imagen_logo          String?   @db.Text
-  created_at           DateTime  @default(now())
-  updated_at           DateTime  @updatedAt
-
-  @@map("configuracion")
 }

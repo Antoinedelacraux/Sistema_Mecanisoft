@@ -50,15 +50,18 @@ export async function PATCH(
 
       const fabricanteActualizado = { ...fabricanteActualizadoDb, estatus: fabricanteActualizadoDb.estado }
 
-      // Registrar en bitácora
-      await prisma.bitacora.create({
-        data: {
-          id_usuario: parseInt(session.user.id),
+      // Registrar en bitácora (mejor esfuerzo)
+      try {
+        const { logEvent } = await import('@/lib/bitacora/log-event')
+        await logEvent({
+          usuarioId: parseInt(session.user.id),
           accion: 'TOGGLE_STATUS_FABRICANTE',
           descripcion: `Fabricante ${estatus ? 'activado' : 'desactivado'}: ${fabricante.nombre_fabricante}`,
           tabla: 'fabricante'
-        }
-      })
+        })
+      } catch (err) {
+        console.error('No fue posible registrar en bitácora (TOGGLE_STATUS_FABRICANTE):', err)
+      }
 
       return NextResponse.json(fabricanteActualizado)
     }

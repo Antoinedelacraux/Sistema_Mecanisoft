@@ -19,16 +19,12 @@ export async function registrarEnvioCredenciales({ id, exitoso, error, sessionUs
     select: defaultUsuarioSelect
   })
 
-  await prisma.bitacora.create({
-    data: {
-      id_usuario: sessionUserId,
-      accion: exitoso ? 'EMAIL_USUARIO_OK' : 'EMAIL_USUARIO_FAIL',
-      descripcion: exitoso
-        ? `Correo de credenciales enviado a ${resultado.nombre_usuario}`
-        : `Fallo al enviar credenciales a ${resultado.nombre_usuario}: ${error ?? 'Error desconocido'}`,
-      tabla: 'usuario'
-    }
-  })
+  try {
+    const { logEvent } = await import('@/lib/bitacora/log-event')
+    await logEvent({ usuarioId: sessionUserId, accion: exitoso ? 'EMAIL_USUARIO_OK' : 'EMAIL_USUARIO_FAIL', descripcion: exitoso ? `Correo de credenciales enviado a ${resultado.nombre_usuario}` : `Fallo al enviar credenciales a ${resultado.nombre_usuario}: ${error ?? 'Error desconocido'}`, tabla: 'usuario' })
+  } catch (err) {
+    console.error('[usuarios] no se pudo registrar en bitácora:', err)
+  }
 
   return { usuario: resultado }
 }

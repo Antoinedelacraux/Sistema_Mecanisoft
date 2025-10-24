@@ -244,15 +244,18 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    // Registrar en bitácora
-    await prisma.bitacora.create({
-      data: {
-        id_usuario: parseInt(session.user.id),
+    // Registrar en bitácora (mejor esfuerzo)
+    try {
+      const { logEvent } = await import('@/lib/bitacora/log-event')
+      await logEvent({
+        usuarioId: parseInt(session.user.id),
         accion: 'CREATE_PRODUCTO',
         descripcion: `Producto creado: ${finalCodigoProducto} - ${nombre}`,
         tabla: 'producto'
-      }
-    })
+      })
+    } catch (err) {
+      console.error('No fue posible registrar en bitácora (CREATE_PRODUCTO):', err)
+    }
 
     return NextResponse.json(producto, { status: 201 })
 

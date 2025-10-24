@@ -133,15 +133,13 @@ export async function PUT(
       }
     })
 
-    // Registrar en bitácora
-    await prisma.bitacora.create({
-      data: {
-        id_usuario: parseInt(session.user.id),
-        accion: 'UPDATE_VEHICULO',
-        descripcion: `Vehículo actualizado: ${data.placa}`,
-        tabla: 'vehiculo'
-      }
-    })
+    // Registrar en bitácora (no bloquear la respuesta si falla)
+    try {
+      const { logEvent } = await import('@/lib/bitacora/log-event')
+      await logEvent({ usuarioId: parseInt(session.user.id), accion: 'UPDATE_VEHICULO', descripcion: `Vehículo actualizado: ${data.placa}`, tabla: 'vehiculo' })
+    } catch (err) {
+      console.error('[vehiculos] no se pudo registrar en bitácora:', err)
+    }
 
     return NextResponse.json(vehiculoActualizado)
 
@@ -188,15 +186,13 @@ export async function DELETE(
       data: { estado: false }
     })
 
-    // Registrar en bitácora
-    await prisma.bitacora.create({
-      data: {
-        id_usuario: parseInt(session.user.id),
-        accion: 'DELETE_VEHICULO',
-        descripcion: `Vehículo eliminado: ${vehiculo.placa} - ${vehiculo.modelo.marca.nombre_marca} ${vehiculo.modelo.nombre_modelo}`,
-        tabla: 'vehiculo'
-      }
-    })
+    // Registrar en bitácora (no bloquear la eliminación si falla)
+    try {
+      const { logEvent } = await import('@/lib/bitacora/log-event')
+      await logEvent({ usuarioId: parseInt(session.user.id), accion: 'DELETE_VEHICULO', descripcion: `Vehículo eliminado: ${vehiculo.placa} - ${vehiculo.modelo.marca.nombre_marca} ${vehiculo.modelo.nombre_modelo}`, tabla: 'vehiculo' })
+    } catch (err) {
+      console.error('[vehiculos] no se pudo registrar en bitácora:', err)
+    }
 
     return NextResponse.json({ message: 'Vehículo eliminado correctamente' })
 

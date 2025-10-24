@@ -76,15 +76,18 @@ export async function POST(request: NextRequest) {
       data: { nombre }
     })
 
-    // Registrar en bitácora
-    await prisma.bitacora.create({
-      data: {
-        id_usuario: parseInt(session.user.id),
+    // Registrar en bitácora (mejor esfuerzo)
+    try {
+      const { logEvent } = await import('@/lib/bitacora/log-event')
+      await logEvent({
+        usuarioId: parseInt(session.user.id),
         accion: 'CREATE_CATEGORIA',
         descripcion: `Categoría creada: ${nombre}`,
         tabla: 'categoria'
-      }
-    })
+      })
+    } catch (err) {
+      console.error('No fue posible registrar en bitácora (CREATE_CATEGORIA):', err)
+    }
 
     return NextResponse.json(categoria, { status: 201 })
 

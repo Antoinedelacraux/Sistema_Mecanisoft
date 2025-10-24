@@ -187,14 +187,12 @@ export async function PATCH(
       if (!Number.isFinite(userIdNum)) {
         console.warn('Session user id inválido al registrar bitácora PATCH cotizacion')
       } else {
-        await prisma.bitacora.create({
-          data: {
-            id_usuario: userIdNum,
-            accion: 'UPDATE_COTIZACION',
-            descripcion: `Cotización actualizada: ${cotizacionActualizada.codigo_cotizacion} - Cliente: ${cotizacionActualizada.cliente.persona.nombre} ${cotizacionActualizada.cliente.persona.apellido_paterno}`,
-            tabla: 'cotizacion'
-          }
-        })
+        try {
+          const { logEvent } = await import('@/lib/bitacora/log-event')
+          await logEvent({ usuarioId: userIdNum, accion: 'UPDATE_COTIZACION', descripcion: `Cotización actualizada: ${cotizacionActualizada.codigo_cotizacion} - Cliente: ${cotizacionActualizada.cliente.persona.nombre} ${cotizacionActualizada.cliente.persona.apellido_paterno}`, tabla: 'cotizacion' })
+        } catch (err) {
+          console.error('[cotizaciones] no se pudo registrar en bitácora:', err)
+        }
       }
 
       return NextResponse.json(cotizacionActualizada)
@@ -263,14 +261,12 @@ export async function PATCH(
     if (!Number.isFinite(userIdNum)) {
       console.warn('Session user id inválido al registrar bitácora PATCH cotizacion')
     } else {
-      await prisma.bitacora.create({
-        data: {
-          id_usuario: userIdNum,
-          accion: 'UPDATE_COTIZACION',
-          descripcion: descripcionBitacora,
-          tabla: 'cotizacion'
-        }
-      })
+      try {
+        const { logEvent } = await import('@/lib/bitacora/log-event')
+        await logEvent({ usuarioId: userIdNum, accion: 'UPDATE_COTIZACION', descripcion: descripcionBitacora, tabla: 'cotizacion' })
+      } catch (err) {
+        console.error('[cotizaciones] no se pudo registrar en bitácora:', err)
+      }
     }
 
     return NextResponse.json(cotizacionActualizada)
@@ -316,14 +312,12 @@ export async function DELETE(
     if (!Number.isFinite(userIdNum)) {
       console.warn('Session user id inválido al registrar bitácora DELETE cotizacion')
     } else {
-      await prisma.bitacora.create({
-        data: {
-          id_usuario: userIdNum,
-          accion: 'DELETE_COTIZACION',
-          descripcion: `Cotización eliminada: ${cotizacion.codigo_cotizacion} - ${cotizacion.cliente.persona.nombre}`,
-          tabla: 'cotizacion'
-        }
-      })
+      try {
+        const { logEvent } = await import('@/lib/bitacora/log-event')
+        await logEvent({ usuarioId: userIdNum, accion: 'DELETE_COTIZACION', descripcion: `Cotización eliminada: ${cotizacion.codigo_cotizacion} - ${cotizacion.cliente.persona.nombre}`, tabla: 'cotizacion' })
+      } catch (err) {
+        console.error('[cotizaciones] no se pudo registrar en bitácora:', err)
+      }
     }
 
     return NextResponse.json({ message: 'Cotización eliminada correctamente' })

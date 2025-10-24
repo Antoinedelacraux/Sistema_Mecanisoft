@@ -122,15 +122,13 @@ export async function PATCH(
         data: { estatus: estatus }
       })
 
-      // Registrar en bitácora
-      await prisma.bitacora.create({
-        data: {
-          id_usuario: parseInt(session.user.id, 10),
-          accion: 'TOGGLE_STATUS_CLIENTE',
-          descripcion: `Cliente ${estatus ? 'activado' : 'desactivado'}: ${cliente.persona.nombre} ${cliente.persona.apellido_paterno}`,
-          tabla: 'cliente'
-        }
-      })
+      // Registrar en bitácora (no bloquear si falla)
+      try {
+        const { logEvent } = await import('@/lib/bitacora/log-event')
+        await logEvent({ usuarioId: parseInt(session.user.id, 10), accion: 'TOGGLE_STATUS_CLIENTE', descripcion: `Cliente ${estatus ? 'activado' : 'desactivado'}: ${cliente.persona.nombre} ${cliente.persona.apellido_paterno}`, tabla: 'cliente' })
+      } catch (err) {
+        console.error('[clientes] no se pudo registrar en bitácora:', err)
+      }
 
       return NextResponse.json(cliente) // Devolver el cliente con la persona incluida
     }
@@ -253,14 +251,12 @@ export async function PUT(
       )
     }
 
-    await prisma.bitacora.create({
-      data: {
-        id_usuario: parseInt(session.user.id, 10),
-        accion: 'UPDATE_CLIENTE',
-        descripcion: `Cliente actualizado: ${clienteActualizado.persona.nombre} ${clienteActualizado.persona.apellido_paterno}`,
-        tabla: 'cliente',
-      },
-    })
+    try {
+      const { logEvent } = await import('@/lib/bitacora/log-event')
+      await logEvent({ usuarioId: parseInt(session.user.id, 10), accion: 'UPDATE_CLIENTE', descripcion: `Cliente actualizado: ${clienteActualizado.persona.nombre} ${clienteActualizado.persona.apellido_paterno}`, tabla: 'cliente' })
+    } catch (err) {
+      console.error('[clientes] no se pudo registrar en bitácora:', err)
+    }
 
     return NextResponse.json(clienteActualizado)
   } catch (error) {
@@ -321,14 +317,12 @@ export async function DELETE(
     })
 
     // Registrar en bitácora
-    await prisma.bitacora.create({
-      data: {
-        id_usuario: parseInt(session.user.id, 10),
-        accion: 'DELETE_CLIENTE_PERMANENT',
-        descripcion: `Cliente eliminado permanentemente: ${cliente.persona.nombre} ${cliente.persona.apellido_paterno}`,
-        tabla: 'cliente'
-      }
-    })
+    try {
+      const { logEvent } = await import('@/lib/bitacora/log-event')
+      await logEvent({ usuarioId: parseInt(session.user.id, 10), accion: 'DELETE_CLIENTE_PERMANENT', descripcion: `Cliente eliminado permanentemente: ${cliente.persona.nombre} ${cliente.persona.apellido_paterno}`, tabla: 'cliente' })
+    } catch (err) {
+      console.error('[clientes] no se pudo registrar en bitácora:', err)
+    }
 
     return NextResponse.json({ message: 'Cliente eliminado permanentemente' })
 
