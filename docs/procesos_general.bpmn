@@ -1,0 +1,400 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             id="Definitions_Proceso_Operativo_Taller"
+             targetNamespace="http://www.example.org/bpmn">
+
+  <!-- Process definition -->
+  <process id="Proceso_Operativo_Taller" name="Proceso Operativo - Taller" isExecutable="true">
+    <!-- Lanes for actors/modules -->
+    <laneSet id="LaneSet_1">
+      <lane id="Lane_Recepcion" name="Recepción">
+        <flowNodeRef>StartEvent_IngresoCliente</flowNodeRef>
+        <flowNodeRef>Task_CrearOrden</flowNodeRef>
+        <flowNodeRef>Task_VerificarDatos</flowNodeRef>
+      </lane>
+      <lane id="Lane_Taller" name="Taller / Técnico">
+        <flowNodeRef>Task_Diagnosticar</flowNodeRef>
+        <flowNodeRef>Task_ElaborarPresupuesto</flowNodeRef>
+        <flowNodeRef>Task_ProgramarTrabajo</flowNodeRef>
+        <flowNodeRef>Task_EjecutarTrabajo</flowNodeRef>
+      </lane>
+      <lane id="Lane_Inventario" name="Inventario / Almacén">
+        <flowNodeRef>Task_VerificarStock</flowNodeRef>
+        <flowNodeRef>Gateway_StockDisponible</flowNodeRef>
+        <flowNodeRef>Task_CrearReserva</flowNodeRef>
+        <flowNodeRef>Task_RegistrarSalida</flowNodeRef>
+      </lane>
+      <lane id="Lane_Compras" name="Compras / Proveedores">
+        <flowNodeRef>Task_GenerarPO</flowNodeRef>
+        <flowNodeRef>IntermediateCatchEvent_RecepcionMercancia</flowNodeRef>
+        <flowNodeRef>Task_RegistrarRecepcion</flowNodeRef>
+      </lane>
+      <lane id="Lane_Facturacion" name="Facturación / Caja">
+        <flowNodeRef>SubProcess_Facturacion</flowNodeRef>
+      </lane>
+      <lane id="Lane_Pagos" name="Pagos / Tesorería">
+        <flowNodeRef>Task_RegistrarPago</flowNodeRef>
+      </lane>
+      <lane id="Lane_Sistema" name="Sistema / Notificaciones / Reports">
+        <flowNodeRef>Task_EnviarNotificacion</flowNodeRef>
+        <flowNodeRef>Task_GenerarReportes</flowNodeRef>
+      </lane>
+      <lane id="Lane_Auditoria" name="Auditoría / Bitácora">
+        <flowNodeRef>Task_RegistrarEvento</flowNodeRef>
+      </lane>
+    </laneSet>
+
+    <!-- Main flow nodes -->
+    <startEvent id="StartEvent_IngresoCliente" name="Ingreso cliente">
+      <outgoing>Flow_1</outgoing>
+    </startEvent>
+
+    <task id="Task_CrearOrden" name="Crear orden">
+      <incoming>Flow_1</incoming>
+      <outgoing>Flow_2</outgoing>
+    </task>
+
+    <task id="Task_VerificarDatos" name="Verificar datos cliente/vehículo">
+      <incoming>Flow_2</incoming>
+      <outgoing>Flow_3</outgoing>
+    </task>
+
+    <task id="Task_Diagnosticar" name="Diagnosticar">
+      <incoming>Flow_3</incoming>
+      <outgoing>Flow_4</outgoing>
+    </task>
+
+    <task id="Task_ElaborarPresupuesto" name="Elaborar presupuesto">
+      <incoming>Flow_4</incoming>
+      <outgoing>Flow_5</outgoing>
+    </task>
+
+    <exclusiveGateway id="Gateway_AprobacionPresupuesto" name="Cliente aprueba?">
+      <incoming>Flow_5</incoming>
+      <outgoing>Flow_6_approved</outgoing>
+      <outgoing>Flow_6_rejected</outgoing>
+    </exclusiveGateway>
+
+    <sequenceFlow id="Flow_1" sourceRef="StartEvent_IngresoCliente" targetRef="Task_CrearOrden"/>
+    <sequenceFlow id="Flow_2" sourceRef="Task_CrearOrden" targetRef="Task_VerificarDatos"/>
+    <sequenceFlow id="Flow_3" sourceRef="Task_VerificarDatos" targetRef="Task_Diagnosticar"/>
+    <sequenceFlow id="Flow_4" sourceRef="Task_Diagnosticar" targetRef="Task_ElaborarPresupuesto"/>
+    <sequenceFlow id="Flow_5" sourceRef="Task_ElaborarPresupuesto" targetRef="Gateway_AprobacionPresupuesto"/>
+
+    <!-- Rejected path -->
+    <endEvent id="EndEvent_Rechazado" name="Orden en espera/cancelada">
+      <incoming>Flow_6_rejected</incoming>
+    </endEvent>
+    <sequenceFlow id="Flow_6_rejected" sourceRef="Gateway_AprobacionPresupuesto" targetRef="EndEvent_Rechazado"/>
+
+    <!-- Approved path -->
+    <task id="Task_VerificarStock" name="Verificar stock">
+      <incoming>Flow_6_approved</incoming>
+      <outgoing>Flow_7</outgoing>
+    </task>
+    <sequenceFlow id="Flow_6_approved" sourceRef="Gateway_AprobacionPresupuesto" targetRef="Task_VerificarStock"/>
+
+    <exclusiveGateway id="Gateway_StockDisponible" name="Stock disponible?">
+      <incoming>Flow_7</incoming>
+      <outgoing>Flow_8_available</outgoing>
+      <outgoing>Flow_8_not_available</outgoing>
+    </exclusiveGateway>
+    <sequenceFlow id="Flow_7" sourceRef="Task_VerificarStock" targetRef="Gateway_StockDisponible"/>
+
+    <!-- Stock available path -->
+    <task id="Task_CrearReserva" name="Crear reserva">
+      <incoming>Flow_8_available</incoming>
+      <outgoing>Flow_9</outgoing>
+    </task>
+    <sequenceFlow id="Flow_8_available" sourceRef="Gateway_StockDisponible" targetRef="Task_CrearReserva"/>
+
+    <task id="Task_ProgramarTrabajo" name="Programar y asignar técnico">
+      <incoming>Flow_9</incoming>
+      <outgoing>Flow_10</outgoing>
+    </task>
+    <sequenceFlow id="Flow_9" sourceRef="Task_CrearReserva" targetRef="Task_ProgramarTrabajo"/>
+
+    <task id="Task_EjecutarTrabajo" name="Ejecutar trabajo">
+      <incoming>Flow_10</incoming>
+      <outgoing>Flow_11</outgoing>
+    </task>
+    <sequenceFlow id="Flow_10" sourceRef="Task_ProgramarTrabajo" targetRef="Task_EjecutarTrabajo"/>
+
+    <task id="Task_RegistrarSalida" name="Registrar consumo / salida de inventario">
+      <incoming>Flow_11</incoming>
+      <outgoing>Flow_12</outgoing>
+    </task>
+    <sequenceFlow id="Flow_11" sourceRef="Task_EjecutarTrabajo" targetRef="Task_RegistrarSalida"/>
+
+    <!-- Stock not available path -->
+    <task id="Task_GenerarPO" name="Generar orden de compra (PO)">
+      <incoming>Flow_8_not_available</incoming>
+      <outgoing>Flow_13</outgoing>
+    </task>
+    <sequenceFlow id="Flow_8_not_available" sourceRef="Gateway_StockDisponible" targetRef="Task_GenerarPO"/>
+
+    <intermediateCatchEvent id="IntermediateCatchEvent_RecepcionMercancia" name="Esperar recepción de mercancía">
+      <incoming>Flow_13</incoming>
+      <outgoing>Flow_14</outgoing>
+      <messageEventDefinition/>
+    </intermediateCatchEvent>
+    <sequenceFlow id="Flow_13" sourceRef="Task_GenerarPO" targetRef="IntermediateCatchEvent_RecepcionMercancia"/>
+
+    <task id="Task_RegistrarRecepcion" name="Registrar recepción de mercancía">
+      <incoming>Flow_14</incoming>
+      <outgoing>Flow_15</outgoing>
+    </task>
+    <sequenceFlow id="Flow_14" sourceRef="IntermediateCatchEvent_RecepcionMercancia" targetRef="Task_RegistrarRecepcion"/>
+
+    <!-- After reception, go to create reservation again -->
+    <sequenceFlow id="Flow_15" sourceRef="Task_RegistrarRecepcion" targetRef="Task_CrearReserva"/>
+
+    <!-- From register consumption proceed to billing subprocess -->
+    <sequenceFlow id="Flow_12" sourceRef="Task_RegistrarSalida" targetRef="SubProcess_Facturacion"/>
+
+    <!-- Facturación Subprocess (transactional behavior implied) -->
+    <subProcess id="SubProcess_Facturacion" name="Facturación y Cobro" triggeredByEvent="false">
+      <incoming>Flow_12</incoming>
+      <outgoing>Flow_16</outgoing>
+      <startEvent id="Start_Facturacion" name="Inicio facturación">
+        <outgoing>Flow_F_1</outgoing>
+      </startEvent>
+      <task id="Task_ValidarDatosFiscales" name="Validar datos fiscales">
+        <incoming>Flow_F_1</incoming>
+        <outgoing>Flow_F_2</outgoing>
+      </task>
+      <exclusiveGateway id="Gateway_ValidacionFiscal" name="Datos fiscales válidos?">
+        <incoming>Flow_F_2</incoming>
+        <outgoing>Flow_F_3_ok</outgoing>
+        <outgoing>Flow_F_3_error</outgoing>
+      </exclusiveGateway>
+      <task id="Task_EmitirComprobante" name="Emitir comprobante">
+        <incoming>Flow_F_3_ok</incoming>
+        <outgoing>Flow_F_4</outgoing>
+      </task>
+      <task id="Task_RegistrarPago" name="Registrar pago">
+        <incoming>Flow_F_4</incoming>
+        <outgoing>Flow_F_5</outgoing>
+      </task>
+      <endEvent id="End_Facturacion_Ok" name="Facturación completada">
+        <incoming>Flow_F_5</incoming>
+      </endEvent>
+
+      <sequenceFlow id="Flow_F_1" sourceRef="Start_Facturacion" targetRef="Task_ValidarDatosFiscales"/>
+      <sequenceFlow id="Flow_F_2" sourceRef="Task_ValidarDatosFiscales" targetRef="Gateway_ValidacionFiscal"/>
+      <sequenceFlow id="Flow_F_3_ok" sourceRef="Gateway_ValidacionFiscal" targetRef="Task_EmitirComprobante"/>
+      <sequenceFlow id="Flow_F_4" sourceRef="Task_EmitirComprobante" targetRef="Task_RegistrarPago"/>
+      <sequenceFlow id="Flow_F_5" sourceRef="Task_RegistrarPago" targetRef="End_Facturacion_Ok"/>
+
+      <!-- Error path in facturación: loop back to Recepción for correction -->
+      <sequenceFlow id="Flow_F_3_error" sourceRef="Gateway_ValidacionFiscal" targetRef="Task_VerificarDatos"/>
+    </subProcess>
+
+    <!-- After billing completion, send notification and register audit -->
+    <sequenceFlow id="Flow_16" sourceRef="SubProcess_Facturacion" targetRef="Task_EnviarNotificacion"/>
+
+    <task id="Task_EnviarNotificacion" name="Enviar notificación al cliente">
+      <incoming>Flow_16</incoming>
+      <outgoing>Flow_17</outgoing>
+    </task>
+
+    <task id="Task_RegistrarEvento" name="Registrar evento en auditoría">
+      <incoming>Flow_17</incoming>
+      <outgoing>Flow_18</outgoing>
+    </task>
+
+    <task id="Task_GenerarReportes" name="Generar reportes / indicadores">
+      <incoming>Flow_18</incoming>
+      <outgoing>Flow_19</outgoing>
+    </task>
+
+    <endEvent id="EndEvent_OrdenCerrada" name="Orden cerrada y conciliada">
+      <incoming>Flow_19</incoming>
+    </endEvent>
+
+    <sequenceFlow id="Flow_17" sourceRef="Task_EnviarNotificacion" targetRef="Task_RegistrarEvento"/>
+    <sequenceFlow id="Flow_18" sourceRef="Task_RegistrarEvento" targetRef="Task_GenerarReportes"/>
+    <sequenceFlow id="Flow_19" sourceRef="Task_GenerarReportes" targetRef="EndEvent_OrdenCerrada"/>
+
+    <!-- Simple data objects as artifacts references -->
+    <dataObject id="DataObject_Orden" name="Orden de Trabajo"/>
+    <dataObject id="DataObject_Presupuesto" name="Presupuesto"/>
+    <dataObject id="DataObject_MovInventario" name="Movimiento de Inventario"/>
+    <dataObject id="DataObject_PO" name="Orden de Compra (PO)"/>
+    <dataObject id="DataObject_Factura" name="Factura / Comprobante"/>
+    <dataObject id="DataObject_Pago" name="Pago"/>
+    <dataObject id="DataObject_Reporte" name="Reporte / Indicador"/>
+
+  </process>
+
+  <!-- Diagram (basic visual layout for modelers like bpmn.io) -->
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Proceso_Operativo_Taller">
+
+      <!-- Shapes -->
+      <bpmndi:BPMNShape id="StartEvent_IngresoCliente_di" bpmnElement="StartEvent_IngresoCliente">
+        <omgdc:Bounds x="100" y="100" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_CrearOrden_di" bpmnElement="Task_CrearOrden">
+        <omgdc:Bounds x="170" y="90" width="120" height="50"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_VerificarDatos_di" bpmnElement="Task_VerificarDatos">
+        <omgdc:Bounds x="310" y="90" width="160" height="50"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_Diagnosticar_di" bpmnElement="Task_Diagnosticar">
+        <omgdc:Bounds x="490" y="90" width="120" height="50"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_ElaborarPresupuesto_di" bpmnElement="Task_ElaborarPresupuesto">
+        <omgdc:Bounds x="640" y="90" width="150" height="50"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Gateway_AprobacionPresupuesto_di" bpmnElement="Gateway_AprobacionPresupuesto">
+        <omgdc:Bounds x="810" y="95" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_VerificarStock_di" bpmnElement="Task_VerificarStock">
+        <omgdc:Bounds x="900" y="90" width="140" height="50"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Gateway_StockDisponible_di" bpmnElement="Gateway_StockDisponible">
+        <omgdc:Bounds x="1060" y="95" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_CrearReserva_di" bpmnElement="Task_CrearReserva">
+        <omgdc:Bounds x="1140" y="60" width="140" height="50"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_GenerarPO_di" bpmnElement="Task_GenerarPO">
+        <omgdc:Bounds x="1140" y="140" width="160" height="50"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="IntermediateCatchEvent_RecepcionMercancia_di" bpmnElement="IntermediateCatchEvent_RecepcionMercancia">
+        <omgdc:Bounds x="1320" y="140" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_RegistrarRecepcion_di" bpmnElement="Task_RegistrarRecepcion">
+        <omgdc:Bounds x="1400" y="130" width="160" height="50"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_ProgramarTrabajo_di" bpmnElement="Task_ProgramarTrabajo">
+        <omgdc:Bounds x="1320" y="60" width="160" height="50"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_EjecutarTrabajo_di" bpmnElement="Task_EjecutarTrabajo">
+        <omgdc:Bounds x="1500" y="60" width="160" height="50"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_RegistrarSalida_di" bpmnElement="Task_RegistrarSalida">
+        <omgdc:Bounds x="1700" y="60" width="160" height="50"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="SubProcess_Facturacion_di" bpmnElement="SubProcess_Facturacion">
+        <omgdc:Bounds x="1900" y="40" width="380" height="160"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_EnviarNotificacion_di" bpmnElement="Task_EnviarNotificacion">
+        <omgdc:Bounds x="2400" y="80" width="160" height="50"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_RegistrarEvento_di" bpmnElement="Task_RegistrarEvento">
+        <omgdc:Bounds x="2600" y="80" width="160" height="50"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_GenerarReportes_di" bpmnElement="Task_GenerarReportes">
+        <omgdc:Bounds x="2800" y="80" width="160" height="50"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="EndEvent_OrdenCerrada_di" bpmnElement="EndEvent_OrdenCerrada">
+        <omgdc:Bounds x="3020" y="90" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+
+      <!-- Sequence flow edges (simple polyline representation) -->
+      <bpmndi:BPMNEdge id="Flow_1_di" bpmnElement="Flow_1">
+        <omgdi:waypoint x="136" y="118"/>
+        <omgdi:waypoint x="170" y="115"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_2_di" bpmnElement="Flow_2">
+        <omgdi:waypoint x="290" y="115"/>
+        <omgdi:waypoint x="310" y="115"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_3_di" bpmnElement="Flow_3">
+        <omgdi:waypoint x="470" y="115"/>
+        <omgdi:waypoint x="490" y="115"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_4_di" bpmnElement="Flow_4">
+        <omgdi:waypoint x="610" y="115"/>
+        <omgdi:waypoint x="640" y="115"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_5_di" bpmnElement="Flow_5">
+        <omgdi:waypoint x="790" y="115"/>
+        <omgdi:waypoint x="810" y="115"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_6_approved_di" bpmnElement="Flow_6_approved">
+        <omgdi:waypoint x="850" y="115"/>
+        <omgdi:waypoint x="900" y="115"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_7_di" bpmnElement="Flow_7">
+        <omgdi:waypoint x="1040" y="115"/>
+        <omgdi:waypoint x="1060" y="115"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_8_available_di" bpmnElement="Flow_8_available">
+        <omgdi:waypoint x="1100" y="115"/>
+        <omgdi:waypoint x="1140" y="85"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_9_di" bpmnElement="Flow_9">
+        <omgdi:waypoint x="1280" y="85"/>
+        <omgdi:waypoint x="1320" y="85"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_10_di" bpmnElement="Flow_10">
+        <omgdi:waypoint x="1480" y="85"/>
+        <omgdi:waypoint x="1500" y="85"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_11_di" bpmnElement="Flow_11">
+        <omgdi:waypoint x="1660" y="85"/>
+        <omgdi:waypoint x="1700" y="85"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_12_di" bpmnElement="Flow_12">
+        <omgdi:waypoint x="1860" y="85"/>
+        <omgdi:waypoint x="1900" y="120"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_13_di" bpmnElement="Flow_13">
+        <omgdi:waypoint x="1180" y="165"/>
+        <omgdi:waypoint x="1320" y="158"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_14_di" bpmnElement="Flow_14">
+        <omgdi:waypoint x="1356" y="158"/>
+        <omgdi:waypoint x="1400" y="155"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_15_di" bpmnElement="Flow_15">
+        <omgdi:waypoint x="1560" y="155"/>
+        <omgdi:waypoint x="1700" y="85"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_16_di" bpmnElement="Flow_16">
+        <omgdi:waypoint x="2280" y="160"/>
+        <omgdi:waypoint x="2400" y="105"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_17_di" bpmnElement="Flow_17">
+        <omgdi:waypoint x="2560" y="105"/>
+        <omgdi:waypoint x="2600" y="105"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_18_di" bpmnElement="Flow_18">
+        <omgdi:waypoint x="2760" y="105"/>
+        <omgdi:waypoint x="2800" y="105"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_19_di" bpmnElement="Flow_19">
+        <omgdi:waypoint x="2960" y="105"/>
+        <omgdi:waypoint x="3020" y="108"/>
+      </bpmndi:BPMNEdge>
+
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+
+</definitions>

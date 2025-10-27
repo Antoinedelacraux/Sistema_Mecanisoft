@@ -255,6 +255,20 @@ async function main() {
       descripcion: 'Permite acceder al módulo de reportes e indicadores avanzados',
       modulo: 'reportes',
       agrupador: 'analitica'
+    },
+    {
+      codigo: 'reportes.gestionar',
+      nombre: 'Gestionar reportes',
+      descripcion: 'Permite crear, actualizar y eliminar plantillas, programaciones y descargas',
+      modulo: 'reportes',
+      agrupador: 'analitica'
+    },
+    {
+      codigo: 'reportes.descargar',
+      nombre: 'Descargar reportes',
+      descripcion: 'Autoriza descargar archivos generados y solicitar exportaciones',
+      modulo: 'reportes',
+      agrupador: 'analitica'
     }
   ]
 

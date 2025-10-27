@@ -191,7 +191,74 @@ model Usuario {
   permisos                     UsuarioPermiso[]
   ventas_registradas           VentaPago[]
 
+  // Reportes relations (reverse sides)
+  reportTemplates ReportTemplate[]
+  reportSchedules ReportSchedule[]
+  reportAudits    ReportAudit[]
+  reportFiles     ReportFile[]
+
   @@map("usuario")
+}
+
+// Reportes: plantillas, programaciones, auditoría y archivos generados
+model ReportTemplate {
+  id            Int              @id @default(autoincrement())
+  name          String
+  description   String?
+  key           String           @unique
+  defaultParams Json?            @map("default_params")
+  createdAt     DateTime         @default(now()) @map("created_at")
+  createdById   Int              @map("created_by_id")
+  createdBy     Usuario          @relation(fields: [createdById], references: [id_usuario])
+  schedules     ReportSchedule[]
+
+  @@map("report_template")
+}
+
+model ReportSchedule {
+  id          Int            @id @default(autoincrement())
+  templateId  Int            @map("template_id")
+  template    ReportTemplate @relation(fields: [templateId], references: [id])
+  name        String
+  cron        String
+  recipients  String
+  lastRunAt   DateTime?      @map("last_run_at")
+  nextRunAt   DateTime?      @map("next_run_at")
+  active      Boolean        @default(true)
+  params      Json?
+  createdAt   DateTime       @default(now()) @map("created_at")
+  createdById Int            @map("created_by_id")
+  createdBy   Usuario?       @relation(fields: [createdById], references: [id_usuario])
+
+  @@map("report_schedule")
+}
+
+model ReportAudit {
+  id          Int      @id @default(autoincrement())
+  usuarioId   Int      @map("usuario_id")
+  usuario     Usuario  @relation(fields: [usuarioId], references: [id_usuario])
+  action      String
+  templateKey String?  @map("template_key")
+  params      Json?
+  ip          String?
+  userAgent   String?  @map("user_agent")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("report_audit")
+}
+
+model ReportFile {
+  id               Int      @id @default(autoincrement())
+  templateKey      String?  @map("template_key")
+  path             String
+  filename         String
+  mime             String
+  size             Int
+  createdBy        Int?     @map("created_by")
+  createdAt        DateTime @default(now()) @map("created_at")
+  createdByUsuario Usuario? @relation(fields: [createdBy], references: [id_usuario])
+
+  @@map("report_file")
 }
 
 model Permiso {

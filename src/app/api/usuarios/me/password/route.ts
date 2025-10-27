@@ -1,42 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
-import * as bcrypt from 'bcryptjs'
-import { z } from 'zod'
-import { logEvent } from '@/lib/bitacora/log-event'
-
-const schema = z.object({ currentPassword: z.string().min(6), newPassword: z.string().min(8) })
-
-export async function POST(request: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions)
-    if (!session) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
-
-    const body = await request.json()
-    const parsed = schema.safeParse(body)
-    if (!parsed.success) return NextResponse.json({ error: 'Datos inválidos', details: parsed.error.format() }, { status: 400 })
-
-    const usuarioId = Number(session.user.id)
-    const usuario = await prisma.usuario.findUnique({ where: { id_usuario: usuarioId } })
-    if (!usuario) return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 })
-
-    const match = await bcrypt.compare(parsed.data.currentPassword, usuario.password)
-    if (!match) return NextResponse.json({ error: 'Contraseña actual incorrecta' }, { status: 403 })
-
-    const hashed = await bcrypt.hash(parsed.data.newPassword, 10)
-    await prisma.usuario.update({ where: { id_usuario: usuarioId }, data: { password: hashed, ultimo_cambio_password: new Date(), requiere_cambio_password: false } })
-
-    await logEvent({ usuarioId, accion: 'CAMBIO_PASSWORD', descripcion: 'El usuario cambió su contraseña', tabla: 'usuario' })
-
-    return NextResponse.json({ success: true })
-  } catch (error) {
-    console.error('[usuarios/me/password] error', error)
-    return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })
-  }
-}
-import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
 import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 
