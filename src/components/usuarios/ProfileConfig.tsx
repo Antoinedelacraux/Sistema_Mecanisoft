@@ -31,9 +31,9 @@ export default function ProfileConfig() {
       const res = await fetch('/api/usuarios/me')
       const data = await res.json()
       setUsuario(data.usuario)
-  const persona = data.usuario?.persona
-  const fullName = [persona?.nombre, persona?.apellido_paterno, persona?.apellido_materno].filter(Boolean).join(' ')
-  setName(fullName)
+      const persona = data.usuario?.persona
+      const fullName = [persona?.nombre, persona?.apellido_paterno, persona?.apellido_materno].filter(Boolean).join(' ')
+      setName(fullName)
       setEmail(data.usuario?.persona?.correo ?? '')
       setUsername(data.usuario?.nombre_usuario ?? '')
       setAvatarPreview(data.usuario?.imagen_usuario ?? null)
@@ -57,6 +57,7 @@ export default function ProfileConfig() {
 
   const { register, handleSubmit, formState: { errors, isSubmitting }, reset } = useForm<FormValues>({ resolver: zodResolver(schema) })
   const currentFileRef = React.useRef<File | null>(null)
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null)
   const [cropperOpen, setCropperOpen] = useState(false)
   const [cropperSrc, setCropperSrc] = useState<string | null>(null)
   const [willOpenCropperOnFile, setWillOpenCropperOnFile] = useState(false)
@@ -76,11 +77,11 @@ export default function ProfileConfig() {
       if (data.success) toast({ title: 'Perfil actualizado', variant: 'success' })
       else toast({ title: 'Error', description: 'Error actualizando', variant: 'destructive' })
       // refresh local fields
-      await load()
-      try { window.dispatchEvent(new CustomEvent('user-profile-updated', { detail: { usuario: data.usuario } })) } catch (_) {}
-  const persona2 = data.usuario?.persona
-  const fullName2 = [persona2?.nombre, persona2?.apellido_paterno, persona2?.apellido_materno].filter(Boolean).join(' ')
-  reset({ nombre: fullName2, correo: data.usuario?.persona?.correo })
+    await load()
+    try { window.dispatchEvent(new CustomEvent('user-profile-updated', { detail: { usuario: data.usuario } })) } catch (_) {}
+    const persona2 = data.usuario?.persona
+    const fullName2 = [persona2?.nombre, persona2?.apellido_paterno, persona2?.apellido_materno].filter(Boolean).join(' ')
+    reset({ nombre: fullName2, correo: data.usuario?.persona?.correo })
     } catch (e) {
       console.error(e)
       toast({ title: 'Error', description: 'Error actualizando perfil', variant: 'destructive' })
@@ -162,8 +163,7 @@ export default function ProfileConfig() {
     if (!file) {
       // if there's no file, set a flag so when the user selects one we open the cropper
       setWillOpenCropperOnFile(true)
-      const el = document.getElementById('avatar-upload') as HTMLInputElement | null
-      if (el) el.click()
+      fileInputRef.current?.click()
       return
     }
     const url = URL.createObjectURL(file)
@@ -201,10 +201,17 @@ export default function ProfileConfig() {
   const [changingUsername, setChangingUsername] = useState(false)
   async function handleChangeUsername(e: React.FormEvent) {
     e.preventDefault()
-    if (!username) return toast({ title: 'Nombre de usuario requerido', variant: 'destructive' })
+    if (!username) {
+      toast({ title: 'Nombre de usuario requerido', variant: 'destructive' })
+      return
+    }
     setChangingUsername(true)
     try {
-      const res = await fetch('/api/usuarios/me/username', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username }) })
+      const res = await fetch('/api/usuarios/me/username', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username })
+      })
       const data = await res.json()
       if (data.success) {
         toast({ title: 'Nombre de usuario actualizado', variant: 'success' })
@@ -215,228 +222,234 @@ export default function ProfileConfig() {
       }
     } catch (e) {
       toast({ title: 'Error', description: 'Error actualizando nombre de usuario', variant: 'destructive' })
-    } finally { setChangingUsername(false) }
-  }
-
-  // password change
-  const [currentPassword, setCurrentPassword] = useState('')
-  const [newPassword, setNewPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [changingPassword, setChangingPassword] = useState(false)
-  async function handleChangePassword(e: React.FormEvent) {
-    e.preventDefault()
-    if (!currentPassword || !newPassword || !confirmPassword) return toast({ title: 'Completa todos los campos', variant: 'destructive' })
-    if (newPassword !== confirmPassword) return toast({ title: 'Las contraseñas no coinciden', variant: 'destructive' })
-    setChangingPassword(true)
-    try {
-      const res = await fetch('/api/usuarios/me/password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currentPassword, newPassword }) })
-      const data = await res.json()
-      if (data.success) {
-        toast({ title: 'Contraseña actualizada', variant: 'success' })
-        setCurrentPassword('')
-        setNewPassword('')
-        setConfirmPassword('')
-      } else {
-        toast({ title: 'Error', description: data.error || 'No se pudo cambiar la contraseña', variant: 'destructive' })
-      }
-    } catch (e) {
-      toast({ title: 'Error', description: 'Error cambiando contraseña', variant: 'destructive' })
-    } finally { setChangingPassword(false) }
-  }
-
-  // fetch recent bitacora for this user
-  async function loadBitacora() {
-    if (!usuario) return
-    try {
-      const params = new URLSearchParams({ usuarioId: String(usuario.id_usuario), perPage: '10' })
-      const res = await fetch(`/api/bitacora?${params.toString()}`)
-      if (!res.ok) return
-      const data = await res.json()
-      setBitacora(data.eventos ?? [])
-    } catch (e) {
-      /* ignore */
-    }
-  }
-
-  useEffect(() => { if (usuario) loadBitacora() }, [usuario])
-
-  async function handleRevertAvatar() {
-    if (!previousAvatar) return
-    try {
-      const res = await fetch('/api/usuarios/me/avatar/revert', { method: 'POST' })
-      const data = await res.json()
-      if (data.success) {
-        setAvatarPreview(data.imageUrl)
-        toast({ title: 'Avatar restaurado', variant: 'success' })
-        try { window.dispatchEvent(new CustomEvent('user-profile-updated', { detail: { imagen_usuario: data.imageUrl } })) } catch (_) {}
-        try { await fetch('/api/auth/refresh-session', { method: 'POST' }) } catch (_) {}
-        await load()
-      } else {
-        toast({ title: 'Error', description: data.error || 'No se pudo restaurar avatar', variant: 'destructive' })
-      }
-    } catch (e) {
-      toast({ title: 'Error', description: 'No se pudo restaurar avatar', variant: 'destructive' })
-    }
-  }
-
-  async function loadVersions() {
-    try {
-      const res = await fetch('/api/usuarios/me/avatar/versions')
-      if (!res.ok) return
-      const data = await res.json()
-      setVersions(data.versions ?? [])
-    } catch (e) {
-      /* ignore */
-    }
-  }
-
-  async function openVersions() {
-    await loadVersions()
-    setVersionsOpen(true)
-  }
-
-  async function handleRevertFromList(index: number) {
-    // call revert endpoint which reverts to the most recent previous - but we want to be able to revert specific
-    // For now, if backend doesn't support revert-by-id, we'll call backend endpoints to set imagen_usuario directly.
-    const v = versions[index]
-    if (!v) return
-    try {
-      const payload = { versionId: v.id ?? v.id }
-      const res = await fetch('/api/usuarios/me/avatar/revert', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-      const data = await res.json()
-      if (data.success) {
-        // refresh UI and session cookie
-        try { window.dispatchEvent(new CustomEvent('user-profile-updated', { detail: { imagen_usuario: data.imageUrl } })) } catch (_) {}
-        try { await fetch('/api/auth/refresh-session', { method: 'POST' }) } catch (_) {}
-        await load()
-        setVersionsOpen(false)
-        toast({ title: 'Avatar restaurado', variant: 'success' })
-      } else {
-        toast({ title: 'Error', description: data.error || 'No se pudo restaurar avatar', variant: 'destructive' })
-      }
-    } catch (e) {
-      toast({ title: 'Error', description: 'No se pudo restaurar avatar', variant: 'destructive' })
+    } finally {
+      setChangingUsername(false)
     }
   }
 
   return (
-    <div className="bg-white border rounded p-4 max-w-2xl">
-      {loading && <div>Cargando...</div>}
-      {!loading && usuario && (<>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="flex items-center gap-4">
-            <div className="w-20 h-20 bg-gray-100 rounded-full overflow-hidden flex items-center justify-center">
-              {avatarPreview ? <img src={avatarPreview} alt="avatar" className="w-full h-full object-cover"/> : <span className="text-xl">{usuario.persona?.nombre?.charAt(0)}</span>}
-            </div>
-            <div>
-              <label htmlFor="avatar-upload" className="text-sm block">Subir avatar</label>
-              <input id="avatar-upload" aria-label="Subir avatar" type="file" accept="image/*" onChange={handleAvatarChange} />
-              <div className="mt-2 flex gap-2">
-                <Button size="sm" onClick={openCropper}>Abrir recortador</Button>
-                <Button size="sm" variant="ghost" onClick={() => { if (currentFileRef.current) { /* trigger upload of currentFileRef.current */ handleAvatarUploadRef() } }}>Subir recortado</Button>
-                <Button size="sm" variant="secondary" onClick={openVersions}>Versiones</Button>
-              </div>
-            </div>
-          </div>
+    <div className="relative mx-auto w-full max-w-5xl overflow-hidden rounded-3xl border border-white/25 bg-white/80 p-8 shadow-xl backdrop-blur-xl dark:border-white/10 dark:bg-white/10">
+      {loading && (
+        <div className="text-sm text-muted-foreground">Cargando perfil...</div>
+      )}
 
-          {cropperOpen && cropperSrc && (
-            <AvatarCropper src={cropperSrc} onCancel={handleCropperCancel} onComplete={handleCropperComplete} />
-          )}
-          {versionsOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-              <div className="bg-white rounded shadow-lg w-full max-w-2xl p-4">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-medium">Versiones de avatar</h3>
-                  <Button variant="ghost" onClick={() => setVersionsOpen(false)}>Cerrar</Button>
+      {!loading && usuario && (
+        <>
+          <div className="space-y-10">
+              <section className="space-y-6">
+                <div className="flex flex-col gap-5 rounded-2xl border border-white/20 bg-white/65 px-6 py-6 shadow-sm backdrop-blur lg:flex-row lg:items-center">
+                  <div className="relative h-24 w-24 overflow-hidden rounded-full border border-white/40 bg-white/40 shadow-inner">
+                    {avatarPreview ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={avatarPreview} alt="avatar" className="h-full w-full object-cover" />
+                    ) : (
+                      <span className="flex h-full w-full items-center justify-center text-xl font-semibold text-[var(--primary)]">
+                        {usuario.persona?.nombre?.charAt(0) ?? usuario.nombre_usuario?.charAt(0)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-3">
+                    <div>
+                      <p className="text-sm font-semibold text-[var(--foreground)]">Foto de perfil</p>
+                      <p className="text-xs text-muted-foreground">Selecciona una imagen cuadrada (PNG o JPG) para lograr un resultado nítido.</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label htmlFor="avatar-upload" className="sr-only">Seleccionar archivo</label>
+                      <input
+                        ref={fileInputRef}
+                        id="avatar-upload"
+                        aria-label="Subir avatar"
+                        type="file"
+                        accept="image/*"
+                        onChange={handleAvatarChange}
+                        className="sr-only"
+                      />
+                      <Button type="button" size="sm" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                        Seleccionar archivo
+                      </Button>
+                      <Button type="button" size="sm" onClick={openCropper}>
+                        Abrir recortador
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          if (!currentFileRef.current) {
+                            toast({ title: 'Selecciona un archivo', description: 'Elige una imagen antes de subirla recortada.' })
+                            fileInputRef.current?.click()
+                            return
+                          }
+                          void handleAvatarUploadRef()
+                        }}
+                      >
+                        Subir recortado
+                      </Button>
+                      <Button type="button" size="sm" variant="secondary" onClick={openVersions}>
+                        Versiones
+                      </Button>
+                      {previousAvatar && (
+                        <Button type="button" size="sm" variant="ghost" onClick={handleRevertAvatar}>
+                          Revertir avatar
+                        </Button>
+                      )}
+                    </div>
+                    {uploadProgress !== null && (
+                      <div className="text-xs text-muted-foreground">Subiendo: {uploadProgress}%</div>
+                    )}
+                  </div>
                 </div>
-                <div className="mt-4 grid grid-cols-3 gap-4">
-                  {versions.length === 0 && <div className="text-sm text-gray-600 col-span-3">No hay versiones guardadas.</div>}
-                  {versions.map((v, i) => (
-                    <div key={i} className="border rounded p-2 text-center">
-                      <div className="w-full h-24 bg-gray-100 overflow-hidden mb-2">
-                        {/* show variant thumb if available */}
-                        {v?.variants && v.variants[0] ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={v.variants[0]} alt={`version-${i}`} className="w-full h-full object-cover" />
-                        ) : (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={v.image} alt={`version-${i}`} className="w-full h-full object-cover" />
-                        )}
-                      </div>
-                      <div className="text-xs text-gray-500 mb-2">{new Date(v.created_at).toLocaleString()}</div>
-                      <div className="flex gap-2 justify-center">
-                        <Button size="sm" onClick={() => handleRevertFromList(i)}>Revertir</Button>
-                      </div>
+
+                <form
+                  onSubmit={handleSubmit(onSubmit)}
+                  className="space-y-5 rounded-2xl border border-white/20 bg-white/65 px-6 py-6 shadow-sm backdrop-blur"
+                >
+                  <div className="grid gap-5 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <label htmlFor="nombre" className="text-sm font-medium text-[var(--foreground)]">
+                        Nombre completo
+                      </label>
+                      <Input id="nombre" {...register('nombre')} defaultValue={name} placeholder="Nombre y apellidos" />
+                      {errors.nombre && (
+                        <div className="text-xs text-red-500">{String(errors.nombre?.message)}</div>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <label htmlFor="correo" className="text-sm font-medium text-[var(--foreground)]">
+                        Correo electrónico
+                      </label>
+                      <Input id="correo" {...register('correo')} defaultValue={email} placeholder="correo@ejemplo.com" />
+                      {errors.correo && (
+                        <div className="text-xs text-red-500">{String(errors.correo?.message)}</div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Button type="submit" disabled={isSubmitting}>
+                      {isSubmitting ? 'Guardando...' : 'Guardar cambios'}
+                    </Button>
+                  </div>
+                </form>
+              </section>
+
+              <section className="space-y-6">
+                <form
+                  onSubmit={handleChangeUsername}
+                  className="space-y-4 rounded-2xl border border-white/20 bg-white/65 px-6 py-6 shadow-sm backdrop-blur"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 className="text-sm font-semibold text-[var(--foreground)]">Nombre de usuario</h3>
+                      <p className="text-xs text-muted-foreground">Este identificador se usa para iniciar sesión en el sistema.</p>
+                    </div>
+                    <div className="flex w-full min-w-[16rem] flex-col gap-2 sm:max-w-sm sm:flex-row">
+                      <Input
+                        placeholder="Nuevo nombre de usuario"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                      />
+                      <Button type="submit" disabled={changingUsername}>
+                        {changingUsername ? 'Guardando...' : 'Actualizar'}
+                      </Button>
+                    </div>
+                  </div>
+                </form>
+
+                <form
+                  onSubmit={handleChangePassword}
+                  className="space-y-4 rounded-2xl border border-white/20 bg-white/65 px-6 py-6 shadow-sm backdrop-blur"
+                >
+                  <div>
+                    <h3 className="text-sm font-semibold text-[var(--foreground)]">Cambiar contraseña</h3>
+                    <p className="text-xs text-muted-foreground">Crea una contraseña segura con letras, números y símbolos.</p>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <Input
+                      placeholder="Actual"
+                      type="password"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                    />
+                    <Input
+                      placeholder="Nueva"
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                    />
+                    <Input
+                      placeholder="Confirmar"
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                    />
+                  </div>
+                  <Button type="submit" disabled={changingPassword}>
+                    {changingPassword ? 'Guardando...' : 'Actualizar contraseña'}
+                  </Button>
+                </form>
+              </section>
+
+              <section className="rounded-2xl border border-white/20 bg-white/65 px-6 py-6 shadow-sm backdrop-blur">
+                <h3 className="text-sm font-semibold text-[var(--foreground)]">Actividad reciente</h3>
+                <div className="mt-3 space-y-3">
+                  {bitacora.length === 0 && (
+                    <p className="text-sm text-muted-foreground">Sin registros recientes.</p>
+                  )}
+                  {bitacora.map((evento, idx) => (
+                    <div key={idx} className="rounded-xl border border-white/20 bg-white/40 px-4 py-3 text-xs text-muted-foreground">
+                      {evento.descripcion ?? evento.evento}
                     </div>
                   ))}
                 </div>
-              </div>
+              </section>
             </div>
-          )}
 
-          <div>
-              <label htmlFor="nombre" className="block text-sm">Nombre</label>
-            <Input id="nombre" {...register('nombre')} defaultValue={name} placeholder="Nombre" />
-            {errors.nombre && <div className="text-xs text-red-600">{String(errors.nombre?.message)}</div>}
-          </div>
-
-          <div>
-            <label htmlFor="correo" className="block text-sm">Correo</label>
-            <Input id="correo" {...register('correo')} defaultValue={email} placeholder="correo@ejemplo.com" />
-            {errors.correo && <div className="text-xs text-red-600">{String(errors.correo?.message)}</div>}
-          </div>
-
-          <div>
-            <Button type="submit" className="px-4 py-2" disabled={isSubmitting}>{isSubmitting ? 'Guardando...' : 'Guardar'}</Button>
-            {previousAvatar && <Button variant="ghost" onClick={handleRevertAvatar} className="ml-2">Revertir avatar</Button>}
-            {uploadProgress !== null && <div className="inline-block ml-4 text-sm">Subiendo: {uploadProgress}%</div>}
-          </div>
-  </form>
-  <form onSubmit={handleChangeUsername} className="mt-6 border-t pt-4 space-y-3">
-          <h3 className="text-sm font-medium">Nombre de usuario</h3>
-          <div className="flex gap-2">
-            <Input placeholder="Nuevo nombre de usuario" value={username} onChange={(e) => setUsername(e.target.value)} />
-            <Button type="submit" disabled={changingUsername}>{changingUsername ? 'Guardando...' : 'Cambiar'}</Button>
-          </div>
-        </form>
-
-        <form onSubmit={handleChangePassword} className="mt-6 border-t pt-4 space-y-3">
-          <h3 className="text-sm font-medium">Cambiar contraseña</h3>
-          <div>
-            <label className="block text-sm">Contraseña actual</label>
-            <Input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-sm">Nueva contraseña</label>
-            <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-sm">Confirmar nueva contraseña</label>
-            <Input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
-          </div>
-          <div>
-            <Button type="submit" disabled={changingPassword}>{changingPassword ? 'Guardando...' : 'Cambiar contraseña'}</Button>
-          </div>
-        </form>
-        </>
+            {cropperOpen && cropperSrc && (
+              <AvatarCropper src={cropperSrc} onCancel={handleCropperCancel} onComplete={handleCropperComplete} />
+            )}
+            {versionsOpen && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                <div className="w-full max-w-2xl rounded-2xl border border-white/20 bg-white/95 p-5 shadow-2xl">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-lg font-semibold text-[var(--foreground)]">Versiones de avatar</h3>
+                    <Button variant="ghost" onClick={() => setVersionsOpen(false)}>
+                      Cerrar
+                    </Button>
+                  </div>
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {versions.length === 0 && (
+                      <div className="rounded-xl border border-dashed border-muted-foreground/30 bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+                        No hay versiones guardadas.
+                      </div>
+                    )}
+                    {versions.map((v, i) => (
+                      <div key={i} className="space-y-3 rounded-xl border border-white/30 bg-white/70 p-3 shadow-sm">
+                        <div className="h-28 overflow-hidden rounded-lg bg-muted">
+                          {v?.variants && v.variants[0] ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={v.variants[0]} alt={`version-${i}`} className="h-full w-full object-cover" />
+                          ) : (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={v.image} alt={`version-${i}`} className="h-full w-full object-cover" />
+                          )}
+                        </div>
+                        <div className="text-xs text-muted-foreground">{new Date(v.created_at).toLocaleString()}</div>
+                        <div className="flex justify-end">
+                          <Button size="sm" onClick={() => handleRevertFromList(i)}>
+                            Revertir
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      {!loading && !usuario && (
+        <div className="text-sm text-muted-foreground">No se encontró el perfil del usuario.</div>
       )}
-      {usuario && (
-        <div className="mt-6">
-          <h3 className="text-sm font-medium mb-2">Historial reciente</h3>
-          {bitacora.length === 0 && <div className="text-sm text-gray-600">No hay eventos recientes.</div>}
-          {bitacora.length > 0 && (
-            <ul className="space-y-2 text-sm">
-              {bitacora.map((b) => (
-                <li key={b.id_bitacora} className="border rounded p-2">
-                  <div className="text-xs text-gray-500">{new Date(b.fecha_hora).toLocaleString()}</div>
-                  <div><strong>{b.accion}</strong> — {b.descripcion ?? '-'}</div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-      {!loading && !usuario && <div>No se encontró usuario.</div>}
-    </div>
-  )
-}
+      </div>
+    )
+  }
