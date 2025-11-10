@@ -12,6 +12,7 @@ import {
   padNumero,
   formatCurrency
 } from './pdf'
+import { assertFacturacionDisponible, getFacturacionConfigCompleta } from './config'
 
 const comprobanteInclude = {
   detalles: {
@@ -123,13 +124,13 @@ type SerieSelectorParams = {
 }
 
 async function obtenerSerieDisponible({ tx, tipo, serieSolicitada }: SerieSelectorParams) {
-  const config = await tx.facturacionConfig.findUnique({ where: { id_config: FACTURACION_CONFIG_ID } })
+  const config = await getFacturacionConfigCompleta({ prismaClient: tx })
 
   const codigoSerie = serieSolicitada
     ? serieSolicitada.toUpperCase()
     : tipo === 'FACTURA'
-    ? config?.serie_factura_default
-    : config?.serie_boleta_default
+    ? config.serie_factura_default
+    : config.serie_boleta_default
 
   if (!codigoSerie) {
     throw new FacturacionError(
@@ -182,16 +183,18 @@ export async function crearBorradorDesdePayload({
   motivoOverride
   , prismaClient
 }: PayloadOpciones): Promise<ComprobanteConRelaciones> {
+  assertFacturacionDisponible()
+
   // Use provided transaction client when available so callers can compose this
   // operation inside an outer transaction. Otherwise fall back to the global
   // prisma client and create an internal transaction.
   const db = prismaClient ?? prisma
 
-  const config = await db.facturacionConfig.findUnique({ where: { id_config: FACTURACION_CONFIG_ID } })
+  const config = await getFacturacionConfigCompleta({ prismaClient: db })
 
   const preciosIncluyenIgv = payload.totales.precios_incluyen_igv
-  const afectaIgv = config?.afecta_igv ?? true
-  const igvPorcentaje = toNumber(config?.igv_porcentaje)
+  const afectaIgv = config.afecta_igv
+  const igvPorcentaje = toNumber(config.igv_porcentaje)
 
   const { items, totales } = calcularTotales({
     items: payload.items.map((item) => {
@@ -245,7 +248,7 @@ export async function crearBorradorDesdePayload({
         estado_pago: 'pendiente',
         codigo: payload.origen_codigo ?? null,
         incluye_igv: preciosIncluyenIgv,
-        moneda: config?.moneda_default ?? 'PEN',
+  moneda: config.moneda_default ?? 'PEN',
         subtotal: totales.subtotal,
         igv: totales.igv,
         total: totales.total,

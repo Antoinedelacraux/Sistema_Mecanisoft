@@ -52,6 +52,18 @@ model DetalleCotizacion {
   @@map("detalle_cotizacion")
 }
 
+model CorrelativoCodigo {
+  id_correlativo_codigo Int      @id @default(autoincrement())
+  tipo                  String   @db.VarChar(50)
+  anio                  Int
+  ultimo_valor          Int      @default(0)
+  created_at            DateTime @default(now())
+  updated_at            DateTime @updatedAt
+
+  @@unique([tipo, anio], name: "tipo_anio")
+  @@map("correlativo_codigo")
+}
+
 model Persona {
   id_persona        Int             @id @default(autoincrement())
   nombre            String          @db.VarChar(100)
@@ -163,6 +175,8 @@ model Usuario {
   bloqueado_en                 DateTime?
   envio_credenciales_pendiente Boolean                  @default(false)
   motivo_bloqueo               String?
+  intentos_fallidos_login      Int                      @default(0)
+  ultimo_intento_fallido       DateTime?
   password_temporal            String?                  @db.VarChar(255)
   password_temporal_expira     DateTime?
   requiere_cambio_password     Boolean                  @default(false)

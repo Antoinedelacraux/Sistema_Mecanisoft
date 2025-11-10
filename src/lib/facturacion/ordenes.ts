@@ -2,17 +2,19 @@ import { TipoItemComprobante } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { FacturacionError } from './errors'
 import {
-  DEFAULT_IGV_PERCENTAGE,
   calcularTotales,
   inferirTipoComprobante,
   toNumber
 } from './utils'
 import type { FacturacionPayload } from './types'
+import { assertFacturacionDisponible, getFacturacionConfigCompleta } from './config'
 
 export async function prepararOrdenParaFacturacion(
   idTransaccion: number,
   tipoSolicitado?: 'BOLETA' | 'FACTURA'
 ): Promise<FacturacionPayload> {
+  assertFacturacionDisponible()
+
   const orden = await prisma.transaccion.findUnique({
     where: { id_transaccion: idTransaccion },
     include: {
@@ -86,10 +88,10 @@ export async function prepararOrdenParaFacturacion(
 
   const empresa = persona.empresa_persona ?? null
 
-  const config = await prisma.facturacionConfig.findFirst()
-  const afectaIgv = config?.afecta_igv ?? true
-  const preciosIncluyenIgv = config?.precios_incluyen_igv_default ?? true
-  const igvPorcentaje = toNumber(config?.igv_porcentaje ?? DEFAULT_IGV_PERCENTAGE)
+  const config = await getFacturacionConfigCompleta()
+  const afectaIgv = config.afecta_igv
+  const preciosIncluyenIgv = config.precios_incluyen_igv_default
+  const igvPorcentaje = toNumber(config.igv_porcentaje)
 
   const itemsBase = orden.detalles_transaccion.map((detalle) => ({
     tipo: detalle.servicio ? TipoItemComprobante.SERVICIO : TipoItemComprobante.PRODUCTO,

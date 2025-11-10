@@ -17,6 +17,7 @@ import {
   ReservarStockDTO,
   ReservaInventarioDetallada,
 } from '@/types/inventario';
+import { logger } from '@/lib/logger';
 
 const buildInclude = (): Prisma.ReservaInventarioInclude => ({
   inventario: {
@@ -65,10 +66,10 @@ const reservarStockTx = async (tx: TxClient, input: ReservarStockDTO): Promise<R
     data: {
       id_inventario_producto: inventario.id_inventario_producto,
       id_transaccion: input.transaccionId ?? null,
-      id_detalle_transaccion: input.detalleTransaccionId ?? null,
+  id_detalle_transaccion: input.detalleTransaccionId ?? null,
       cantidad: cantidadDecimal,
-      motivo: input.motivo ?? null,
-  metadata: input.metadata ?? Prisma.JsonNull,
+    motivo: input.motivo ?? null,
+    metadata: input.metadata ?? Prisma.JsonNull,
     },
     include: buildInclude(),
   }) as ReservaInventarioDetallada;
@@ -131,8 +132,8 @@ const cambiarEstadoReserva = async (
     where: { id_reserva_inventario: reserva.id_reserva_inventario },
     data: {
       estado: params.estadoDestino,
-      motivo: params.motivo ?? reserva.motivo,
-  metadata: params.metadata ?? reserva.metadata ?? Prisma.JsonNull,
+    motivo: params.motivo ?? reserva.motivo,
+    metadata: params.metadata ?? reserva.metadata ?? Prisma.JsonNull,
     },
     include: buildInclude(),
   }) as ReservaInventarioDetallada;
@@ -185,3 +186,135 @@ export const cancelarReserva = async (
 ): Promise<ReservaInventarioDetallada> => {
   return prisma.$transaction(async (tx: TxClient) => cancelarReservaTx(tx, input));
 };
+
+const DEFAULT_EXPIRATION_HOURS = 48;
+const DEFAULT_RELEASE_LIMIT = 100;
+const MAX_RELEASE_LIMIT = 500;
+
+const resolveHours = (input?: number) => {
+  const envValue = process.env.INVENTARIO_RESERVA_TTL_HOURS;
+  const source = typeof input === 'number' && Number.isFinite(input) && input > 0
+    ? input
+    : envValue
+      ? Number(envValue)
+      : undefined;
+
+  if (typeof source !== 'number' || Number.isNaN(source) || source <= 0) {
+    return DEFAULT_EXPIRATION_HOURS;
+  }
+  return Math.min(source, 24 * 30); // máximo 30 días
+};
+
+const resolveLimit = (input?: number) => {
+  const envValue = process.env.INVENTARIO_RESERVA_RELEASE_LIMIT;
+  const source = typeof input === 'number' && Number.isFinite(input) ? input : envValue ? Number(envValue) : undefined;
+  if (typeof source !== 'number' || Number.isNaN(source) || source <= 0) {
+    return DEFAULT_RELEASE_LIMIT;
+  }
+  return Math.min(Math.floor(source), MAX_RELEASE_LIMIT);
+};
+
+export type LiberarReservasCaducadasParams = {
+  limit?: number;
+  ttlHours?: number;
+  motivo?: string;
+  triggeredBy?: number;
+  metadata?: Prisma.JsonValue;
+  dryRun?: boolean;
+};
+
+export type LiberarReservasCaducadasResultado = {
+  encontrados: number;
+  liberados: number;
+  errores: Array<{ reservaId: number; error: string }>;
+  cutoff: string;
+};
+
+export async function liberarReservasCaducadas(params: LiberarReservasCaducadasParams = {}): Promise<LiberarReservasCaducadasResultado> {
+  const limit = resolveLimit(params.limit);
+  const ttlHours = resolveHours(params.ttlHours);
+  const cutoff = new Date(Date.now() - ttlHours * 60 * 60 * 1000);
+
+  const pendientes = await prisma.reservaInventario.findMany({
+    where: {
+      estado: ReservaEstado.PENDIENTE,
+      creado_en: { lt: cutoff },
+    },
+    select: {
+      id_reserva_inventario: true,
+      creado_en: true,
+      inventario: {
+        select: {
+          id_inventario_producto: true,
+          producto: {
+            select: {
+              id_producto: true,
+              nombre: true,
+              codigo_producto: true,
+            },
+          },
+          almacen: {
+            select: {
+              id_almacen: true,
+              nombre: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: [{ creado_en: 'asc' }],
+    take: limit,
+  });
+
+  if (pendientes.length === 0) {
+    logger.debug('[inventario] liberarReservasCaducadas: sin reservas pendientes');
+    return { encontrados: 0, liberados: 0, errores: [], cutoff: cutoff.toISOString() };
+  }
+
+  let liberados = 0;
+  const errores: Array<{ reservaId: number; error: string }> = [];
+  const motivo = params.motivo?.trim() || 'Liberación automática por caducidad';
+  const metadataBase: Prisma.JsonValue = params.metadata ?? {
+    reason: 'AUTO_EXPIRED',
+    triggeredBy: params.triggeredBy ?? null,
+  };
+
+  for (const reserva of pendientes) {
+    if (params.dryRun) {
+      continue;
+    }
+    try {
+      await prisma.$transaction((tx: TxClient) =>
+        liberarReservaEnTx(tx, {
+          reservaId: reserva.id_reserva_inventario,
+          motivo,
+          metadata: metadataBase,
+        }),
+      );
+      liberados += 1;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      errores.push({ reservaId: reserva.id_reserva_inventario, error: message });
+      logger.error({ reservaId: reserva.id_reserva_inventario, err: message }, '[inventario] error liberando reserva caducada');
+    }
+  }
+
+  if (!params.dryRun) {
+    logger.info(
+      {
+        encontrados: pendientes.length,
+        liberados,
+        errores: errores.length,
+        cutoff: cutoff.toISOString(),
+      },
+      '[inventario] liberación automática de reservas completada',
+    );
+  }
+
+  return {
+    encontrados: pendientes.length,
+    liberados,
+    errores,
+    cutoff: cutoff.toISOString(),
+  };
+}

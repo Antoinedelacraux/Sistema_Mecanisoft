@@ -2,6 +2,10 @@ import { PrismaClient, Permiso } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/prisma'
 import type { ModuloPermisosDTO, PermisoCatalogoDTO } from '@/types/permisos'
 
+const LISTAR_PERMISOS_TTL_MS = 5 * 60 * 1000
+
+let permisosPorModuloCache: { data: ModuloPermisosDTO[]; expiresAt: number } | null = null
+
 type CatalogoFiltro = {
   incluirInactivos?: boolean
 }
@@ -27,6 +31,10 @@ export type PermisoRol = {
 export async function listarPermisosPorModulo(
   prismaClient?: PrismaClient
 ): Promise<ModuloPermisosDTO[]> {
+  if (!prismaClient && permisosPorModuloCache && permisosPorModuloCache.expiresAt > Date.now()) {
+    return permisosPorModuloCache.data
+  }
+
   const client = getClient(prismaClient)
 
   const modulos = await client.modulo.findMany({
@@ -40,7 +48,7 @@ export async function listarPermisosPorModulo(
     }
   })
 
-  return modulos.map((modulo) => ({
+  const resultado = modulos.map((modulo) => ({
     clave: modulo.clave,
     nombre: modulo.nombre,
     descripcion: modulo.descripcion,
@@ -58,6 +66,18 @@ export async function listarPermisosPorModulo(
       modulo_descripcion: modulo.descripcion
     }))
   }))
+
+  if (!prismaClient) {
+    permisosPorModuloCache = {
+      data: resultado.map((modulo) => ({
+        ...modulo,
+        permisos: modulo.permisos.map((permiso) => ({ ...permiso }))
+      })),
+      expiresAt: Date.now() + LISTAR_PERMISOS_TTL_MS
+    }
+  }
+
+  return resultado
 }
 
 export type PermisoPersonalizado = {
@@ -109,12 +129,26 @@ function getClient(prismaClient?: PrismaClient): PrismaClient {
   return prismaClient ?? defaultPrisma
 }
 
+export class PermisoNoEncontradoError extends Error {
+  readonly codigos: string[]
+
+  constructor(codigos: string[]) {
+    super(`Permisos no encontrados: ${codigos.join(', ')}`)
+    this.name = 'PermisoNoEncontradoError'
+    this.codigos = codigos
+  }
+}
+
+export function clearPermisosPorModuloCache(): void {
+  permisosPorModuloCache = null
+}
+
 function assertPermisosEncontrados(codigosSolicitados: string[], permisos: Permiso[]) {
   const encontrados = new Set(permisos.map((permiso) => permiso.codigo))
   const faltantes = codigosSolicitados.filter((codigo) => !encontrados.has(codigo))
 
   if (faltantes.length) {
-    throw new Error(`Permisos no encontrados: ${faltantes.join(', ')}`)
+    throw new PermisoNoEncontradoError(faltantes)
   }
 }
 

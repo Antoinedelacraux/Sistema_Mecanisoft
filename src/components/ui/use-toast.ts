@@ -24,7 +24,12 @@ const toast = (content: ToastPayload, options?: ToastOptions) => {
   // If caller passed an object like { title, description, variant }, map to sonner signature
   if (content && typeof content === 'object' && 'title' in content) {
     const { title, description, variant, ...rest } = content as ToastObject & Record<string, unknown>
-    sonnerToast(title, { description, ...(variant ? { className: variant } : {}), ...rest })
+    const resolvedVariant: ToastVariant = variant ?? 'default'
+    sonnerToast(title, {
+      description,
+      className: `toast toast-${resolvedVariant}`,
+      ...rest,
+    })
     return
   }
 

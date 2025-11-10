@@ -117,7 +117,7 @@ export default function AvatarCropper({ src, onCancel, onComplete, aspect = 1 }:
       <div className="bg-white rounded shadow-lg w-full max-w-2xl p-4">
         <div className="relative w-full h-80 bg-gray-100">
           {CropperComponent ? (
-            // @ts-ignore - dynamic component props match react-easy-crop / stub
+            // @ts-expect-error -- dynamic component props match react-easy-crop / stub
             <CropperComponent
               image={src}
               crop={crop}

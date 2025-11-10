@@ -1,5 +1,5 @@
-import { prisma } from '@/lib/prisma'
-import { defaultUsuarioSelect } from './helpers'
+import { registrarEnvioCredencialesResultado, UsuarioCredencialesError } from '@/lib/usuarios/credenciales'
+import { ApiError } from './errors'
 
 interface RegistrarEnvioParams {
   id: number
@@ -9,22 +9,17 @@ interface RegistrarEnvioParams {
 }
 
 export async function registrarEnvioCredenciales({ id, exitoso, error, sessionUserId }: RegistrarEnvioParams) {
-  const resultado = await prisma.usuario.update({
-    where: { id_usuario: id },
-    data: {
-      envio_credenciales_pendiente: !exitoso,
-      ultimo_envio_credenciales: new Date(),
-      ultimo_error_envio: exitoso ? null : (error ?? 'Error desconocido')
-    },
-    select: defaultUsuarioSelect
-  })
-
   try {
-    const { logEvent } = await import('@/lib/bitacora/log-event')
-    await logEvent({ usuarioId: sessionUserId, accion: exitoso ? 'EMAIL_USUARIO_OK' : 'EMAIL_USUARIO_FAIL', descripcion: exitoso ? `Correo de credenciales enviado a ${resultado.nombre_usuario}` : `Fallo al enviar credenciales a ${resultado.nombre_usuario}: ${error ?? 'Error desconocido'}`, tabla: 'usuario' })
+    return await registrarEnvioCredencialesResultado({
+      usuarioId: id,
+      exitoso,
+      error,
+      sessionUserId
+    })
   } catch (err) {
-    console.error('[usuarios] no se pudo registrar en bitácora:', err)
+    if (err instanceof UsuarioCredencialesError) {
+      throw new ApiError(err.status, err.message)
+    }
+    throw err
   }
-
-  return { usuario: resultado }
 }

@@ -27,9 +27,33 @@ jest.mock('@/lib/prisma', () => ({
     },
     bitacora: {
       create: jest.fn()
-    }
+    },
+    correlativoCodigo: {
+      upsert: jest.fn()
+    },
+    $transaction: jest.fn()
   }
 }))
+
+jest.mock('@/lib/logger', () => {
+  const loggerMock: any = {
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+    child: jest.fn()
+  }
+  loggerMock.child.mockReturnValue(loggerMock)
+  return { logger: loggerMock, default: loggerMock }
+})
+
+jest.mock('@/lib/redisClient', () => {
+  const createRedisConnection = jest.fn(async () => ({
+    on: jest.fn(),
+    quit: jest.fn()
+  }))
+  return { createRedisConnection, default: createRedisConnection }
+})
 
 jest.mock('@/lib/permisos/guards', () => {
   const actual = jest.requireActual('@/lib/permisos/guards')
@@ -38,6 +62,28 @@ jest.mock('@/lib/permisos/guards', () => {
     asegurarPermiso: jest.fn()
   }
 })
+
+const prismaMock = prisma as unknown as {
+  servicio: {
+    findMany: jest.Mock
+    count: jest.Mock
+    findFirst: jest.Mock
+    create: jest.Mock
+  }
+  marca: {
+    findUnique: jest.Mock
+  }
+  modelo: {
+    findUnique: jest.Mock
+  }
+  bitacora: {
+    create: jest.Mock
+  }
+  correlativoCodigo: {
+    upsert: jest.Mock
+  }
+  $transaction: jest.Mock
+}
 
 const ensureResponse = <T extends Response>(response: T | undefined): T => {
   if (!response) {
@@ -49,6 +95,15 @@ const ensureResponse = <T extends Response>(response: T | undefined): T => {
 describe('API /api/servicios', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    prismaMock.$transaction.mockImplementation(async (cb: (client: typeof prismaMock) => any) => cb(prismaMock))
+    prismaMock.correlativoCodigo.upsert.mockResolvedValue({
+      id_correlativo_codigo: 1,
+      tipo: 'servicio',
+      anio: new Date().getFullYear(),
+      ultimo_valor: 1,
+      created_at: new Date(),
+      updated_at: new Date()
+    })
   })
 
   const getSessionMock = () => getServerSession as jest.Mock
@@ -199,6 +254,9 @@ describe('API /api/servicios', () => {
     expect(prisma.servicio.create).toHaveBeenCalled()
     expect(prisma.bitacora.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ accion: 'CREATE_SERVICIO' })
+    }))
+    expect(prismaMock.correlativoCodigo.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { tipo_anio: { tipo: 'servicio', anio: new Date().getFullYear() } }
     }))
   })
 })

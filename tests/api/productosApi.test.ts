@@ -27,6 +27,10 @@ type PrismaMock = {
   bitacora: {
     create: MockFn
   }
+  correlativoCodigo: {
+    upsert: MockFn
+  }
+  $transaction: jest.Mock
 }
 
 jest.mock('next-auth/next', () => ({
@@ -53,10 +57,34 @@ jest.mock('@/lib/prisma', () => {
     },
     bitacora: {
       create: jest.fn()
-    }
+    },
+    correlativoCodigo: {
+      upsert: jest.fn()
+    },
+    $transaction: jest.fn()
   }
 
   return { prisma: prismaMock }
+})
+
+jest.mock('@/lib/logger', () => {
+  const loggerMock: any = {
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+    child: jest.fn()
+  }
+  loggerMock.child.mockReturnValue(loggerMock)
+  return { logger: loggerMock, default: loggerMock }
+})
+
+jest.mock('@/lib/redisClient', () => {
+  const createRedisConnection = jest.fn(async () => ({
+    on: jest.fn(),
+    quit: jest.fn()
+  }))
+  return { createRedisConnection, default: createRedisConnection }
 })
 
 const prismaMock = prisma as unknown as PrismaMock
@@ -84,6 +112,7 @@ describe('GET /api/productos', () => {
     mockedGetServerSession.mockResolvedValue({ user: { id: '1' } })
     prismaMock.producto.findMany.mockResolvedValue([])
     prismaMock.producto.count.mockResolvedValue(0)
+    prismaMock.$transaction.mockImplementation(async (cb: (client: PrismaMock) => any) => cb(prismaMock))
   })
 
   it('devuelve solo productos activos por defecto', async () => {
@@ -127,6 +156,15 @@ describe('POST /api/productos', () => {
     prismaMock.fabricante.findUnique.mockResolvedValue({ id_fabricante: 1, nombre_fabricante: 'Fabricante 1' })
     prismaMock.unidadMedida.findUnique.mockResolvedValue({ id_unidad: 1, nombre: 'Unidad 1' })
     prismaMock.bitacora.create.mockResolvedValue({})
+    prismaMock.correlativoCodigo.upsert.mockResolvedValue({
+      id_correlativo_codigo: 1,
+      tipo: 'producto',
+      anio: new Date().getFullYear(),
+      ultimo_valor: 1,
+      created_at: new Date(),
+      updated_at: new Date()
+    })
+    prismaMock.$transaction.mockImplementation(async (cb: (client: PrismaMock) => any) => cb(prismaMock))
   })
 
   it('genera código automáticamente cuando no se proporciona', async () => {
@@ -147,10 +185,8 @@ describe('POST /api/productos', () => {
 
     expect(response.status).toBe(201)
     expect(result.codigo_producto).toMatch(/^PROD-\d{4}-\d{3}$/)
-    expect(prismaMock.producto.findFirst).toHaveBeenCalledWith({
-      where: { codigo_producto: { startsWith: `PROD-${new Date().getFullYear()}-` } },
-      orderBy: { id_producto: 'desc' },
-      select: { codigo_producto: true }
-    })
+    expect(prismaMock.correlativoCodigo.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { tipo_anio: { tipo: 'producto', anio: new Date().getFullYear() } }
+    }))
   })
 })

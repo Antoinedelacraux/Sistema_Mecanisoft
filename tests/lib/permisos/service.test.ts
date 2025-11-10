@@ -2,7 +2,8 @@ import {
   setPermisosDeRol,
   obtenerPermisosResueltosDeUsuario,
   setPermisosPersonalizadosDeUsuario,
-  verificarPermiso
+  verificarPermiso,
+  PermisoNoEncontradoError
 } from '@/lib/permisos/service'
 
 const buildPermiso = (overrides: Partial<ReturnType<typeof permisoBase>> = {}) => ({
@@ -82,6 +83,17 @@ describe('permisos/service', () => {
         })
       })
     )
+  })
+
+  it('setPermisosDeRol arroja PermisoNoEncontradoError cuando faltan permisos', async () => {
+    prisma.permiso.findMany.mockResolvedValue([])
+
+    await expect(setPermisosDeRol({
+      idRol: 2,
+      codigosPermisos: ['clientes.crear'],
+      usuarioActorId: 99,
+      prismaClient: prisma as any
+    })).rejects.toBeInstanceOf(PermisoNoEncontradoError)
   })
 
   it('obtenerPermisosResueltosDeUsuario combina base y personalizaciones', async () => {

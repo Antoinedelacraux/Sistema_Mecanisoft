@@ -2,14 +2,16 @@ import { TipoComprobante, TipoItemComprobante } from '@prisma/client'
 import { FacturacionError } from './errors'
 import { prisma } from '@/lib/prisma'
 import {
-  DEFAULT_IGV_PERCENTAGE,
   calcularTotales,
   inferirTipoComprobante,
   toNumber
 } from './utils'
 import type { FacturacionPayload } from './types'
+import { assertFacturacionDisponible, getFacturacionConfigCompleta } from './config'
 
 export async function prepararCotizacionParaFacturacion(idCotizacion: number): Promise<FacturacionPayload> {
+  assertFacturacionDisponible()
+
   const cotizacion = await prisma.cotizacion.findUnique({
     where: { id_cotizacion: idCotizacion },
     include: {
@@ -64,10 +66,10 @@ export async function prepararCotizacionParaFacturacion(idCotizacion: number): P
 
   const empresa = persona.empresa_persona ?? null
 
-  const config = await prisma.facturacionConfig.findFirst()
-  const afectaIgv = config?.afecta_igv ?? true
-  const preciosIncluyenIgv = config?.precios_incluyen_igv_default ?? true
-  const igvPorcentaje = toNumber(config?.igv_porcentaje ?? DEFAULT_IGV_PERCENTAGE)
+  const config = await getFacturacionConfigCompleta()
+  const afectaIgv = config.afecta_igv
+  const preciosIncluyenIgv = config.precios_incluyen_igv_default
+  const igvPorcentaje = toNumber(config.igv_porcentaje)
 
   const itemsBase = cotizacion.detalle_cotizacion.map((detalle) => ({
     tipo: TipoItemComprobante.PRODUCTO,

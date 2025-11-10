@@ -3,18 +3,7 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
-
-// Función para generar código de producto basado en año y correlativo
-async function generateCodigoProducto() {
-  const year = new Date().getFullYear()
-  const last = await prisma.producto.findFirst({
-    where: { codigo_producto: { startsWith: `PROD-${year}-` } },
-    orderBy: { id_producto: 'desc' },
-    select: { codigo_producto: true }
-  })
-  const nextNumber = last ? parseInt(last.codigo_producto.split('-')[2]) + 1 : 1
-  return `PROD-${year}-${nextNumber.toString().padStart(3, '0')}`
-}
+import { generarCodigoCorrelativo, CORRELATIVO_TIPOS } from '@/lib/correlativos/service'
 
 export async function GET(request: NextRequest) {
   try {
@@ -154,16 +143,13 @@ export async function POST(request: NextRequest) {
     const tipoProducto = tipo ?? 'producto'
 
     // Generar código si no se proporciona
-    let finalCodigoProducto = codigo_producto
-    if (!finalCodigoProducto) {
-      finalCodigoProducto = await generateCodigoProducto()
-    }
+  const finalCodigoProducto = typeof codigo_producto === 'string' && codigo_producto.trim() ? codigo_producto.trim() : undefined
 
     // Validar campos requeridos
-    if (id_categoria === undefined || id_categoria === null ||
-        id_fabricante === undefined || id_fabricante === null ||
-        id_unidad === undefined || id_unidad === null ||
-        !tipoProducto || !finalCodigoProducto || !nombre ||
+  if (id_categoria === undefined || id_categoria === null ||
+    id_fabricante === undefined || id_fabricante === null ||
+    id_unidad === undefined || id_unidad === null ||
+    !tipoProducto || !nombre ||
         precio_compra === undefined || precio_compra === null ||
         precio_venta === undefined || precio_venta === null) {
       return NextResponse.json(
@@ -181,15 +167,17 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
-    const existeCodigo = await prisma.producto.findUnique({
-      where: { codigo_producto: finalCodigoProducto }
-    })
+    if (finalCodigoProducto) {
+      const existeCodigo = await prisma.producto.findUnique({
+        where: { codigo_producto: finalCodigoProducto }
+      })
 
-    if (existeCodigo) {
-      return NextResponse.json(
-        { error: 'Ya existe un producto con este código' },
-        { status: 400 }
-      )
+      if (existeCodigo) {
+        return NextResponse.json(
+          { error: 'Ya existe un producto con este código' },
+          { status: 400 }
+        )
+      }
     }
 
     // Verificar que las relaciones existen
@@ -218,30 +206,42 @@ export async function POST(request: NextRequest) {
     }
 
     // Crear producto
-    const producto = await prisma.producto.create({
-      data: {
-        id_categoria: idCategoriaNum,
-        id_fabricante: idFabricanteNum,
-        id_unidad: idUnidadNum,
-        tipo: tipoProducto,
-        codigo_producto: finalCodigoProducto,
-        nombre,
-        descripcion,
-        // El stock inicial no se debe asignar directamente al producto.
-        // Se registrará mediante una entrada de inventario para mantener historial.
-        stock: 0,
-        stock_minimo: parseInt(stock_minimo) || 0,
-        precio_compra: precioCompraNum,
-        precio_venta: precioVentaNum,
-        descuento: parseFloat(descuento) || 0,
-        oferta: Boolean(oferta),
-        foto
-      },
-      include: {
-        categoria: true,
-        fabricante: true,
-        unidad_medida: true
-      }
+    let productoCodigo = finalCodigoProducto
+
+    const producto = await prisma.$transaction(async (tx) => {
+      const codigo = productoCodigo ?? (await generarCodigoCorrelativo({
+        tipo: CORRELATIVO_TIPOS.PRODUCTO,
+        prefijo: 'PROD',
+        prismaClient: tx
+      })).codigo
+
+      productoCodigo = codigo
+
+      return tx.producto.create({
+        data: {
+          id_categoria: idCategoriaNum,
+          id_fabricante: idFabricanteNum,
+          id_unidad: idUnidadNum,
+          tipo: tipoProducto,
+          codigo_producto: codigo,
+          nombre,
+          descripcion,
+          // El stock inicial no se debe asignar directamente al producto.
+          // Se registrará mediante una entrada de inventario para mantener historial.
+          stock: 0,
+          stock_minimo: parseInt(stock_minimo) || 0,
+          precio_compra: precioCompraNum,
+          precio_venta: precioVentaNum,
+          descuento: parseFloat(descuento) || 0,
+          oferta: Boolean(oferta),
+          foto
+        },
+        include: {
+          categoria: true,
+          fabricante: true,
+          unidad_medida: true
+        }
+      })
     })
 
     // Registrar en bitácora (mejor esfuerzo)
@@ -250,7 +250,7 @@ export async function POST(request: NextRequest) {
       await logEvent({
         usuarioId: parseInt(session.user.id),
         accion: 'CREATE_PRODUCTO',
-        descripcion: `Producto creado: ${finalCodigoProducto} - ${nombre}`,
+  descripcion: `Producto creado: ${productoCodigo} - ${nombre}`,
         tabla: 'producto'
       })
     } catch (err) {

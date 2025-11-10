@@ -3,6 +3,8 @@ import fs from 'fs'
 import PDFDocument from 'pdfkit'
 import nodemailer from 'nodemailer'
 
+import { logger } from '@/lib/logger'
+
 const EXPORT_PATH = process.env.EXPORT_PATH || path.join(process.cwd(), 'public', 'exports')
 
 export async function renderPdf(rows: any[], filename: string) {
@@ -11,7 +13,7 @@ export async function renderPdf(rows: any[], filename: string) {
 
   // Try to use Puppeteer (preferred for HTML->PDF). If not available, fallback to pdfkit.
   try {
-  // @ts-ignore - puppeteer is optional and may not be installed in all environments
+  // @ts-expect-error -- puppeteer is optional and may not be installed in all environments
   const puppeteer: any = await import('puppeteer')
     const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] })
     const page = await browser.newPage()
@@ -95,6 +97,10 @@ export async function sendEmailWithAttachment(options: { to: string; subject: st
       auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
     })
   } else {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('SMTP_HOST no configurado y NODE_ENV=production; no se pueden enviar correos con cuenta temporal')
+    }
+    logger.warn('[workerUtils] SMTP no configurado; usando cuenta temporal de nodemailer (solo para entornos no productivos)')
     const testAccount = await nodemailer.createTestAccount()
     transporter = nodemailer.createTransport({
       host: testAccount.smtp.host,
@@ -114,7 +120,7 @@ export async function sendEmailWithAttachment(options: { to: string; subject: st
 
   if ((nodemailer as any).getTestMessageUrl && info) {
     const url = (nodemailer as any).getTestMessageUrl(info)
-    if (url) console.log('[report-worker] email preview URL:', url)
+    if (url) logger.info({ url }, '[report-worker] email preview URL')
   }
 
   return info

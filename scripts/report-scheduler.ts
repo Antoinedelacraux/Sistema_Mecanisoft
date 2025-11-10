@@ -4,15 +4,18 @@ import { createRedisConnection } from '@/lib/redisClient'
 import { prisma } from '@/lib/prisma'
 import { processReportJob } from '@/lib/reportes/processor'
 import { inc as incMetric } from '@/lib/reportes/metrics'
+import { verifyReportInfraPrerequisites } from '@/lib/reportes/dependencies'
+import { logger } from '@/lib/logger'
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://127.0.0.1:6379'
 const QUEUE_NAME = 'reportes'
 
 async function main() {
+  await verifyReportInfraPrerequisites('scheduler')
   const connection = await createRedisConnection(REDIS_URL)
   const queue = new Queue(QUEUE_NAME, { connection })
 
-  console.log('[report-scheduler] loading active schedules...')
+  logger.info('[report-scheduler] loading active schedules...')
   const schedules = await prisma.reportSchedule.findMany({
     where: { active: true },
     include: { template: true }
@@ -22,7 +25,7 @@ async function main() {
     try {
       const tpl = schedule.template
       if (!tpl) {
-        console.warn('[report-scheduler] template not found for schedule', schedule.id)
+        logger.warn({ scheduleId: schedule.id }, '[report-scheduler] template not found for schedule')
         continue
       }
       const data = {
@@ -35,12 +38,12 @@ async function main() {
       const jobId = `report_schedule_${schedule.id}`
       if (process.env.REDIS_USE_MOCK === 'true' || process.env.REDIS_FALLBACK_DIRECT === 'true') {
         // No real Redis available — execute once directly so module can function in constrained envs
-        console.log('[report-scheduler] no Redis - executing schedule directly for', schedule.id)
+        logger.warn({ scheduleId: schedule.id }, '[report-scheduler] no Redis - executing schedule directly')
         try {
           await processReportJob(data as any)
-          console.log('[report-scheduler] executed schedule', schedule.id)
+          logger.info({ scheduleId: schedule.id }, '[report-scheduler] executed schedule directly')
         } catch (e) {
-          console.error('[report-scheduler] direct execution failed for', schedule.id, e)
+          logger.error({ scheduleId: schedule.id, err: e }, '[report-scheduler] direct execution failed')
         }
       } else {
         // include attempts/backoff for scheduled jobs too
@@ -52,14 +55,14 @@ async function main() {
           backoff: { type: 'exponential', delay: 60000 }
         })
         try { incMetric('jobsEnqueued') } catch {}
-        console.log('[report-scheduler] registered repeatable job for schedule', schedule.id, schedule.cron)
+        logger.info({ scheduleId: schedule.id, cron: schedule.cron }, '[report-scheduler] registered repeatable job')
       }
     } catch (err) {
-      console.error('[report-scheduler] error registering schedule', schedule.id, err)
+      logger.error({ scheduleId: schedule.id, err }, '[report-scheduler] error registering schedule')
     }
   }
 
-  console.log('[report-scheduler] done. Worker will process according to cron.')
+  logger.info('[report-scheduler] done. Worker will process according to cron.')
   // Keep process alive to allow bull to keep repeatable jobs registered
   // Optional: register a purge job if PURGE_CRON is set (default daily at 03:00)
   const purgeCron = process.env.PURGE_CRON || '0 3 * * *'
@@ -74,19 +77,19 @@ async function main() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ maxAgeDays: payload.maxAgeDays }),
         })
-        console.log('[report-scheduler] executed immediate purge, status:', res.status)
+        logger.info({ status: res.status }, '[report-scheduler] executed immediate purge in fallback mode')
       } catch (e) {
-        console.warn('[report-scheduler] purge immediate failed', e)
+        logger.warn({ err: e }, '[report-scheduler] purge immediate failed')
       }
     } else {
       await queue.add(purgeJobId, payload as any, { jobId: purgeJobId, removeOnComplete: true, repeat: { cron: purgeCron } })
       try { incMetric('jobsEnqueued') } catch {}
-      console.log('[report-scheduler] registered purge repeatable job', purgeCron)
+      logger.info({ cron: purgeCron }, '[report-scheduler] registered purge repeatable job')
     }
   }
 }
 
 main().catch((err) => {
-  console.error(err)
+  logger.error({ err }, '[report-scheduler] fatal error')
   process.exit(1)
 })

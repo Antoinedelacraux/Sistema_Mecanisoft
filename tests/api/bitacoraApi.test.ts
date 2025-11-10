@@ -72,7 +72,26 @@ describe('API /api/bitacora', () => {
     getPermisoMock().mockResolvedValue(undefined)
 
     ;(prisma.bitacora.findMany as jest.Mock).mockResolvedValueOnce([
-      { id_bitacora: 1, id_usuario: 2, accion: 'LOGIN', descripcion: 'ok', fecha_hora: '2025-10-01T00:00:00.000Z', tabla: 'usuario', ip_publica: '1.2.3.4' }
+      {
+        id_bitacora: 1,
+        id_usuario: 2,
+        accion: 'LOGIN',
+        descripcion: 'ok',
+        fecha_hora: '2025-10-01T00:00:00.000Z',
+        tabla: 'usuario',
+        ip_publica: '1.2.3.4',
+        usuario: {
+          id_usuario: 2,
+          nombre_usuario: 'admin',
+          persona: {
+            id_persona: 55,
+            nombre: 'Ada',
+            apellido_paterno: 'Lovelace',
+            apellido_materno: null,
+            correo: 'ada@example.com'
+          }
+        }
+      }
     ])
     ;(prisma.bitacora.count as jest.Mock).mockResolvedValueOnce(1)
 
@@ -82,6 +101,9 @@ describe('API /api/bitacora', () => {
     expect(response.status).toBe(200)
     const payload = await response.json()
     expect(payload.eventos).toHaveLength(1)
+    expect(payload.eventos[0].usuario).toEqual(
+      expect.objectContaining({ username: 'admin', persona: expect.objectContaining({ nombreCompleto: 'Ada Lovelace' }) })
+    )
     expect(payload.total).toBe(1)
   })
 
@@ -90,7 +112,26 @@ describe('API /api/bitacora', () => {
     getPermisoMock().mockResolvedValue(undefined)
 
     ;(prisma.bitacora.findMany as jest.Mock).mockResolvedValueOnce([
-      { id_bitacora: 1, id_usuario: 2, accion: 'LOGIN', descripcion: 'ok', fecha_hora: '2025-10-01T00:00:00.000Z', tabla: 'usuario', ip_publica: '1.2.3.4' }
+      {
+        id_bitacora: 1,
+        id_usuario: 2,
+        accion: 'LOGIN',
+        descripcion: 'ok',
+        fecha_hora: '2025-10-01T00:00:00.000Z',
+        tabla: 'usuario',
+        ip_publica: '1.2.3.4',
+        usuario: {
+          id_usuario: 2,
+          nombre_usuario: 'admin',
+          persona: {
+            id_persona: 55,
+            nombre: 'Ada',
+            apellido_paterno: 'Lovelace',
+            apellido_materno: null,
+            correo: 'ada@example.com'
+          }
+        }
+      }
     ])
     ;(prisma.bitacora.count as jest.Mock).mockResolvedValueOnce(1)
 
@@ -101,6 +142,7 @@ describe('API /api/bitacora', () => {
     const ct = response.headers.get('content-type')
     expect(ct).toContain('text/csv')
     const text = await response.text()
-    expect(text).toMatch(/id_bitacora/)
+  expect(text).toMatch(/usuario_username/)
+  expect(text).toMatch(/admin/)
   })
 })

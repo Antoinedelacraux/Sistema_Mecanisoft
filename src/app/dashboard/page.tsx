@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next"
 
 import { DashboardFilters } from "@/components/dashboard/dashboard-filters"
 import { ExportCsvButton } from "@/components/dashboard/export-csv-button"
+import { ForceRecalcButton } from "@/components/dashboard/force-recalc-button"
 import { VentasMetodoChart } from "@/components/dashboard/ventas-metodo-chart"
 import { VentasSeriesChart } from "@/components/dashboard/ventas-series-chart"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -113,6 +114,7 @@ const DashboardPage = async ({ searchParams }: DashboardPageProps) => {
   let ventasSeries: VentasSeriesPoint[] = []
   let topProductos: TopProductoEntry[] = []
   let ventasMetodoPago: VentasMetodoPagoEntry[] = []
+  let dataError: string | null = null
 
   try {
     const [summaryResult, seriesResult, ventasMetodoPagoResult, topProductosResult] = await Promise.all([
@@ -127,7 +129,9 @@ const DashboardPage = async ({ searchParams }: DashboardPageProps) => {
     ventasMetodoPago = ventasMetodoPagoResult
     topProductos = topProductosResult
   } catch (error) {
+    const message = error instanceof Error ? error.message : "No se pudo cargar la data del dashboard"
     console.error("Error cargando datos del dashboard", error)
+    dataError = message
   }
 
   const rangoLabel = `${dateFormatter.format(filters.from)} — ${dateFormatter.format(filters.to)}`
@@ -185,6 +189,7 @@ const DashboardPage = async ({ searchParams }: DashboardPageProps) => {
               Hola {session?.user?.name ?? ""}, este es el resumen para el rango seleccionado ({rangoLabel}).
             </p>
           </div>
+          <ForceRecalcButton from={filters.from.toISOString()} to={filters.to.toISOString()} />
         </div>
         <DashboardFilters
           from={filters.from.toISOString()}
@@ -192,6 +197,16 @@ const DashboardPage = async ({ searchParams }: DashboardPageProps) => {
           granularity={granularity}
         />
       </section>
+
+      {dataError && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-5 w-5" />
+          <AlertTitle>No pudimos cargar todos los datos</AlertTitle>
+          <AlertDescription>
+            {dataError}. Mostramos la última información disponible en caché. Intenta recalcular los KPIs o refrescar la página.
+          </AlertDescription>
+        </Alert>
+      )}
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {kpis.map((item) => (

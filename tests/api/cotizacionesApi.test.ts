@@ -37,10 +37,33 @@ jest.mock('@/lib/prisma', () => {
     bitacora: {
       create: jest.fn()
     },
+    correlativoCodigo: {
+      upsert: jest.fn()
+    },
     $transaction: jest.fn()
   }
 
   return { prisma: prismaMock }
+})
+
+jest.mock('@/lib/logger', () => {
+  const loggerMock: any = {
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+    child: jest.fn()
+  }
+  loggerMock.child.mockReturnValue(loggerMock)
+  return { logger: loggerMock, default: loggerMock }
+})
+
+jest.mock('@/lib/redisClient', () => {
+  const createRedisConnection = jest.fn(async () => ({
+    on: jest.fn(),
+    quit: jest.fn()
+  }))
+  return { createRedisConnection, default: createRedisConnection }
 })
 
 jest.mock('@/lib/permisos/guards', () => ({
@@ -65,6 +88,7 @@ type PrismaMock = {
   servicio: { findMany: MockFn }
   detalleCotizacion: { create: MockFn }
   bitacora: { create: MockFn }
+  correlativoCodigo: { upsert: MockFn }
   $transaction: jest.Mock
 }
 
@@ -103,9 +127,9 @@ jest.mock('next/server', () => {
 })
 
 beforeAll(async () => {
-  const module = await import('../../src/app/api/cotizaciones/route')
-  POST = module.POST
-  GET = module.GET
+  const routeModule = await import('../../src/app/api/cotizaciones/route')
+  POST = routeModule.POST
+  GET = routeModule.GET
 })
 
 function buildRequest(body: Record<string, unknown>): NextRequest {
@@ -118,11 +142,20 @@ describe('POST /api/cotizaciones', () => {
     mockedGetServerSession.mockReset()
     mockedAsegurarPermiso.mockReset()
 
-    prismaMock.$transaction.mockImplementation(async (cb: (tx: { cotizacion: { create: MockFn }; detalleCotizacion: { create: MockFn } }) => Promise<any>) => {
+  prismaMock.$transaction.mockImplementation(async (cb: (tx: { cotizacion: { create: MockFn }; detalleCotizacion: { create: MockFn }; correlativoCodigo: { upsert: MockFn } }) => Promise<any>) => {
       return cb({
         cotizacion: { create: prismaMock.cotizacion.create },
-        detalleCotizacion: { create: prismaMock.detalleCotizacion.create }
+        detalleCotizacion: { create: prismaMock.detalleCotizacion.create },
+        correlativoCodigo: { upsert: prismaMock.correlativoCodigo.upsert }
       })
+    })
+    prismaMock.correlativoCodigo.upsert.mockResolvedValue({
+      id_correlativo_codigo: 1,
+      tipo: 'cotizacion',
+      anio: new Date().getFullYear(),
+      ultimo_valor: 1,
+      created_at: new Date(),
+      updated_at: new Date()
     })
   })
 
@@ -291,6 +324,10 @@ describe('POST /api/cotizaciones', () => {
       codigo_cotizacion: 'COT-2024-001',
       detalle_cotizacion: []
     })
+
+    expect(prismaMock.correlativoCodigo.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { tipo_anio: { tipo: 'cotizacion', anio: new Date().getFullYear() } }
+    }))
 
     const calls = (prismaMock.detalleCotizacion.create as jest.Mock).mock.calls
     const productCall = calls.find(([args]) => args.data.id_producto === 10)

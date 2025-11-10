@@ -44,10 +44,31 @@ Short, targeted guidance for AI coding agents working in this repository. Focus:
 - Clean test fixtures after integration suites:
 	- `npx tsx prisma/clean-test-data.ts`
 
+## Error handling & validation patterns
+- **Service-layer errors**: Use custom error classes (e.g., `OrdenServiceError`) with `(status: number, message: string, payload?: Record<string, unknown>)` signature for typed error handling.
+- **Input validation**: Zod schemas in `src/lib/*/validators.ts` (e.g., `actualizarOrdenSchema`, `ordenItemSchema`); wrap ZodError with service error and include `issues` array in payload.
+- **API routes**: Catch service errors in try/catch, respond with `NextResponse.json({ message, ... }, { status })` matching the error's status code. Use `asegurarPermiso` guard to throw `PermisoDenegadoError` or `SesionInvalidaError`.
+
+## Inventory & stock management
+- **Core flows**: `src/lib/inventario/services.ts` handles transfers, reserves, and movements. Reserves are transactional (`reservarStockEnTx`, `confirmarReservaEnTx`, `liberarReservaEnTx`) and attached to orders.
+- **Alertas**: Stock alerts monitored via `src/lib/inventario/alertas.ts`; use `MovimientoOrigen` enum (purchase, transfer, order, adjustment) to track movement source.
+- **Stock sync**: `sync-producto-stock.ts` reconciles computed stock with cached values after bulk movements.
+
+## Indicators & caching strategy
+- **Cached indicators**: Use `withIndicatorCache()` from `src/lib/indicadores/cache.ts` for expensive computations (default 12h TTL, forceable via `force: true` option).
+- **Hash-based invalidation**: Indicators cached with MD5 hash of `{ indicador, from, to, parametros }`.
+- **Warm-up script**: `npm run indicadores:warm-cache` pre-computes KPIs; use in deployment or high-traffic scenarios.
+
+## Testing & mocking conventions
+- **Mock auth**: Use `jest.mock('next-auth/next')` and override `getServerSession` to return mock session with `user: { id, email, ... }`.
+- **Mock services**: Prisma methods, permisos guards, and mailer are pre-mocked in `jest.setup.ts`; override per test as needed using `(prisma.model.method as jest.Mock).mockResolvedValue(...)`.
+- **Test cleanup**: After integration suites, run `npx tsx prisma/clean-test-data.ts` to reset test fixtures. Use `npx prisma migrate reset --force` for full DB reset locally.
+
 ## Quick notes for AI agents
 - Prefer reading service files in `src/lib` to understand rules (e.g., orden creation/updates). The README includes many concrete references to `src/lib/ordenes/*` and indicator services.
 - Use existing seeds and tests as canonical examples for valid data shapes and permissions.
 - Keep edits minimal and follow existing style: TypeScript + Next.js App Router patterns, shadcn UI primitives, and Zod for validation.
+- When adding API endpoints, place them in `src/app/api/{feature}/route.ts`, validate input with Zod, use service layer for logic, catch errors with proper HTTP status codes.
 
 ---
-If anything here is unclear or you want more detail on a specific area (orders flow, inventory transfers, PDF invoicing, or test strategy), tell me which area and I'll expand the instructions or add short examples/snippets.
+If anything here is unclear or you want more detail on a specific area (orders flow, inventory transfers, indicator caching, or test strategy), ask.

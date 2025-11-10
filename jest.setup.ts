@@ -1,10 +1,10 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 import '@testing-library/jest-dom'
 
 type WebApiKey = 'Headers' | 'Request' | 'Response' | 'FormData' | 'File' | 'Blob'
 
 const tryRequire = <T = unknown>(moduleName: string): T | undefined => {
 	try {
-		// eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-unsafe-return
 		return require(moduleName)
 	} catch {
 		return undefined

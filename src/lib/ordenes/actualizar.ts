@@ -1,5 +1,6 @@
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { ReservaEstado } from '@prisma/client'
+import { invalidateIndicators } from '@/lib/indicadores/cache'
 import { ZodError } from 'zod'
 import { confirmarReservaEnTx, liberarReservaEnTx, reservarStockEnTx } from '@/lib/inventario/reservas'
 import { calcularProgresoOrden, convertirATotalMinutos, isUniqueConstraintError, toInt } from './helpers'
@@ -35,6 +36,8 @@ export async function actualizarOrden(
   if (!orden || orden.tipo_transaccion !== 'orden') {
     throw new OrdenServiceError(404, 'Orden no encontrada')
   }
+
+  const estadoAnterior = orden.estado_orden
 
   const nuevoEstado = input.nuevo_estado as string | undefined
   const validEstados = ['pendiente', 'por_hacer', 'en_proceso', 'pausado', 'completado', 'entregado'] as const
@@ -140,6 +143,13 @@ export async function actualizarOrden(
     data: dataUpdate,
     include: { persona: true }
   })
+
+  const estadoPosterior = updated.estado_orden
+  if (estadoPosterior && estadoPosterior !== estadoAnterior && ['completado', 'entregado'].includes(estadoPosterior)) {
+    void invalidateIndicators({ prefix: 'mantenimientos.' }).catch((err) => {
+      console.error('[indicadores] fallo invalidando cache tras actualizar orden', err)
+    })
+  }
 
   const idVehiculoNuevo = toInt(input.id_vehiculo)
   if (orden.estado_orden === 'pendiente' && idVehiculoNuevo) {

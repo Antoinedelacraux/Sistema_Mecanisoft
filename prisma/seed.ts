@@ -152,6 +152,13 @@ async function main() {
       agrupador: 'gestion_inventario'
     },
     {
+      codigo: 'inventario.alertas',
+      nombre: 'Ejecutar alertas de inventario',
+      descripcion: 'Autoriza el cron de alertas y el envío de notificaciones de stock crítico',
+      modulo: 'inventario',
+      agrupador: 'gestion_inventario'
+    },
+    {
       codigo: 'ordenes.crear',
       nombre: 'Crear órdenes de trabajo',
       descripcion: 'Genera nuevas órdenes y asigna responsables',

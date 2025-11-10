@@ -21,6 +21,16 @@ Aplicación web construida con **Next.js 15**, **TypeScript** y **Prisma** para 
    DATABASE_URL="postgresql://USER:PASS@localhost:5432/taller_mecanico?schema=public"
    NEXTAUTH_SECRET="clave-aleatoria"
    NEXTAUTH_URL="http://localhost:3000"
+   REDIS_URL="redis://localhost:6379"
+   SMTP_HOST="smtp.test.local"
+   SMTP_PORT="587"
+   SMTP_USER="notificaciones@test.local"
+   SMTP_PASS="cambia-esto"
+   INVENTARIO_ALERT_RECIPIENTS="operaciones@test.local"
+   FACTURACION_HABILITADA="false" # Actívalo en despliegues listos para emitir
+   FACTURACION_API_URL="https://facturacion.tu-servicio/api"
+   FACTURACION_API_TOKEN="token-proveedor"
+   FACTURACION_EMISOR_RUC="20123456789"
    ```
 3. Inicializa la base:
    ```powershell
@@ -89,6 +99,23 @@ El archivo `vercel.json` y el script `postinstall` (`prisma generate`) ya están
 | `npx tsx scripts/seed-sample-data.ts` | Dataset de demostración integral |
 | `npm run indicadores:warm-cache` | Precálculo de KPIs de mantenimiento |
 | `npm run verify` | Lint + typecheck + pruebas críticas |
+| `npm run usuarios:worker` | Worker BullMQ para reprocesar credenciales pendientes |
+| `npm run usuarios:scheduler` | Agenda el reproceso periódico de credenciales |
+| `npm run inventario:worker` | Worker BullMQ para liberar reservas caducadas y alertas de stock |
+| `npm run inventario:scheduler` | Agenda liberación de reservas y notificaciones de inventario |
+| `npm run ordenes:worker` | Worker BullMQ para alertas de tareas pausadas |
+| `npm run ordenes:scheduler` | Agenda el escaneo periódico de tareas en pausa |
+
+## 🛠️ Infraestructura requerida
+
+- **Redis**: usado para rate limiting, cuotas de subida y cola de reportes/alertas. Los workers validan la conexión al iniciar; habilita `REDIS_USE_MOCK=true` únicamente en entornos locales de prueba.
+- **SMTP**: obligatorio en producción; sin `SMTP_HOST` configurado los correos fallan (no se crean cuentas temporales). Define `SMTP_*` en `.env` o en tu gestor de secretos.
+- **S3 (opcional)**: si `S3_BUCKET` está definido se intentará validar credenciales y bucket (usa `S3_VERIFY=true` para obligar la verificación en staging). De lo contrario los reportes se almacenan en `public/exports`.
+- **Alertas de inventario**: configura `INVENTARIO_ALERT_RECIPIENTS` con uno o más correos separados por coma para recibir los avisos encolados desde `/api/inventario/alertas/cron`.
+- **Reservas de inventario**: `INVENTARIO_RESERVA_TTL_HOURS` (default 48) define cuándo caduca una reserva pendiente; `INVENTARIO_RESERVA_RELEASE_LIMIT` controla el lote máximo por job y `INVENTARIO_RESERVA_CRON`/`INVENTARIO_ALERT_CRON` permiten ajustar la frecuencia del scheduler. Usa `INVENTARIO_ALERT_SLACK_WEBHOOK` para notificaciones en Slack y `INVENTARIO_ALERT_FORCE=true` si quieres alertar incluso sin críticos.
+- **Tareas pausadas**: `TAREAS_PAUSADAS_THRESHOLD_HOURS` (default 12) y `TAREAS_PAUSADAS_ALERT_LIMIT` personalizan el job; define `TAREAS_ALERT_RECIPIENTS` y opcionalmente `TAREAS_ALERT_SLACK_WEBHOOK` para correos/Slack. Ajusta la frecuencia con `TAREAS_ALERT_CRON`.
+- **Indicadores**: el endpoint `/api/indicadores/recalcular` fuerza el cache de KPIs; puedes exponerlo en un panel admin y documentar `ForceRecalcButton` en el dashboard para ejecuciones manuales.
+- **Reenvío de credenciales**: BullMQ agenda jobs con `npm run usuarios:scheduler`; ajusta `USUARIOS_CREDENCIALES_CRON`, `USUARIOS_CREDENCIALES_LIMIT`, `USUARIOS_SYSTEM_USER_ID`, `USUARIOS_CREDENCIALES_ASUNTO` y `USUARIOS_CREDENCIALES_MENSAJE_AUTO`. En entornos sin Redis establece `REDIS_FALLBACK_DIRECT=true` para ejecutar el reproceso inmediato.
 
 ## ✅ Checklist rápida antes de entregar
 
@@ -97,6 +124,7 @@ El archivo `vercel.json` y el script `postinstall` (`prisma generate`) ya están
 - [ ] Seeds básicos aplicados (`npm run seed`).
 - [ ] Usuario admin generado (`npx tsx scripts/create-admin-user.ts`).
 - [ ] Datos demo cargados si aplica (`npx tsx scripts/seed-sample-data.ts`).
+- [ ] `npm run verify` ejecutado sin errores.
 - [ ] Servidor funcionando (`npm run dev` o `docker compose up`).
 
 ## 🧰 Órdenes de trabajo

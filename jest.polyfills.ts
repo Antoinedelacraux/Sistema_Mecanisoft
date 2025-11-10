@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 try {
   require('next/dist/server/node-polyfill-fetch')
   require('next/dist/server/node-polyfill-web-streams')

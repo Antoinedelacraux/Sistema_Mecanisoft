@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { addDays, addHours, subDays } from 'date-fns'
 import { PrismaClient, Prisma } from '@prisma/client'
 

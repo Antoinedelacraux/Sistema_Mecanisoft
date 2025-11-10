@@ -4,6 +4,17 @@ import bcrypt from "bcryptjs"
 // Usar el cliente Prisma compartido para evitar múltiples conexiones en dev
 import { prisma } from '@/lib/prisma'
 import { obtenerPermisosResueltosDeUsuario } from '@/lib/permisos/service'
+import { logger } from '@/lib/logger'
+import {
+  extractClientIp,
+  registerLoginAttempt,
+  resetLoginAttempts,
+  recordFailedLogin,
+  resetFailedLogin,
+  isUserTemporarilyBlocked,
+  MAX_FAILED_ATTEMPTS,
+  LOCKOUT_MINUTES
+} from '@/lib/auth/login-security'
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -13,8 +24,9 @@ export const authOptions: NextAuthOptions = {
         username: { label: "Usuario", type: "text" },
         password: { label: "Contraseña", type: "password" }
       },
-      async authorize(credentials) {
+      async authorize(credentials, req) {
         if (!credentials?.username || !credentials?.password) {
+          logger.warn({ hasUsername: Boolean(credentials?.username) }, "[auth] Missing credentials in login attempt")
           return null
         }
 
@@ -22,15 +34,23 @@ export const authOptions: NextAuthOptions = {
           const rawUser = credentials.username
           const username = rawUser.trim().toLowerCase()
           const password = credentials.password
+          const ip = extractClientIp(req)
+
           if (username !== rawUser) {
-            console.log('[AUTH] Username normalizado (trim+lowercase):', JSON.stringify(rawUser), '->', JSON.stringify(username))
+            logger.debug({ rawUser, normalized: username }, "[auth] normalized username")
           }
           if (!process.env.NEXTAUTH_SECRET) {
-            console.warn('[AUTH] NEXTAUTH_SECRET no está definido. Configurar para producción.')
+            logger.warn("[auth] NEXTAUTH_SECRET is not defined. Configure it for production.")
           }
-          console.log('[AUTH] Intento de login:', username)
 
-          // Buscar usuario en la BD (normalizando el usuario)
+          const rateLimit = await registerLoginAttempt(username, ip)
+          if (!rateLimit.allowed) {
+            logger.warn({ username, ip, scope: rateLimit.scope, count: rateLimit.count }, "[auth] Login blocked by rate limiter")
+            return null
+          }
+
+          logger.info({ username, ip }, "[auth] Login attempt received")
+
           const usuario = await prisma.usuario.findUnique({
             where: {
               nombre_usuario: username
@@ -49,41 +69,38 @@ export const authOptions: NextAuthOptions = {
           })
 
           if (!usuario) {
-            // Intento secundario solo por nombre_usuario para diagnosticar si está inactivo
-            const existeUsuario = await prisma.usuario.findFirst({
-              where: { nombre_usuario: username },
-              include: { persona: true, rol: true }
-            })
-            if (existeUsuario) {
-              console.log("❌ Usuario inactivo o deshabilitado:", username, {
-                estado: existeUsuario.estado,
-                estatus: existeUsuario.estatus
-              })
-            } else {
-              console.log("❌ Usuario no encontrado:", username)
+            logger.warn({ username, ip }, "[auth] Login failed: user not found")
+            return null
+          }
+
+          const usuarioSeguridad = usuario as typeof usuario & { intentos_fallidos_login: number; ultimo_intento_fallido: Date | null }
+
+          if (isUserTemporarilyBlocked(usuarioSeguridad)) {
+            logger.warn({ username, ip, lockoutMinutes: LOCKOUT_MINUTES, attempts: usuarioSeguridad.intentos_fallidos_login }, "[auth] User temporarily locked due to failed attempts")
+            return null
+          }
+
+          const handleFailure = async (reason: string, record = true) => {
+            logger.warn({ username, ip, reason }, "[auth] Login failed")
+            if (record) {
+              const count = await recordFailedLogin(usuarioSeguridad.id_usuario)
+              if (count && count >= MAX_FAILED_ATTEMPTS) {
+                logger.warn({ username, ip, attempts: count, lockoutMinutes: LOCKOUT_MINUTES }, "[auth] Failed login threshold reached")
+              }
             }
             return null
           }
 
           if (!usuario.estatus) {
-            console.log('❌ Usuario dado de baja:', username)
-            return null
+            return handleFailure("usuario dado de baja", false)
           }
 
           if (!usuario.estado) {
-            console.log('❌ Usuario bloqueado/inactivo:', username, {
-              bloqueado_en: usuario.bloqueado_en,
-              motivo_bloqueo: usuario.motivo_bloqueo
-            })
-            return null
+            return handleFailure("usuario bloqueado/inactivo", false)
           }
 
           if (usuario.trabajador && (!usuario.trabajador.activo || usuario.trabajador.eliminado)) {
-            console.log('❌ Trabajador asociado no apto para login:', username, {
-              activo: usuario.trabajador.activo,
-              eliminado: usuario.trabajador.eliminado
-            })
-            return null
+            return handleFailure("trabajador asociado inactivo o eliminado", false)
           }
 
           const ahora = new Date()
@@ -96,19 +113,18 @@ export const authOptions: NextAuthOptions = {
 
           if (requiereCambioPassword) {
             if (!temporalVigente) {
-              console.log('❌ Contraseña temporal expirada o ausente para usuario que requiere cambio:', username)
+              logger.warn({ username, ip }, "[auth] Contraseña temporal expirada o ausente")
               if (!usuario.envio_credenciales_pendiente) {
                 await prisma.usuario.update({
                   where: { id_usuario: usuario.id_usuario },
                   data: { envio_credenciales_pendiente: true, ultimo_error_envio: 'Contraseña temporal expirada. Reenviar credenciales.' }
                 })
               }
-              return null
+              return handleFailure("contraseña temporal expirada", false)
             }
             passwordValido = await bcrypt.compare(password, usuario.password_temporal as string)
             if (!passwordValido) {
-              console.log('❌ Contraseña temporal incorrecta para usuario:', username)
-              return null
+              return handleFailure("contraseña temporal incorrecta")
             }
           } else {
             passwordValido = await bcrypt.compare(password, usuario.password)
@@ -122,28 +138,29 @@ export const authOptions: NextAuthOptions = {
             }
 
             if (!passwordValido) {
-              console.log("❌ Contraseña incorrecta para usuario:", username)
-              return null
+              return handleFailure("contraseña incorrecta")
             }
           }
 
-          console.log("✅ Login exitoso para:", usuario.nombre_usuario)
+          await resetLoginAttempts(username, ip)
+          if (usuarioSeguridad.intentos_fallidos_login > 0) {
+            await resetFailedLogin(usuarioSeguridad.id_usuario)
+          }
+
+          logger.info({ username, ip }, "[auth] Login exitoso")
 
           const permisosResueltos = await obtenerPermisosResueltosDeUsuario(usuario.id_usuario, prisma)
           const permisosActivos = permisosResueltos
             .filter((permiso) => permiso.concedido)
             .map((permiso) => permiso.codigo)
 
-          // Registrar en bitácora
           try {
             const { logEvent } = await import('@/lib/bitacora/log-event')
-            await logEvent({ usuarioId: usuario.id_usuario, accion: 'LOGIN', descripcion: `Usuario ${usuario.nombre_usuario} inició sesión`, tabla: 'usuario' })
-          } catch (err) {
-            // best-effort logging, don't fail authentication if bitácora write fails
-            console.error('[AUTH] no se pudo registrar en bitácora:', err)
+            await logEvent({ usuarioId: usuario.id_usuario, accion: 'LOGIN', descripcion: `Usuario ${usuario.nombre_usuario} inició sesión`, tabla: 'usuario', ip: ip ?? undefined })
+          } catch (error) {
+            logger.error({ error }, "[auth] no se pudo registrar en bitácora")
           }
 
-          // Retornar datos del usuario para la sesión
           return {
             id: usuario.id_usuario.toString(),
             name: `${usuario.persona.nombre} ${usuario.persona.apellido_paterno}`,
@@ -155,7 +172,7 @@ export const authOptions: NextAuthOptions = {
             permisos: permisosActivos
           }
         } catch (error) {
-          console.error("❌ Error en autenticación:", error)
+          logger.error({ error }, "[auth] Error en autenticación")
           return null
         }
       }

@@ -5,6 +5,7 @@ async function main() {
   await prisma.usuarioPermiso.deleteMany({})
   await prisma.rolPermiso.deleteMany({})
   await prisma.permiso.deleteMany({})
+  await prisma.correlativoCodigo.deleteMany({})
 
   // Inventario
   await prisma.reservaInventario.deleteMany({})

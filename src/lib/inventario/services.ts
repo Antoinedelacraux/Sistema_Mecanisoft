@@ -12,6 +12,7 @@ import {
   RegistrarSalidaDTO,
   TransferenciaConMovimientos,
 } from '@/types/inventario';
+import { invalidateIndicators } from '@/lib/indicadores/cache';
 
 export const DECIMAL_ZERO = new Prisma.Decimal(0);
 
@@ -52,6 +53,12 @@ const registrarBitacora = async (
       descripcion,
       metadata,
     },
+  });
+};
+
+const triggerStockIndicatorInvalidation = () => {
+  void invalidateIndicators({ indicadores: 'mantenimientos.stock-critical' }).catch((err) => {
+    console.error('[indicadores] fallo invalidando cache tras movimiento de inventario', err);
   });
 };
 
@@ -173,7 +180,7 @@ export const registrarIngreso = async (
   assertPositiveCantidad(cantidadDecimal, 'La cantidad del ingreso debe ser mayor a cero');
   assertCostoNoNegativo(costoUnitarioDecimal);
 
-  return prisma.$transaction(async (tx: TxClient) => {
+  const movimiento = await prisma.$transaction(async (tx: TxClient) => {
     await validarProducto(tx, input.productoId);
     await validarUbicacion(tx, input.almacenId, input.ubicacionId ?? null);
 
@@ -221,6 +228,10 @@ export const registrarIngreso = async (
 
     return movimiento;
   });
+
+  triggerStockIndicatorInvalidation();
+
+  return movimiento;
 };
 
 export const registrarSalida = async (
@@ -229,7 +240,7 @@ export const registrarSalida = async (
   const cantidadDecimal = toDecimal(input.cantidad);
   assertPositiveCantidad(cantidadDecimal, 'La cantidad de la salida debe ser mayor a cero');
 
-  return prisma.$transaction(async (tx: TxClient) => {
+  const movimiento = await prisma.$transaction(async (tx: TxClient) => {
     await validarProducto(tx, input.productoId);
     await validarUbicacion(tx, input.almacenId, input.ubicacionId ?? null);
 
@@ -273,6 +284,10 @@ export const registrarSalida = async (
 
     return movimiento;
   });
+
+  triggerStockIndicatorInvalidation();
+
+  return movimiento;
 };
 
 export const registrarAjuste = async (
@@ -281,7 +296,7 @@ export const registrarAjuste = async (
   const cantidadDecimal = toDecimal(input.cantidad);
   assertPositiveCantidad(cantidadDecimal, 'La cantidad del ajuste debe ser mayor a cero');
 
-  return prisma.$transaction(async (tx: TxClient) => {
+  const movimiento = await prisma.$transaction(async (tx: TxClient) => {
     await validarProducto(tx, input.productoId);
     await validarUbicacion(tx, input.almacenId, input.ubicacionId ?? null);
 
@@ -336,6 +351,10 @@ export const registrarAjuste = async (
 
     return movimiento;
   });
+
+  triggerStockIndicatorInvalidation();
+
+  return movimiento;
 };
 
 const assertTransferenciaDestinoDistinto = (input: CrearTransferenciaDTO) => {
@@ -359,7 +378,7 @@ export const crearTransferencia = async (
   assertPositiveCantidad(cantidadDecimal, 'La cantidad de la transferencia debe ser mayor a cero');
   assertTransferenciaDestinoDistinto(input);
 
-  return prisma.$transaction(async (tx: TxClient) => {
+  const transferencia = await prisma.$transaction(async (tx: TxClient) => {
     await validarProducto(tx, input.productoId);
     await validarUbicacion(tx, input.origenAlmacenId, input.origenUbicacionId ?? null);
     await validarUbicacion(tx, input.destinoAlmacenId, input.destinoUbicacionId ?? null);
@@ -442,12 +461,16 @@ export const crearTransferencia = async (
 
     return transferencia;
   });
+
+  triggerStockIndicatorInvalidation();
+
+  return transferencia;
 };
 
 export const confirmarTransferencia = async (
   input: ConfirmarTransferenciaDTO,
 ): Promise<TransferenciaConMovimientos> => {
-  return prisma.$transaction(async (tx: TxClient) => {
+  const transferencia = await prisma.$transaction(async (tx: TxClient) => {
     const transferencia = await cargarTransferencia(tx, input.transferenciaId);
 
     if (!transferencia) {
@@ -502,15 +525,18 @@ export const confirmarTransferencia = async (
       transferenciaId: transferencia.id_movimiento_transferencia,
       metadata: input.metadata ?? null,
     });
-
     return transferenciaActualizada;
   });
+
+  triggerStockIndicatorInvalidation();
+
+  return transferencia;
 };
 
 export const anularTransferencia = async (
   input: AnularTransferenciaDTO,
 ): Promise<TransferenciaConMovimientos> => {
-  return prisma.$transaction(async (tx: TxClient) => {
+  const transferencia = await prisma.$transaction(async (tx: TxClient) => {
     const transferencia = await cargarTransferencia(tx, input.transferenciaId);
 
     if (!transferencia) {
@@ -571,7 +597,10 @@ export const anularTransferencia = async (
       motivo: input.motivo ?? null,
       metadata: input.metadata ?? null,
     });
-
     return transferenciaActualizada;
   });
+
+  triggerStockIndicatorInvalidation();
+
+  return transferencia;
 };

@@ -1,5 +1,3 @@
-import { z } from 'zod'
-
 import { prisma } from '@/lib/prisma'
 import { ApiError } from './errors'
 import {
@@ -10,27 +8,7 @@ import {
   resolveRolParaTrabajador,
   defaultUsuarioSelect
 } from './helpers'
-
-const createUsuarioSchema = z.object({
-  id_trabajador: z.number().int().positive(),
-  nombre_usuario: z.string().min(4),
-  correo: z.string().email().optional().nullable(),
-  rol: z.string().optional().nullable(),
-  estado: z.boolean().optional().default(true),
-  enviar_correo: z.boolean().optional().default(true),
-  password: z.string().min(8).optional().nullable(),
-  confirmar_password: z.string().min(8).optional().nullable(),
-  password_expira_en_horas: z.number().int().min(1).max(336).optional().default(72)
-})
-  .refine((data) => {
-    if (data.password || data.confirmar_password) {
-      return data.password === data.confirmar_password
-    }
-    return true
-  }, {
-    message: 'Las contraseñas no coinciden',
-    path: ['confirmar_password']
-  })
+import { createUsuarioSchema } from '@/lib/usuarios/validators'
 
 const buildFechaExpiracion = (horas: number) => {
   const fecha = new Date()

@@ -1,17 +1,8 @@
-import { z } from 'zod'
-
 import { prisma } from '@/lib/prisma'
 import { ApiError } from './errors'
 import { defaultUsuarioSelect, normalizeUsername, resolveRolParaTrabajador } from './helpers'
 import { getUsuarioOrThrow } from './detail-controller'
-
-const updateUsuarioSchema = z.object({
-  nombre_usuario: z.string().min(4).optional(),
-  correo: z.string().email().optional().nullable(),
-  rol: z.string().optional().nullable(),
-  estado: z.boolean().optional(),
-  motivo_bloqueo: z.string().optional().nullable()
-})
+import { updateUsuarioSchema } from '@/lib/usuarios/validators'
 
 export async function updateUsuario(id: number, payload: unknown, sessionUserId: number) {
   const data = updateUsuarioSchema.parse(payload)

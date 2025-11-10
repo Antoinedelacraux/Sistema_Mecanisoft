@@ -25,6 +25,14 @@ const permisos = [
     agrupador: 'gestion_inventario',
     roles: ['Administrador', 'Recepcionista'],
   },
+  {
+    codigo: 'inventario.alertas',
+    nombre: 'Ejecutar alertas de inventario',
+    descripcion: 'Autoriza cron y notificaciones de stock crítico',
+    modulo: 'inventario',
+    agrupador: 'gestion_inventario',
+    roles: ['Administrador'],
+  },
 ] as const
 
 type PermisoConfig = (typeof permisos)[number]

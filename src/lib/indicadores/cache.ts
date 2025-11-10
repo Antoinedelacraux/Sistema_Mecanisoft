@@ -1,7 +1,7 @@
 import { createHash } from 'crypto'
 import { addHours, isAfter } from 'date-fns'
 
-import type { Prisma } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 
 import { prisma } from '@/lib/prisma'
 
@@ -64,4 +64,39 @@ export async function withIndicatorCache<T>(meta: CacheMeta, compute: () => Prom
   }
 
   return payload
+}
+
+type InvalidateOptions = {
+  indicadores?: string | string[]
+  prefix?: string | string[]
+  prismaClient?: PrismaClient
+}
+
+const toArray = (value?: string | string[]) => {
+  if (!value) return []
+  return Array.isArray(value) ? value.filter(Boolean) : [value]
+}
+
+export async function invalidateIndicators(options: InvalidateOptions): Promise<number> {
+  const indicadores = toArray(options.indicadores)
+  const prefixList = toArray(options.prefix)
+  if (indicadores.length === 0 && prefixList.length === 0) {
+    return 0
+  }
+
+  const where: Prisma.IndicadorCacheWhereInput = {
+    OR: []
+  }
+
+  if (indicadores.length > 0) {
+    where.OR!.push({ indicador: { in: indicadores } })
+  }
+
+  if (prefixList.length > 0) {
+    where.OR!.push(...prefixList.map((prefix) => ({ indicador: { startsWith: prefix } })))
+  }
+
+  const client = options.prismaClient ?? prisma
+  const result = await client.indicadorCache.deleteMany({ where })
+  return result.count
 }

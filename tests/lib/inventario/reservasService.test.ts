@@ -2,7 +2,14 @@
 
 import { Prisma, ReservaEstado } from '@prisma/client';
 
-import { cancelarReserva, confirmarReserva, liberarReserva, reservarStock } from '@/lib/inventario/reservas';
+import {
+  cancelarReserva,
+  confirmarReserva,
+  liberarReserva,
+  liberarReservasCaducadas,
+  reservarStock,
+} from '@/lib/inventario/reservas';
+import * as ReservasModule from '@/lib/inventario/reservas';
 import { InventarioError } from '@/types/inventario';
 
 type InventarioRecord = {
@@ -67,11 +74,15 @@ type TransactionClientMock = {
     create: jest.Mock<Promise<ReservaRecord>, [unknown]>;
     findUnique: jest.Mock<Promise<ReservaRecord | null>, [unknown?]>;
     update: jest.Mock<Promise<ReservaRecord>, [unknown]>;
+    findMany: jest.Mock<Promise<Array<{ id_reserva_inventario: number; creado_en: Date; inventario: { id_inventario_producto: number; producto: { id_producto: number; nombre: string; codigo_producto: string }; almacen: { id_almacen: number; nombre: string } }}>>, [unknown?]>;
   };
 };
 
 type PrismaMock = {
   $transaction: jest.Mock<Promise<unknown>, [(tx: TransactionClientMock) => unknown | Promise<unknown>]>;
+  reservaInventario: {
+    findMany: jest.Mock<Promise<Array<{ id_reserva_inventario: number; creado_en: Date; inventario: { id_inventario_producto: number; producto: { id_producto: number; nombre: string; codigo_producto: string }; almacen: { id_almacen: number; nombre: string } }}>>, [unknown?]>;
+  };
   __tx: TransactionClientMock;
 };
 
@@ -95,11 +106,15 @@ jest.mock('@/lib/prisma', () => {
       create: jest.fn<Promise<ReservaRecord>, [unknown]>(),
       findUnique: jest.fn<Promise<ReservaRecord | null>, [unknown?]>(),
       update: jest.fn<Promise<ReservaRecord>, [unknown]>(),
+      findMany: jest.fn().mockResolvedValue([]),
     },
   };
 
   const prismaMock: PrismaMock = {
     $transaction: jest.fn(async (callback) => callback(transactionClient)),
+    reservaInventario: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
     __tx: transactionClient,
   };
 
@@ -160,6 +175,7 @@ describe('Servicios de reservas de inventario', () => {
     const { prisma, tx } = getMocks();
     jest.clearAllMocks();
     prisma.$transaction.mockImplementation(async (callback: (client: TransactionClientMock) => unknown) => callback(tx));
+    prisma.reservaInventario.findMany.mockResolvedValue([]);
     tx.inventario.findUnique.mockResolvedValue({ stock_disponible: new Prisma.Decimal(0) });
     tx.inventarioProducto.aggregate.mockResolvedValue({ _sum: { stock_disponible: new Prisma.Decimal(0) } });
     tx.producto.update.mockResolvedValue(undefined);
@@ -337,6 +353,119 @@ describe('Servicios de reservas de inventario', () => {
       }));
       expect(resultado.estado).toBe(ReservaEstado.CANCELADA);
       expect(resultado.motivo).toBe('Orden anulada');
+    });
+  });
+
+  describe('liberarReservasCaducadas', () => {
+    it('retorna cero cuando no hay reservas pendientes', async () => {
+      const { prisma } = getMocks();
+      prisma.reservaInventario.findMany.mockResolvedValue([]);
+
+      const resultado = await liberarReservasCaducadas();
+
+      expect(prisma.reservaInventario.findMany).toHaveBeenCalled();
+      expect(resultado.encontrados).toBe(0);
+      expect(resultado.liberados).toBe(0);
+      expect(resultado.errores).toHaveLength(0);
+    });
+
+    it('libera reservas utilizando liberarReservaEnTx', async () => {
+      const { prisma } = getMocks();
+      prisma.reservaInventario.findMany.mockResolvedValue([
+        {
+          id_reserva_inventario: 101,
+          creado_en: new Date('2025-01-10T00:00:00.000Z'),
+          inventario: {
+            id_inventario_producto: 11,
+            producto: {
+              id_producto: 22,
+              nombre: 'Filtro de aceite',
+              codigo_producto: 'PROD-1',
+            },
+            almacen: {
+              id_almacen: 33,
+              nombre: 'Central',
+            },
+          },
+        },
+      ]);
+
+      const liberarSpy = jest.spyOn(ReservasModule, 'liberarReservaEnTx').mockResolvedValueOnce({} as any);
+
+      const resultado = await liberarReservasCaducadas({ ttlHours: 1 });
+
+      expect(liberarSpy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ reservaId: 101 }));
+      expect(resultado.encontrados).toBe(1);
+      expect(resultado.liberados).toBe(1);
+      expect(resultado.errores).toHaveLength(0);
+
+      liberarSpy.mockRestore();
+    });
+
+    it('registra errores cuando la liberación falla', async () => {
+      const { prisma } = getMocks();
+      prisma.reservaInventario.findMany.mockResolvedValue([
+        {
+          id_reserva_inventario: 202,
+          creado_en: new Date('2025-01-05T00:00:00.000Z'),
+          inventario: {
+            id_inventario_producto: 44,
+            producto: {
+              id_producto: 55,
+              nombre: 'Aceite sintético',
+              codigo_producto: 'PROD-55',
+            },
+            almacen: {
+              id_almacen: 66,
+              nombre: 'Secundario',
+            },
+          },
+        },
+      ]);
+
+      const liberarSpy = jest.spyOn(ReservasModule, 'liberarReservaEnTx').mockRejectedValueOnce(new Error('Fallo forzado'));
+
+      const resultado = await liberarReservasCaducadas({ ttlHours: 1 });
+
+      expect(resultado.encontrados).toBe(1);
+      expect(resultado.liberados).toBe(0);
+      expect(resultado.errores).toHaveLength(1);
+      expect(resultado.errores[0]?.reservaId).toBe(202);
+
+      liberarSpy.mockRestore();
+    });
+
+    it('omite la liberación cuando dryRun es true', async () => {
+      const { prisma } = getMocks();
+      prisma.reservaInventario.findMany.mockResolvedValue([
+        {
+          id_reserva_inventario: 303,
+          creado_en: new Date('2025-01-02T00:00:00.000Z'),
+          inventario: {
+            id_inventario_producto: 77,
+            producto: {
+              id_producto: 88,
+              nombre: 'Filtro de aire',
+              codigo_producto: 'PROD-88',
+            },
+            almacen: {
+              id_almacen: 99,
+              nombre: 'Principal',
+            },
+          },
+        },
+      ]);
+
+      const liberarSpy = jest.spyOn(ReservasModule, 'liberarReservaEnTx').mockResolvedValue({} as any);
+
+      const resultado = await liberarReservasCaducadas({ ttlHours: 1, dryRun: true });
+
+      expect(liberarSpy).not.toHaveBeenCalled();
+      expect(resultado.encontrados).toBe(1);
+      expect(resultado.liberados).toBe(0);
+      expect(resultado.errores).toHaveLength(0);
+
+      liberarSpy.mockRestore();
     });
   });
 });

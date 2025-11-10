@@ -1,9 +1,20 @@
 import { Prisma } from '@prisma/client'
+import type { PrismaClient } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { FacturacionError } from './errors'
 import type { FacturacionConfigCompleta } from '@/types'
 
 const CONFIG_ID = 1
+const CONFIG_CACHE_TTL_MS = 5 * 60 * 1000
+
+type FacturacionClient = PrismaClient | Prisma.TransactionClient
+
+type CacheEntry = {
+  value: FacturacionConfigCompleta
+  expiresAt: number
+}
+
+let cache: CacheEntry | null = null
 
 export type FacturacionConfigInput = {
   afecta_igv: boolean
@@ -33,30 +44,83 @@ const mapToDecimal = (value: number): Prisma.Decimal => {
   return new Prisma.Decimal(value)
 }
 
-export async function getFacturacionConfigCompleta(): Promise<FacturacionConfigCompleta> {
-  const config = await prisma.facturacionConfig.findUnique({
-    where: { id_config: CONFIG_ID }
-  })
+const toClient = (client?: FacturacionClient): FacturacionClient => client ?? prisma
 
-  const effectiveConfig: Omit<FacturacionConfigCompleta, 'series'> = {
-    id_config: CONFIG_ID,
-    afecta_igv: config?.afecta_igv ?? true,
-    igv_porcentaje: config?.igv_porcentaje ?? new Prisma.Decimal(0.18),
-    serie_boleta_default: config?.serie_boleta_default ?? 'B001',
-    serie_factura_default: config?.serie_factura_default ?? 'F001',
-    precios_incluyen_igv_default: config?.precios_incluyen_igv_default ?? true,
-    moneda_default: config?.moneda_default ?? 'PEN',
-    created_at: config?.created_at ?? new Date(),
-    updated_at: config?.updated_at ?? new Date()
+const buildConfig = (
+  record: Prisma.FacturacionConfig | null,
+  series: Prisma.FacturacionSerie[]
+): FacturacionConfigCompleta => ({
+  id_config: CONFIG_ID,
+  afecta_igv: record?.afecta_igv ?? true,
+  igv_porcentaje: record?.igv_porcentaje ?? new Prisma.Decimal(0.18),
+  serie_boleta_default: record?.serie_boleta_default ?? 'B001',
+  serie_factura_default: record?.serie_factura_default ?? 'F001',
+  precios_incluyen_igv_default: record?.precios_incluyen_igv_default ?? true,
+  moneda_default: record?.moneda_default ?? 'PEN',
+  created_at: record?.created_at ?? new Date(),
+  updated_at: record?.updated_at ?? new Date(),
+  series
+})
+
+const fetchConfig = async (client: FacturacionClient): Promise<FacturacionConfigCompleta> => {
+  const [config, series] = await Promise.all([
+    client.facturacionConfig.findUnique({ where: { id_config: CONFIG_ID } }),
+    client.facturacionSerie.findMany({ orderBy: [{ tipo: 'asc' }, { serie: 'asc' }] })
+  ])
+
+  return buildConfig(config, series)
+}
+
+type GetConfigOptions = {
+  prismaClient?: FacturacionClient
+  force?: boolean
+}
+
+export async function getFacturacionConfigCompleta(options?: GetConfigOptions): Promise<FacturacionConfigCompleta> {
+  const client = toClient(options?.prismaClient)
+  const shouldUseCache = client === prisma && !options?.force
+
+  if (shouldUseCache && cache && cache.expiresAt > Date.now()) {
+    return cache.value
   }
 
-  const series = await prisma.facturacionSerie.findMany({
-    orderBy: [{ tipo: 'asc' }, { serie: 'asc' }]
+  const result = await fetchConfig(client)
+
+  if (client === prisma) {
+    cache = {
+      value: result,
+      expiresAt: Date.now() + CONFIG_CACHE_TTL_MS
+    }
+  }
+
+  return result
+}
+
+export function clearFacturacionConfigCache() {
+  cache = null
+}
+
+const FACTURACION_REQUIRED_ENVS = ['FACTURACION_API_URL', 'FACTURACION_API_TOKEN', 'FACTURACION_EMISOR_RUC'] as const
+
+export function isFacturacionHabilitada(): boolean {
+  const flag = process.env.FACTURACION_HABILITADA
+  if (!flag) return false
+  const normalized = flag.trim().toLowerCase()
+  return normalized === '1' || normalized === 'true' || normalized === 'yes'
+}
+
+export function assertFacturacionDisponible(): void {
+  if (!isFacturacionHabilitada()) {
+    throw new FacturacionError('La facturación electrónica está deshabilitada. Habilítala estableciendo FACTURACION_HABILITADA=true.', 409)
+  }
+
+  const missing = FACTURACION_REQUIRED_ENVS.filter((key) => {
+    const value = process.env[key]
+    return !value || value.trim().length === 0
   })
 
-  return {
-    ...effectiveConfig,
-    series
+  if (missing.length > 0) {
+    throw new FacturacionError(`El servicio de facturación no está configurado correctamente. Faltan variables: ${missing.join(', ')}.`, 500)
   }
 }
 
@@ -76,7 +140,7 @@ export async function updateFacturacionConfig(
     throw new FacturacionError('El código de moneda debe tener 3 caracteres.', 422)
   }
 
-  return prisma.$transaction(async (tx) => {
+  const resultado = await prisma.$transaction(async (tx) => {
     const baseConfig = await tx.facturacionConfig.upsert({
       where: { id_config: CONFIG_ID },
       update: data,
@@ -120,10 +184,13 @@ export async function updateFacturacionConfig(
       orderBy: [{ tipo: 'asc' }, { serie: 'asc' }]
     })
 
-    return {
-      ...baseConfig,
-      ...data,
-      series
-    }
+    return buildConfig(baseConfig, series)
   })
+
+  cache = {
+    value: resultado,
+    expiresAt: Date.now() + CONFIG_CACHE_TTL_MS
+  }
+
+  return resultado
 }

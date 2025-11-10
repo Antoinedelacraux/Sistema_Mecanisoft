@@ -58,6 +58,7 @@ Plan detallado por módulo (procesos y capturas sugeridas)
   - Actividad: Flujo de creación -> validación fiscal -> asociar vehículo.
   - Secuencia: Recepción crea cliente → validación → mostrar OK.
 - Capturas necesarias (3):
+
   - `clientes_list.png` — lista de clientes / filtro y botón "Nuevo cliente".
   - `cliente_form_nuevo.png` — formulario de creación (campos RUC/DNI, dirección, email).
   - `cliente_detalle_historial.png` — vista del cliente con historial de órdenes.

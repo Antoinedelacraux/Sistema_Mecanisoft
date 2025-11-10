@@ -118,9 +118,9 @@ let GET!: ProveedoresRouteModule['GET']
 let POST!: ProveedoresRouteModule['POST']
 
 beforeAll(async () => {
-  const module: ProveedoresRouteModule = await import('../../src/app/api/inventario/proveedores/route')
-  GET = module.GET
-  POST = module.POST
+  const routeModule: ProveedoresRouteModule = await import('../../src/app/api/inventario/proveedores/route')
+  GET = routeModule.GET
+  POST = routeModule.POST
 })
 
 describe('API /api/inventario/proveedores', () => {

@@ -8,12 +8,19 @@ import { useToast } from '@/components/ui/use-toast'
 
 type Evento = {
   id_bitacora: number
-  id_usuario: number
   accion: string
   descripcion?: string
   fecha_hora: string
   tabla?: string
   ip_publica?: string
+  usuario: {
+    id: number
+    username: string
+    persona: {
+      nombreCompleto: string
+      correo: string | null
+    } | null
+  } | null
 }
 
 export default function BitacoraPanel() {
@@ -28,6 +35,8 @@ export default function BitacoraPanel() {
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
+  const [tabla, setTabla] = useState('')
+  const [ip, setIp] = useState('')
   const [selected, setSelected] = useState<Evento | null>(null)
   const { toast } = useToast()
   const debounceRef = useRef<number | null>(null)
@@ -36,10 +45,12 @@ export default function BitacoraPanel() {
     setLoading(true)
     try {
       const params = new URLSearchParams({ page: String(p), perPage: String(perPage) })
-      if (query) params.set('accion', query)
+  if (query) params.set('q', query)
       if (usuarioId) params.set('usuarioId', usuarioId)
       if (desde) params.set('desde', desde)
       if (hasta) params.set('hasta', hasta)
+  if (tabla) params.set('tabla', tabla)
+  if (ip) params.set('ip', ip)
       if (opts?.exportCsv) params.set('export', 'csv')
 
       const res = await fetch(`/api/bitacora?${params.toString()}`)
@@ -87,7 +98,7 @@ export default function BitacoraPanel() {
     debounceRef.current = window.setTimeout(() => load(1), 400)
     return () => { if (debounceRef.current) window.clearTimeout(debounceRef.current) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, usuarioId, desde, hasta])
+  }, [query, usuarioId, desde, hasta, tabla, ip])
 
   // fetch suggestions for usuario autocomplete
   useEffect(() => {
@@ -113,10 +124,10 @@ export default function BitacoraPanel() {
   return (
     <div className="bg-white border rounded p-4">
       <div className="mb-4 flex flex-col md:flex-row md:items-end md:justify-between gap-3">
-        <div className="flex gap-2 items-center">
-          <label htmlFor="accion" className="text-sm font-medium mr-2">Acción</label>
-          <Input id="accion" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ej. ACTUALIZAR_PERFIL" />
-          <label htmlFor="usuarioId" className="text-sm font-medium ml-2 mr-2">Usuario</label>
+        <div className="flex flex-wrap items-center gap-2">
+          <label htmlFor="search" className="text-sm font-medium">Buscar</label>
+          <Input id="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Usuario, acción, tabla o IP" className="min-w-[220px]" />
+          <label htmlFor="usuarioId" className="text-sm font-medium ml-2">Usuario</label>
           <div className="relative">
             <Input id="usuarioId" value={usuarioId} onChange={(e) => { setUsuarioId(e.target.value); setShowSuggestions(true) }} placeholder="Buscar usuario por nombre o id" />
             {showSuggestions && suggestions.length > 0 && (
@@ -127,6 +138,10 @@ export default function BitacoraPanel() {
               </ul>
             )}
           </div>
+          <label htmlFor="tabla" className="text-sm font-medium ml-2">Tabla</label>
+          <Input id="tabla" value={tabla} onChange={(e) => setTabla(e.target.value)} placeholder="ej. usuario" className="w-32" />
+          <label htmlFor="ip" className="text-sm font-medium ml-2">IP</label>
+          <Input id="ip" value={ip} onChange={(e) => setIp(e.target.value)} placeholder="ej. 192.168" className="w-32" />
           <label htmlFor="desde" className="sr-only">Desde</label>
           <Input id="desde" type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="ml-2" />
           <label htmlFor="hasta" className="sr-only">Hasta</label>
@@ -134,7 +149,7 @@ export default function BitacoraPanel() {
         </div>
         <div className="flex gap-2">
           <Button onClick={() => load(1)}>{loading ? 'Cargando...' : 'Buscar'}</Button>
-          <Button variant="outline" onClick={() => { setQuery(''); setDesde(''); setHasta(''); load(1) }}>Limpiar</Button>
+          <Button variant="outline" onClick={() => { setQuery(''); setUsuarioId(''); setDesde(''); setHasta(''); setTabla(''); setIp(''); load(1) }}>Limpiar</Button>
           <Button variant="ghost" onClick={() => load(1, { exportCsv: true })}>Exportar CSV</Button>
         </div>
       </div>
@@ -150,6 +165,7 @@ export default function BitacoraPanel() {
               <th className="py-2">Acción</th>
               <th className="py-2">Tabla</th>
               <th className="py-2">Descripción</th>
+              <th className="py-2">IP</th>
               <th className="py-2">Acciones</th>
             </tr>
           </thead>
@@ -157,10 +173,21 @@ export default function BitacoraPanel() {
             {eventos.map((e) => (
               <tr key={e.id_bitacora} className="border-b hover:bg-gray-50">
                 <td className="py-2 align-top">{new Date(e.fecha_hora).toLocaleString()}</td>
-                <td className="py-2 align-top">{e.id_usuario}</td>
+                <td className="py-2 align-top">
+                  {e.usuario ? (
+                    <div className="space-y-0.5">
+                      <div className="font-medium">{e.usuario.persona?.nombreCompleto ?? e.usuario.username}</div>
+                      <div className="text-xs text-muted-foreground">ID {e.usuario.id}</div>
+                      {e.usuario.persona?.correo && <div className="text-xs text-muted-foreground">{e.usuario.persona.correo}</div>}
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground">Usuario eliminado</span>
+                  )}
+                </td>
                 <td className="py-2 align-top">{e.accion}</td>
                 <td className="py-2 align-top">{e.tabla ?? '-'}</td>
                 <td className="py-2 align-top">{e.descripcion ? (e.descripcion.length > 80 ? e.descripcion.slice(0, 80) + '…' : e.descripcion) : '-'}</td>
+                <td className="py-2 align-top">{e.ip_publica ?? '-'}</td>
                 <td className="py-2 align-top">
                   <div className="flex items-center gap-2">
                     <Button size="sm" variant="ghost" onClick={() => setSelected(e)}>Ver</Button>
@@ -189,7 +216,8 @@ export default function BitacoraPanel() {
           {selected && (
             <div className="space-y-2">
               <div><strong>Fecha:</strong> {new Date(selected.fecha_hora).toLocaleString()}</div>
-              <div><strong>Usuario:</strong> {selected.id_usuario}</div>
+              <div><strong>Usuario:</strong> {selected.usuario ? `${selected.usuario.persona?.nombreCompleto ?? selected.usuario.username} (ID ${selected.usuario.id})` : 'Usuario eliminado'}</div>
+              {selected.usuario?.persona?.correo && <div><strong>Correo:</strong> {selected.usuario.persona.correo}</div>}
               <div><strong>Acción:</strong> {selected.accion}</div>
               <div><strong>Tabla:</strong> {selected.tabla ?? '-'}</div>
               <div><strong>IP:</strong> {selected.ip_publica ?? '-'}</div>

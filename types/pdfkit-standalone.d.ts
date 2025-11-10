@@ -1,4 +1,4 @@
 declare module 'pdfkit/js/pdfkit.standalone.js' {
-  import PDFDocument = require('pdfkit');
-  export default PDFDocument;
+  import PDFDocument from 'pdfkit'
+  export default PDFDocument
 }

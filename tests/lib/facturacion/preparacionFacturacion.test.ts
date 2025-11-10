@@ -2,6 +2,7 @@
 
 import { TipoItemComprobante } from '@prisma/client'
 
+import { clearFacturacionConfigCache } from '@/lib/facturacion/config'
 import { prepararCotizacionParaFacturacion } from '@/lib/facturacion/cotizaciones'
 import { prepararOrdenParaFacturacion } from '@/lib/facturacion/ordenes'
 import { FacturacionError } from '@/lib/facturacion/errors'
@@ -17,14 +18,19 @@ jest.mock('@/lib/prisma', () => {
   }
 
   const facturacionConfig = {
-    findFirst: jest.fn()
+    findUnique: jest.fn()
+  }
+
+  const facturacionSerie = {
+    findMany: jest.fn()
   }
 
   return {
     prisma: {
       cotizacion,
       transaccion,
-      facturacionConfig
+      facturacionConfig,
+      facturacionSerie
     }
   }
 })
@@ -39,7 +45,10 @@ const prismaMock = prisma as unknown as {
     findUnique: AsyncMock
   }
   facturacionConfig: {
-    findFirst: AsyncMock
+    findUnique: AsyncMock
+  }
+  facturacionSerie: {
+    findMany: AsyncMock
   }
 }
 
@@ -52,7 +61,21 @@ const defaultConfig = {
 describe('Preparación de datos para facturación', () => {
   beforeEach(() => {
     jest.clearAllMocks()
-    prismaMock.facturacionConfig.findFirst.mockResolvedValue(defaultConfig)
+    clearFacturacionConfigCache()
+    process.env.FACTURACION_HABILITADA = 'true'
+    process.env.FACTURACION_API_URL = 'https://facturacion.local/api'
+    process.env.FACTURACION_API_TOKEN = 'fake-token'
+    process.env.FACTURACION_EMISOR_RUC = '20123456789'
+    prismaMock.facturacionConfig.findUnique.mockResolvedValue(defaultConfig)
+    prismaMock.facturacionSerie.findMany.mockResolvedValue([])
+  })
+
+  afterEach(() => {
+    delete process.env.FACTURACION_HABILITADA
+    delete process.env.FACTURACION_API_URL
+    delete process.env.FACTURACION_API_TOKEN
+    delete process.env.FACTURACION_EMISOR_RUC
+    clearFacturacionConfigCache()
   })
 
   describe('prepararCotizacionParaFacturacion', () => {

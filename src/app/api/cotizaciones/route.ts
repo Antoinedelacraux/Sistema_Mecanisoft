@@ -4,21 +4,9 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { randomBytes } from 'crypto'
 import { Prisma } from '@prisma/client'
+import { generarCodigoCorrelativo, CORRELATIVO_TIPOS } from '@/lib/correlativos/service'
 import { cotizacionBodySchema, CotizacionValidationError, validarCotizacionPayload } from './validation'
 import { asegurarPermiso, PermisoDenegadoError, SesionInvalidaError } from '@/lib/permisos/guards'
-
-// Función para generar código de cotización basado en año y correlativo
-async function generateCodigoCotizacion() {
-  const year = new Date().getFullYear()
-  // Obtenemos el último correlativo del año para minimizar colisiones (no elimina por completo condición de carrera)
-  const last = await prisma.cotizacion.findFirst({
-    where: { codigo_cotizacion: { startsWith: `COT-${year}-` } },
-    orderBy: { id_cotizacion: 'desc' },
-    select: { codigo_cotizacion: true }
-  })
-  const nextNumber = last ? (parseInt(last.codigo_cotizacion.split('-')[2]) + 1) : 1
-  return `COT-${year}-${nextNumber.toString().padStart(3, '0')}`
-}
 
 // Función para generar token de aprobación
 function generateApprovalToken() {
@@ -248,60 +236,46 @@ export async function POST(request: NextRequest) {
 
     const approvalToken = generateApprovalToken()
 
-    let cotizacionCreada: { id_cotizacion: number; codigo_cotizacion: string } | null = null
-    let intentos = 0
-    let ultimoError: unknown = null
-    while (intentos < 5 && !cotizacionCreada) {
-      intentos++
-      const codigo = await generateCodigoCotizacion()
-      try {
-        cotizacionCreada = await prisma.$transaction(async (tx) => {
-          const cot = await tx.cotizacion.create({
-            data: {
-              codigo_cotizacion: codigo,
-              id_cliente,
-              id_vehiculo,
-              id_usuario: usuarioId,
-              estado: 'borrador',
-              vigencia_hasta: vigenciaHasta,
-              approval_token: approvalToken,
-              subtotal,
-              descuento_global: 0,
-              impuesto,
-              total
-            }
-          })
+    const cotizacionCreada = await prisma.$transaction(async (tx) => {
+      const { codigo } = await generarCodigoCorrelativo({
+        tipo: CORRELATIVO_TIPOS.COTIZACION,
+        prefijo: 'COT',
+        prismaClient: tx,
+      })
 
-          for (const it of itemsValidados) {
-            const detalleData = {
-              id_cotizacion: cot.id_cotizacion,
-              id_producto: it.id_producto ?? null,
-              id_servicio: it.id_servicio ?? null,
-              cantidad: it.cantidad,
-              precio_unitario: it.precio_unitario,
-              descuento: it.descuento,
-              total: it.total,
-              servicio_ref: it.servicio_ref ?? null
-            } as any
+      const cot = await tx.cotizacion.create({
+        data: {
+          codigo_cotizacion: codigo,
+          id_cliente,
+          id_vehiculo,
+          id_usuario: usuarioId,
+          estado: 'borrador',
+          vigencia_hasta: vigenciaHasta,
+          approval_token: approvalToken,
+          subtotal,
+          descuento_global: 0,
+          impuesto,
+          total,
+        },
+      })
 
-            await tx.detalleCotizacion.create({ data: detalleData })
-          }
+      for (const it of itemsValidados) {
+        const detalleData = {
+          id_cotizacion: cot.id_cotizacion,
+          id_producto: it.id_producto ?? null,
+          id_servicio: it.id_servicio ?? null,
+          cantidad: it.cantidad,
+          precio_unitario: it.precio_unitario,
+          descuento: it.descuento,
+          total: it.total,
+          servicio_ref: it.servicio_ref ?? null,
+        } as any
 
-          return cot
-        })
-      } catch (error: unknown) {
-        ultimoError = error
-        if ((error as { code?: string })?.code === 'P2002') {
-          continue
-        }
-        throw error
+        await tx.detalleCotizacion.create({ data: detalleData })
       }
-    }
 
-    if (!cotizacionCreada) {
-      console.error('Falló creación de cotización tras reintentos', ultimoError)
-      return NextResponse.json({ error: 'No se pudo generar la cotización, reintente' }, { status: 500 })
-    }
+      return cot
+    })
 
     await prisma.bitacora.create({
       data: {
