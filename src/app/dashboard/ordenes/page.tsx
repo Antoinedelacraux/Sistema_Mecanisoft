@@ -1,19 +1,76 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { OrdenesTable, OrdenCompleta } from '@/components/ordenes/ordenes-table'
 import { OrdenWizard } from '@/components/ordenes/orden-wizard'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Card, CardContent } from '@/components/ui/card'
+import { useToast } from '@/components/ui/use-toast'
 
 // Se reutiliza OrdenCompleta exportado desde la tabla
 
 type ModalState = 'closed' | 'create' | 'edit' | 'view' | 'editItems'
 
 export default function OrdenesPage() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const { toast } = useToast()
   const [modalState, setModalState] = useState<ModalState>('closed')
   const [selectedOrden, setSelectedOrden] = useState<OrdenCompleta | undefined>()
   const [refreshTrigger, setRefreshTrigger] = useState(0)
+
+  const ordenIdFromQuery = searchParams.get('orden')
+
+  useEffect(() => {
+    if (!ordenIdFromQuery) {
+      return
+    }
+
+    const parsedId = Number.parseInt(ordenIdFromQuery, 10)
+    if (!Number.isInteger(parsedId)) {
+      toast({
+        title: 'Orden inválida',
+        description: 'El identificador proporcionado no es válido.',
+        variant: 'destructive'
+      })
+      router.replace('/dashboard/ordenes')
+      return
+    }
+
+    let cancelled = false
+    const fetchOrden = async () => {
+      try {
+        const res = await fetch(`/api/ordenes/${parsedId}`)
+        if (!res.ok) {
+          throw new Error('No se pudo cargar la orden solicitada.')
+        }
+        const data = await res.json()
+        if (!data?.orden) {
+          throw new Error('La orden no está disponible.')
+        }
+        if (!cancelled) {
+          setSelectedOrden(data.orden as OrdenCompleta)
+          setModalState('view')
+        }
+      } catch (error) {
+        if (!cancelled) {
+          toast({
+            title: 'Orden no disponible',
+            description: error instanceof Error ? error.message : 'Ocurrió un error al abrir la orden.',
+            variant: 'destructive'
+          })
+          router.replace('/dashboard/ordenes')
+        }
+      }
+    }
+
+    void fetchOrden()
+
+    return () => {
+      cancelled = true
+    }
+  }, [ordenIdFromQuery, router, toast])
 
   const handleCreateNew = () => {
     setSelectedOrden(undefined)
@@ -34,11 +91,13 @@ export default function OrdenesPage() {
     setModalState('closed')
     setSelectedOrden(undefined)
     setRefreshTrigger(prev => prev + 1)
+    router.replace('/dashboard/ordenes')
   }
 
   const handleCancel = () => {
     setModalState('closed')
     setSelectedOrden(undefined)
+    router.replace('/dashboard/ordenes')
   }
 
   return (
@@ -60,7 +119,7 @@ export default function OrdenesPage() {
       />
 
       {/* Modal para wizard */}
-      <Dialog open={modalState !== 'closed'} onOpenChange={() => setModalState('closed')}>
+  <Dialog open={modalState !== 'closed'} onOpenChange={(open) => { if (!open) handleCancel() }}>
         <DialogContent className="max-w-7xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             {/* Título accesible oculto si se está en modo vista/creación */}
@@ -246,7 +305,6 @@ export default function OrdenesPage() {
 }
 
 // Componente interno simple para editar prioridad, mecánico y observaciones
-import { useEffect } from 'react'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'

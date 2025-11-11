@@ -2,6 +2,75 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { asegurarPermiso, PermisoDenegadoError, SesionInvalidaError } from '@/lib/permisos/guards'
+import { calcularProgresoOrden } from '@/lib/ordenes/helpers'
+
+const ordenInclude = {
+  persona: true,
+  usuario: { include: { persona: true } },
+  trabajador_principal: { include: { persona: true, usuario: { include: { persona: true } } } },
+  transaccion_vehiculos: {
+    include: {
+      vehiculo: {
+        include: {
+          modelo: { include: { marca: true } },
+          cliente: { include: { persona: true } }
+        }
+      }
+    }
+  },
+  detalles_transaccion: {
+    include: {
+      producto: true,
+      servicio: true,
+      tareas: true,
+      servicio_asociado: { include: { servicio: true, producto: true } },
+      productos_asociados: { include: { producto: true } }
+    }
+  },
+  _count: { select: { detalles_transaccion: true } }
+} as const
+
+export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const session = await getServerSession(authOptions)
+
+  try {
+    await asegurarPermiso(session, 'ordenes.crear', { prismaClient: prisma })
+  } catch (error) {
+    if (error instanceof SesionInvalidaError) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+    }
+    if (error instanceof PermisoDenegadoError) {
+      return NextResponse.json({ error: 'No cuentas con permisos para gestionar órdenes' }, { status: 403 })
+    }
+    throw error
+  }
+
+  const { id } = await context.params
+  const ordenId = Number.parseInt(id, 10)
+
+  if (!Number.isInteger(ordenId)) {
+    return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
+  }
+
+  try {
+    const orden = await prisma.transaccion.findUnique({
+      where: { id_transaccion: ordenId },
+      include: ordenInclude
+    })
+
+    if (!orden || orden.tipo_transaccion !== 'orden' || orden.estatus !== 'activo') {
+      return NextResponse.json({ error: 'Orden no encontrada' }, { status: 404 })
+    }
+
+    const progreso = await calcularProgresoOrden(prisma, orden.id_transaccion)
+
+    return NextResponse.json({ orden: { ...orden, progreso } })
+  } catch (error) {
+    console.error('Error obteniendo orden:', error)
+    return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })
+  }
+}
 
 // DELETE /api/ordenes/[id]  (borrado lógico: estatus -> inactivo)
 export async function DELETE(request: NextRequest, context: { params: Promise<{ id: string }> }) {

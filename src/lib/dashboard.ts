@@ -396,7 +396,7 @@ export async function getDashboardSummary(input: DashboardFilters): Promise<Dash
         id: `orden-${orden.id}`,
         title: orden.codigo,
         subtitle: `${orden.cliente} • Estado: ${orden.estado} • Prioridad: ${orden.prioridad}`,
-        href: `/dashboard/ordenes/${orden.id}`
+        href: `/dashboard/ordenes?orden=${orden.id}`
       }))
     })
   }
