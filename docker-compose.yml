@@ -24,7 +24,7 @@ services:
       DATABASE_URL: postgres://mecanisoft:mecanisoft123@db:5432/taller_mecanico?schema=public
     ports:
       - "3000:3000"
-    command: ["sh", "-c", "npx prisma migrate deploy && npm run seed && npm run start"]
+    command: ["sh", "-c", "npx prisma migrate deploy && npm run start"]
 
 volumes:
   postgres-data:
