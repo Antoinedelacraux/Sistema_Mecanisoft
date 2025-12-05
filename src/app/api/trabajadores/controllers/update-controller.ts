@@ -7,22 +7,23 @@ import { getTrabajadorOrThrow, defaultTrabajadorInclude } from './detail-control
 import { ApiError } from './errors'
 import { resolveRolId } from './helpers'
 import { sendMail } from '@/lib/mailer'
+import { DNI_REGEX, TELEFONO_REGEX, isAdult, parseDateInput } from './validation'
 
 const documentoPermitido = z.enum(['DNI', 'RUC', 'CE', 'PASAPORTE'])
 
 const updateSchema = z.object({
-  nombre: z.string().optional(),
-  apellido_paterno: z.string().optional(),
-  apellido_materno: z.string().optional().nullable(),
+  nombre: z.string().max(100).optional(),
+  apellido_paterno: z.string().max(100).optional(),
+  apellido_materno: z.string().max(100).optional().nullable(),
   tipo_documento: documentoPermitido.optional(),
   numero_documento: z.string().optional(),
   fecha_nacimiento: z.union([z.string(), z.date()]).optional().nullable(),
   telefono: z.string().optional().nullable(),
   correo: z.string().email().optional().nullable(),
   direccion: z.string().optional().nullable(),
-  cargo: z.string().optional(),
-  especialidad: z.string().optional(),
-  nivel_experiencia: z.string().optional(),
+  cargo: z.string().max(100).optional(),
+  especialidad: z.string().max(100).optional(),
+  nivel_experiencia: z.string().max(20).optional(),
   fecha_ingreso: z.union([z.string(), z.date()]).optional().nullable(),
   sueldo_mensual: z.union([z.number(), z.string()]).optional().nullable(),
   activo: z.boolean().optional(),
@@ -56,6 +57,27 @@ export async function updateTrabajador(id: number, payload: unknown, sessionUser
   const data = updateSchema.parse(payload)
 
   const trabajadorActual = await getTrabajadorOrThrow(id)
+  const telefono = data.telefono?.trim() || undefined
+  if (telefono && !TELEFONO_REGEX.test(telefono)) {
+    throw new ApiError(400, 'El número de celular debe tener exactamente 9 dígitos.')
+  }
+
+  const tipoDocumentoFinal = data.tipo_documento ?? trabajadorActual.persona.tipo_documento
+  const numeroDocumentoActualizado = typeof data.numero_documento === 'string' ? data.numero_documento.trim() : undefined
+  const numeroDocumentoFinal = numeroDocumentoActualizado && numeroDocumentoActualizado.length > 0
+    ? numeroDocumentoActualizado
+    : trabajadorActual.persona.numero_documento
+  if (tipoDocumentoFinal === 'DNI' && numeroDocumentoFinal && !DNI_REGEX.test(numeroDocumentoFinal)) {
+    throw new ApiError(400, 'El DNI debe tener exactamente 8 dígitos numéricos.')
+  }
+
+  const fechaNacimiento = data.fecha_nacimiento ? parseDateInput(data.fecha_nacimiento) : null
+  if (data.fecha_nacimiento && !fechaNacimiento) {
+    throw new ApiError(400, 'Debes proporcionar una fecha de nacimiento válida.')
+  }
+  if (fechaNacimiento && !isAdult(fechaNacimiento)) {
+    throw new ApiError(400, 'Solo se pueden registrar trabajadores mayores de 18 años.')
+  }
 
   let credencialesParaEnviar: { usuario: string; password: string } | null = null
   let usuarioDestinoId: number | null = trabajadorActual.id_usuario ?? null
@@ -67,10 +89,13 @@ export async function updateTrabajador(id: number, payload: unknown, sessionUser
     }
   }
 
-  if (data.numero_documento && data.numero_documento !== trabajadorActual.persona.numero_documento) {
-    const existingDoc = await prisma.persona.findUnique({ where: { numero_documento: data.numero_documento } })
+  if (numeroDocumentoActualizado && numeroDocumentoFinal !== trabajadorActual.persona.numero_documento) {
+    const existingDoc = await prisma.persona.findUnique({ where: { numero_documento: numeroDocumentoFinal } })
     if (existingDoc) {
-      throw new ApiError(400, 'Ya existe una persona registrada con este número de documento')
+      const message = tipoDocumentoFinal === 'DNI'
+        ? 'Ya existe una persona registrada con este DNI.'
+        : 'Ya existe una persona registrada con este número de documento.'
+      throw new ApiError(400, message)
     }
   }
 
@@ -91,12 +116,12 @@ export async function updateTrabajador(id: number, payload: unknown, sessionUser
         nombre: data.nombre ?? trabajadorActual.persona.nombre,
         apellido_paterno: data.apellido_paterno ?? trabajadorActual.persona.apellido_paterno,
         apellido_materno: data.apellido_materno ?? trabajadorActual.persona.apellido_materno,
-        tipo_documento: data.tipo_documento ?? trabajadorActual.persona.tipo_documento,
-        numero_documento: data.numero_documento ?? trabajadorActual.persona.numero_documento,
-        telefono: data.telefono ?? trabajadorActual.persona.telefono,
+        tipo_documento: tipoDocumentoFinal,
+        numero_documento: numeroDocumentoFinal,
+        telefono: telefono ?? trabajadorActual.persona.telefono,
         correo: data.correo ?? trabajadorActual.persona.correo,
         direccion: data.direccion ?? trabajadorActual.persona.direccion,
-        fecha_nacimiento: data.fecha_nacimiento ? toDate(data.fecha_nacimiento) : trabajadorActual.persona.fecha_nacimiento
+        fecha_nacimiento: fechaNacimiento ?? trabajadorActual.persona.fecha_nacimiento
       }
     })
 

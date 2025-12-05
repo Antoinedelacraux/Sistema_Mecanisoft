@@ -69,6 +69,19 @@ async function main() {
     }
   })
 
+  const permisos = await prisma.permiso.findMany({ select: { id_permiso: true } })
+  if (permisos.length) {
+    await prisma.usuarioPermiso.createMany({
+      data: permisos.map((permiso) => ({
+        id_usuario: usuario.id_usuario,
+        id_permiso: permiso.id_permiso,
+        concedido: true,
+        origen: 'EXTRA'
+      })),
+      skipDuplicates: true
+    })
+  }
+
   console.log('✅ Usuario administrador creado/actualizado:')
   console.log(`   Usuario: ${usuario.nombre_usuario}`)
   console.log(`   Persona asociada ID: ${usuario.id_persona}`)

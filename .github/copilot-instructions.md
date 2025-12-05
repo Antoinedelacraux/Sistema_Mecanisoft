@@ -67,7 +67,9 @@ Short, targeted guidance for AI coding agents working in this repository. Focus:
 ## Quick notes for AI agents
 - Prefer reading service files in `src/lib` to understand rules (e.g., orden creation/updates). The README includes many concrete references to `src/lib/ordenes/*` and indicator services.
 - Use existing seeds and tests as canonical examples for valid data shapes and permissions.
-- Keep edits minimal and follow existing style: TypeScript + Next.js App Router patterns, shadcn UI primitives, and Zod for validation.
+- Keep edits minimal and follow ex
+
+  isting style: TypeScript + Next.js App Router patterns, shadcn UI primitives, and Zod for validation.
 - When adding API endpoints, place them in `src/app/api/{feature}/route.ts`, validate input with Zod, use service layer for logic, catch errors with proper HTTP status codes.
 
 ---

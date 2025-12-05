@@ -4,6 +4,14 @@ import bcrypt from 'bcryptjs'
 const prisma = new PrismaClient()
 
 const decimal = (value: number) => new Prisma.Decimal(value)
+const DAY_IN_MS = 1000 * 60 * 60 * 24
+const RUN_TAG = Date.now().toString(36).toUpperCase().slice(-5)
+
+const randomFrom = <T,>(items: T[]): T => items[Math.floor(Math.random() * items.length)]
+const formatNombrePersona = (persona: { nombre: string; apellido_paterno: string | null; apellido_materno: string | null }) =>
+  [persona.nombre, persona.apellido_paterno, persona.apellido_materno].filter(Boolean).join(' ').trim()
+const addMinutes = (date: Date, minutes: number) => new Date(date.getTime() + minutes * 60 * 1000)
+const clampDecimals = (value: number, precision = 2) => Number(value.toFixed(precision))
 
 async function ensureTrabajadores(adminUserId: number) {
   const rolMecanico = await prisma.rol.findUnique({ where: { nombre_rol: 'Mecánico' } })
@@ -211,7 +219,7 @@ async function ensureTrabajadores(adminUserId: number) {
   return trabajadoresCreados
 }
 
-async function ensureClientes() {
+async function ensureClientes(): Promise<Record<string, ClienteSeedEntry>> {
   const modelos = await prisma.modelo.findMany({
     where: {
       nombre_modelo: {
@@ -310,7 +318,7 @@ async function ensureClientes() {
     }
   ]
 
-  const clientesPorDocumento: Record<string, { idCliente: number; idPersona: number; vehiculos: Record<string, number> }> = {}
+  const clientesPorDocumento: Record<string, ClienteSeedEntry> = {}
 
   for (const cliente of clientesData) {
     const persona = await prisma.persona.upsert({
@@ -460,7 +468,7 @@ async function ensureServicios() {
   return serviciosCreados
 }
 
-async function ensureProductos(adminUserId: number) {
+async function ensureProductos(adminUserId: number): Promise<Record<string, ProductoSeedEntry>> {
   const almacenCentral = await prisma.almacen.findFirst({ where: { nombre: 'Almacén Central' } })
   const ubicacionPrincipal = await prisma.almacenUbicacion.findFirst({ where: { codigo: 'EST-001' } })
 
@@ -522,7 +530,7 @@ async function ensureProductos(adminUserId: number) {
     }
   ]
 
-  const productosCreados: Record<string, { idProducto: number; inventarioProductoId: number }> = {}
+  const productosCreados: Record<string, ProductoSeedEntry> = {}
 
   for (const producto of productos) {
     const productoDb = await prisma.producto.upsert({
@@ -628,7 +636,7 @@ async function ensureProductos(adminUserId: number) {
   return productosCreados
 }
 
-async function crearCompraInicial(adminUserId: number, productos: Record<string, { idProducto: number }>) {
+async function crearCompraInicial(adminUserId: number, productos: Record<string, ProductoSeedEntry>) {
   const proveedor = await prisma.proveedor.findFirst({ where: { razon_social: 'Proveedor Aceites SAC' } })
   if (!proveedor) {
     console.warn('Proveedor demo no encontrado; omitiendo compra inicial')
@@ -697,8 +705,8 @@ async function crearCompraInicial(adminUserId: number, productos: Record<string,
 async function crearCotizacionOrdenYVenta(
   adminUserId: number,
   trabajadores: Record<string, number>,
-  clientes: Record<string, { idCliente: number; idPersona: number; vehiculos: Record<string, number> }>,
-  productos: Record<string, { idProducto: number; inventarioProductoId: number }>,
+  clientes: Record<string, ClienteSeedEntry>,
+  productos: Record<string, ProductoSeedEntry>,
   servicios: Record<string, number>
 ) {
   const cliente = clientes['45678901']
@@ -843,6 +851,14 @@ async function crearCotizacionOrdenYVenta(
     skipDuplicates: true
   })
 
+  const existingDetalles = await prisma.detalleTransaccion.findMany({
+    where: { id_transaccion: orden.id_transaccion },
+    select: { id_detalle_transaccion: true }
+  })
+  const detalleIds = existingDetalles.map((d) => d.id_detalle_transaccion)
+  if (detalleIds.length > 0) {
+    await prisma.tarea.deleteMany({ where: { id_detalle_transaccion: { in: detalleIds } } })
+  }
   await prisma.detalleTransaccion.deleteMany({ where: { id_transaccion: orden.id_transaccion } })
 
   const detalleServicio = await prisma.detalleTransaccion.create({
@@ -1080,7 +1096,7 @@ async function crearCotizacionOrdenYVenta(
   return { cotizacion, orden, comprobante, venta, detalles: { detalleServicio, detalleAceite, detalleFiltro } }
 }
 
-async function crearMantenimientoPreventivo(adminUserId: number, clientes: Record<string, { idCliente: number; vehiculos: Record<string, number> }>) {
+async function crearMantenimientoPreventivo(adminUserId: number, clientes: Record<string, ClienteSeedEntry>) {
   const cliente = clientes['49876543']
   if (!cliente) return null
 
@@ -1120,6 +1136,447 @@ async function crearMantenimientoPreventivo(adminUserId: number, clientes: Recor
   return mantenimiento
 }
 
+type ClienteSeedEntry = {
+  idCliente: number
+  idPersona: number
+  vehiculos: Record<string, number>
+}
+
+type ProductoSeedEntry = {
+  idProducto: number
+  inventarioProductoId: number
+}
+
+type ActividadResumen = {
+  ordenes: number
+  comprobantes: number
+  ventas: number
+}
+
+async function crearActividadMensualDemo(
+  adminUserId: number,
+  trabajadores: Record<string, number>,
+  clientes: Record<string, ClienteSeedEntry>,
+  productos: Record<string, ProductoSeedEntry>,
+  servicios: Record<string, number>
+): Promise<ActividadResumen> {
+  const trabajadorIds = Object.values(trabajadores)
+  if (trabajadorIds.length < 2) {
+    console.warn('No hay suficientes trabajadores activos para poblar actividad demo.')
+    return { ordenes: 0, comprobantes: 0, ventas: 0 }
+  }
+
+  const clienteEntries = Object.values(clientes).filter((cliente) => Object.keys(cliente.vehiculos).length > 0)
+  if (clienteEntries.length === 0) {
+    console.warn('No hay clientes con vehículos para generar actividad demo.')
+    return { ordenes: 0, comprobantes: 0, ventas: 0 }
+  }
+
+  const personaRecords = await prisma.persona.findMany({
+    where: { id_persona: { in: clienteEntries.map((c) => c.idPersona) } },
+    select: { id_persona: true, nombre: true, apellido_paterno: true, apellido_materno: true, numero_documento: true, direccion: true }
+  })
+  const personaMap = new Map(personaRecords.map((persona) => [persona.id_persona, persona]))
+
+  const servicioRecords = await prisma.servicio.findMany({
+    where: { id_servicio: { in: Object.values(servicios) } },
+    select: {
+      id_servicio: true,
+      codigo_servicio: true,
+      nombre: true,
+      precio_base: true,
+      tiempo_minimo: true,
+      tiempo_maximo: true
+    }
+  })
+  if (servicioRecords.length === 0) {
+    console.warn('No hay servicios disponibles para generar actividad demo.')
+    return { ordenes: 0, comprobantes: 0, ventas: 0 }
+  }
+
+  const productoMetaById = new Map(
+    Object.values(productos).map((producto) => [producto.idProducto, producto.inventarioProductoId])
+  )
+
+  const productoRecords = await prisma.producto.findMany({
+    where: { id_producto: { in: Array.from(productoMetaById.keys()) } },
+    select: {
+      id_producto: true,
+      codigo_producto: true,
+      nombre: true,
+      precio_venta: true,
+      precio_compra: true
+    }
+  })
+
+  if (productoRecords.length === 0) {
+    console.warn('No hay productos con inventario para generar actividad demo.')
+    return { ordenes: 0, comprobantes: 0, ventas: 0 }
+  }
+
+  const inventarioRecords = await prisma.inventarioProducto.findMany({
+    where: { id_inventario_producto: { in: Array.from(productoMetaById.values()) } },
+    select: { id_inventario_producto: true, costo_promedio: true }
+  })
+  const inventarioMap = new Map(inventarioRecords.map((item) => [item.id_inventario_producto, item]))
+
+  const productoPool = productoRecords
+    .map((producto) => {
+      const inventarioProductoId = productoMetaById.get(producto.id_producto)
+      if (!inventarioProductoId) return null
+      const inventarioInfo = inventarioMap.get(inventarioProductoId)
+      return {
+        ...producto,
+        inventarioProductoId,
+        costo_promedio: inventarioInfo?.costo_promedio ?? producto.precio_compra
+      }
+    })
+    .filter(Boolean) as Array<
+    typeof productoRecords[number] & {
+      inventarioProductoId: number
+      costo_promedio: Prisma.Decimal
+    }
+  >
+
+  if (productoPool.length === 0) {
+    console.warn('No se encontró inventario disponible para los productos demo.')
+    return { ordenes: 0, comprobantes: 0, ventas: 0 }
+  }
+
+  type EscenarioConfig = {
+    estadoOrden: string
+    ventaEstado: EstadoPagoVenta | null
+    metodo?: MetodoPagoVenta
+  }
+
+  const escenarios: EscenarioConfig[] = [
+    { estadoOrden: 'completado', ventaEstado: EstadoPagoVenta.pagado, metodo: MetodoPagoVenta.TARJETA },
+    { estadoOrden: 'completado', ventaEstado: EstadoPagoVenta.parcial, metodo: MetodoPagoVenta.TRANSFERENCIA },
+    { estadoOrden: 'en_proceso', ventaEstado: null },
+    { estadoOrden: 'pendiente', ventaEstado: null },
+    { estadoOrden: 'por_hacer', ventaEstado: null },
+    { estadoOrden: 'completado', ventaEstado: EstadoPagoVenta.pendiente, metodo: MetodoPagoVenta.EFECTIVO }
+  ]
+
+  const ultimaBoleta = await prisma.comprobante.findFirst({
+    where: { tipo: TipoComprobante.BOLETA, serie: 'B001' },
+    orderBy: { numero: 'desc' }
+  })
+  let siguienteBoleta = (ultimaBoleta?.numero ?? 0) + 1
+
+  const totalOrdenes = Math.min(24, clienteEntries.length * 6)
+  const ahora = new Date()
+  const inicioVentana = ahora.getTime() - DAY_IN_MS * 26
+  const separacion = (DAY_IN_MS * 24) / Math.max(totalOrdenes, 1)
+
+  let ordenesCreadas = 0
+  let comprobantesCreados = 0
+  let ventasCreadas = 0
+
+  for (let i = 0; i < totalOrdenes; i++) {
+    const escenario = escenarios[i % escenarios.length]
+    const cliente = clienteEntries[i % clienteEntries.length]
+    const persona = personaMap.get(cliente.idPersona)
+    if (!persona) continue
+
+    const vehiculos = Object.values(cliente.vehiculos)
+    if (vehiculos.length === 0) continue
+
+    const principalId = trabajadorIds[i % trabajadorIds.length]
+    const asistenteId = trabajadorIds[(i + 1) % trabajadorIds.length]
+    const servicio = servicioRecords[i % servicioRecords.length]
+    const producto = productoPool[i % productoPool.length]
+
+    const productQty = escenario.estadoOrden === 'completado' && i % 3 === 0 ? 2 : 1
+    const servicePrice = Number(servicio.precio_base.toString())
+    const productPrice = Number(producto.precio_venta.toString())
+    const productCost = Number(producto.costo_promedio.toString())
+
+    const subtotalBase = clampDecimals(servicePrice + productPrice * productQty)
+    const igv = clampDecimals(subtotalBase * 0.18)
+    const total = clampDecimals(subtotalBase + igv)
+
+    const ventaEstado = escenario.ventaEstado
+    const paidAmount =
+      ventaEstado === EstadoPagoVenta.pagado
+        ? total
+        : ventaEstado === EstadoPagoVenta.parcial
+          ? clampDecimals(total * 0.55)
+          : 0
+    const saldo = clampDecimals(total - paidAmount)
+
+    const estadoPagoOrden = paidAmount >= total ? 'pagado' : paidAmount > 0 ? 'parcial' : 'pendiente'
+
+    let fechaBase = new Date(inicioVentana + i * separacion + Math.floor(Math.random() * 4 * 60 * 60 * 1000))
+    if (escenario.estadoOrden === 'por_hacer') {
+      const futurosDias = (i % 4) + 1
+      fechaBase = new Date(ahora.getTime() + futurosDias * DAY_IN_MS)
+    }
+
+    const estimadoMinutos = servicio.tiempo_maximo ?? 120
+    const realMinutos = servicio.tiempo_minimo ?? 90
+    const fechaFinEstimada = addMinutes(fechaBase, estimadoMinutos)
+    const fechaFinReal = escenario.estadoOrden === 'completado' ? addMinutes(fechaBase, realMinutos) : null
+
+    const codigoOrden = `OT-DEMO-${RUN_TAG}-${String(i + 1).padStart(3, '0')}`
+    const prioridad = ['alta', 'media', 'baja'][i % 3]
+
+    const orden = await prisma.transaccion.create({
+      data: {
+        id_persona: cliente.idPersona,
+        id_usuario: adminUserId,
+        id_trabajador_principal: principalId,
+        tipo_transaccion: 'orden',
+        tipo_comprobante: 'OT',
+        codigo_transaccion: codigoOrden,
+        fecha: fechaBase,
+        fecha_inicio: fechaBase,
+        fecha_fin_estimada: fechaFinEstimada,
+        fecha_fin_real: fechaFinReal,
+        fecha_cierre: fechaFinReal,
+        estado_orden: escenario.estadoOrden,
+        prioridad,
+        descuento: decimal(0),
+        impuesto: decimal(igv),
+        total: decimal(total),
+        cantidad_pago: decimal(paidAmount),
+        observaciones: `Orden demo para ${servicio.nombre}`,
+        estado_pago: estadoPagoOrden,
+        fecha_entrega: fechaFinReal
+      }
+    })
+
+    ordenesCreadas += 1
+
+    await prisma.transaccionVehiculo.create({
+      data: {
+        id_transaccion: orden.id_transaccion,
+        id_vehiculo: vehiculos[i % vehiculos.length],
+        id_usuario: adminUserId,
+        nivel_combustible: randomFrom(['1/4', '1/2', '3/4', 'Full']),
+        kilometraje_millas: 25000 + i * 320 + Math.floor(Math.random() * 150)
+      }
+    })
+
+    await prisma.transaccionTrabajador.createMany({
+      data: [
+        {
+          id_transaccion: orden.id_transaccion,
+          id_trabajador: principalId,
+          rol: 'Principal',
+          asignado_en: fechaBase
+        },
+        {
+          id_transaccion: orden.id_transaccion,
+          id_trabajador: asistenteId,
+          rol: 'Asistente',
+          asignado_en: fechaBase
+        }
+      ]
+    })
+
+    const detalleServicio = await prisma.detalleTransaccion.create({
+      data: {
+        id_transaccion: orden.id_transaccion,
+        id_servicio: servicio.id_servicio,
+        cantidad: 1,
+        precio: decimal(servicePrice),
+        descuento: decimal(0),
+        total: decimal(servicePrice)
+      }
+    })
+
+    await prisma.detalleTransaccion.create({
+      data: {
+        id_transaccion: orden.id_transaccion,
+        id_producto: producto.id_producto,
+        cantidad: productQty,
+        precio: decimal(productPrice),
+        descuento: decimal(0),
+        total: decimal(productPrice * productQty),
+        id_detalle_servicio_asociado: detalleServicio.id_detalle_transaccion
+      }
+    })
+
+    await prisma.tarea.create({
+      data: {
+        id_detalle_transaccion: detalleServicio.id_detalle_transaccion,
+        id_trabajador: principalId,
+        estado: escenario.estadoOrden === 'completado' ? 'completado' : escenario.estadoOrden === 'pendiente' ? 'pendiente' : 'en_proceso',
+        fecha_inicio: fechaBase,
+        fecha_fin: fechaFinReal ?? undefined,
+        tiempo_estimado: estimadoMinutos,
+        tiempo_real: fechaFinReal ? realMinutos : null,
+        notas_trabajador: `Checklist completado (${servicio.codigo_servicio})`
+      }
+    })
+
+    await prisma.movimientoInventario.create({
+      data: {
+        tipo: MovimientoTipo.SALIDA,
+        id_producto: producto.id_producto,
+        id_inventario_producto: producto.inventarioProductoId,
+        cantidad: decimal(productQty),
+        costo_unitario: decimal(productCost),
+        referencia_origen: `Consumo ${codigoOrden}`,
+        origen_tipo: MovimientoOrigen.ORDEN_TRABAJO,
+        observaciones: 'Consumo automático demo',
+        id_usuario: adminUserId,
+        fecha: fechaBase
+      }
+    })
+
+    try {
+      await prisma.inventarioProducto.update({
+        where: { id_inventario_producto: producto.inventarioProductoId },
+        data: {
+          stock_disponible: {
+            decrement: decimal(productQty)
+          }
+        }
+      })
+    } catch (error) {
+      console.warn('No se pudo actualizar el stock para', producto.codigo_producto, error)
+    }
+
+    await prisma.bitacora.create({
+      data: {
+        id_usuario: adminUserId,
+        accion: 'DEMO_ORDEN',
+        descripcion: `Orden ${codigoOrden} generada para ${formatNombrePersona(persona)}`,
+        tabla: 'orden'
+      }
+    })
+
+    if (ventaEstado) {
+      const receptorNombre = formatNombrePersona(persona)
+      const comprobante = await prisma.comprobante.create({
+        data: {
+          tipo: TipoComprobante.BOLETA,
+          serie: 'B001',
+          numero: siguienteBoleta++,
+          origen_tipo: OrigenComprobante.ORDEN,
+          origen_id: orden.id_transaccion,
+          estado_pago: ventaEstado === EstadoPagoVenta.pagado ? 'pagado' : ventaEstado === EstadoPagoVenta.parcial ? 'parcial' : 'pendiente',
+          estado: EstadoComprobante.EMITIDO,
+          subtotal: decimal(subtotalBase),
+          igv: decimal(igv),
+          total: decimal(total),
+          receptor_nombre: receptorNombre,
+          receptor_documento: persona.numero_documento ?? '00000000',
+          receptor_direccion: persona.direccion ?? 'Dirección no registrada',
+          descripcion: servicio.nombre,
+          precios_incluyen_igv: true,
+          fecha_emision: fechaFinReal ?? fechaFinEstimada,
+          creado_por: adminUserId,
+          id_persona: cliente.idPersona,
+          id_cliente: cliente.idCliente,
+          id_transaccion: orden.id_transaccion
+        }
+      })
+
+      comprobantesCreados += 1
+
+      const serviceIgv = clampDecimals(servicePrice * 0.18)
+      const productSubtotal = clampDecimals(productPrice * productQty)
+      const productIgv = clampDecimals(productSubtotal * 0.18)
+
+      await prisma.comprobanteDetalle.createMany({
+        data: [
+          {
+            id_comprobante: comprobante.id_comprobante,
+            tipo_item: TipoItemComprobante.SERVICIO,
+            descripcion: servicio.nombre,
+            cantidad: decimal(1),
+            unidad_medida: 'SERV',
+            precio_unitario: decimal(servicePrice),
+            descuento: decimal(0),
+            subtotal: decimal(servicePrice),
+            igv: decimal(serviceIgv),
+            total: decimal(servicePrice + serviceIgv),
+            id_servicio: servicio.id_servicio
+          },
+          {
+            id_comprobante: comprobante.id_comprobante,
+            tipo_item: TipoItemComprobante.PRODUCTO,
+            descripcion: producto.nombre,
+            cantidad: decimal(productQty),
+            unidad_medida: 'UND',
+            precio_unitario: decimal(productPrice),
+            descuento: decimal(0),
+            subtotal: decimal(productSubtotal),
+            igv: decimal(productIgv),
+            total: decimal(productSubtotal + productIgv),
+            id_producto: producto.id_producto
+          }
+        ]
+      })
+
+      const venta = await prisma.venta.create({
+        data: {
+          id_comprobante: comprobante.id_comprobante,
+          fecha: fechaFinReal ?? fechaBase,
+          total: decimal(total),
+          total_pagado: decimal(paidAmount),
+          saldo: decimal(saldo),
+          metodo_principal: escenario.metodo ?? MetodoPagoVenta.EFECTIVO,
+          estado_pago: ventaEstado
+        }
+      })
+
+      ventasCreadas += 1
+
+      if (paidAmount > 0) {
+        const referencia = escenario.metodo === MetodoPagoVenta.TRANSFERENCIA ? `TRX-${RUN_TAG}-${i + 1}` : `POS-${RUN_TAG}-${i + 1}`
+        await prisma.ventaPago.create({
+          data: {
+            id_venta: venta.id_venta,
+            metodo: escenario.metodo ?? MetodoPagoVenta.EFECTIVO,
+            monto: decimal(paidAmount),
+            referencia,
+            registrado_por: adminUserId,
+            fecha_pago: fechaFinReal ?? fechaBase,
+            notas: ventaEstado === EstadoPagoVenta.parcial ? 'Abono parcial demo' : 'Pago completo demo'
+          }
+        })
+
+        await prisma.pago.create({
+          data: {
+            id_transaccion: orden.id_transaccion,
+            tipo_pago: (escenario.metodo ?? MetodoPagoVenta.EFECTIVO).toLowerCase(),
+            monto: decimal(paidAmount),
+            numero_operacion: referencia,
+            registrado_por: adminUserId,
+            fecha_pago: fechaFinReal ?? fechaBase,
+            observaciones: ventaEstado === EstadoPagoVenta.parcial ? 'Abono parcial registrado' : 'Pago completado'
+          }
+        })
+      }
+
+      await prisma.bitacora.create({
+        data: {
+          id_usuario: adminUserId,
+          accion: 'DEMO_COMPROBANTE',
+          descripcion: `Comprobante ${comprobante.serie}-${comprobante.numero} para ${codigoOrden}`,
+          tabla: 'comprobante'
+        }
+      })
+    }
+
+    if (escenario.estadoOrden === 'completado' && i % 2 === 0) {
+      await prisma.feedback.create({
+        data: {
+          orden_id: orden.id_transaccion,
+          score: 4 + (i % 2),
+          comentario: 'Servicio ágil y comunicación constante (demo).'
+        }
+      })
+    }
+  }
+
+  return { ordenes: ordenesCreadas, comprobantes: comprobantesCreados, ventas: ventasCreadas }
+}
+
 async function main() {
   console.log('🚀 Creando dataset integral de demostración...')
 
@@ -1152,6 +1609,11 @@ async function main() {
 
   await crearMantenimientoPreventivo(adminUser.id_usuario, clientes)
   console.log('🗓️ Mantenimiento preventivo programado')
+
+  const actividadMensual = await crearActividadMensualDemo(adminUser.id_usuario, trabajadores, clientes, productos, servicios)
+  console.log(
+    `📊 Actividad mensual: ${actividadMensual.ordenes} órdenes, ${actividadMensual.comprobantes} comprobantes, ${actividadMensual.ventas} ventas`
+  )
 
   console.log('✅ Dataset de demostración listo. Puedes iniciar sesión como admin.pruebas / Admin123!')
 }

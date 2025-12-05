@@ -108,6 +108,8 @@ export function OrdenesTable({ onEdit, onView, onCreateNew, refreshTrigger }: Or
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [ordenAEliminar, setOrdenAEliminar] = useState<OrdenCompleta | null>(null)
   const [facturacionLoadingId, setFacturacionLoadingId] = useState<number | null>(null)
+  const [facturacionDisponible, setFacturacionDisponible] = useState<boolean | null>(null)
+  const [facturacionEstadoMensaje, setFacturacionEstadoMensaje] = useState<string | null>(null)
   
   const { toast } = useToast()
 
@@ -167,6 +169,34 @@ export function OrdenesTable({ onEdit, onView, onCreateNew, refreshTrigger }: Or
   useEffect(() => {
     fetchTrabajadores()
   }, [fetchTrabajadores])
+
+  useEffect(() => {
+    let cancelled = false
+    const fetchEstadoFacturacion = async () => {
+      try {
+        const response = await fetch('/api/facturacion/status', { cache: 'no-store' })
+        if (!response.ok) {
+          throw new Error('No se pudo verificar el estado de facturación')
+        }
+        const data = await response.json()
+        if (!cancelled) {
+          setFacturacionDisponible(Boolean(data.habilitada))
+          setFacturacionEstadoMensaje(typeof data.reason === 'string' ? data.reason : null)
+        }
+      } catch (error) {
+        console.error('Error verificando estado de facturación', error)
+        if (!cancelled) {
+          setFacturacionDisponible(null)
+          setFacturacionEstadoMensaje(null)
+        }
+      }
+    }
+
+    fetchEstadoFacturacion()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     if (refreshTrigger && refreshTrigger > 0) {
@@ -301,6 +331,15 @@ export function OrdenesTable({ onEdit, onView, onCreateNew, refreshTrigger }: Or
 
   const tipoComprobante = orden.persona.numero_documento?.length === 11 ? 'FACTURA' : 'BOLETA'
   const tipoComprobanteLabel = tipoComprobante.toLowerCase()
+
+    if (facturacionDisponible === false) {
+      toast({
+        title: 'Facturación deshabilitada',
+        description: facturacionEstadoMensaje ?? 'Habilita FACTURACION_HABILITADA=true y configura las credenciales para usar este módulo.',
+        variant: 'destructive'
+      })
+      return
+    }
 
     try {
       setFacturacionLoadingId(orden.id_transaccion)
@@ -519,6 +558,7 @@ export function OrdenesTable({ onEdit, onView, onCreateNew, refreshTrigger }: Or
                       onFacturar={enviarAFacturacion}
                       onDelete={solicitarEliminacion}
                       facturacionLoadingId={facturacionLoadingId}
+                      facturacionDisponible={facturacionDisponible}
                     />
                   ))}
                 </TableBody>

@@ -1,5 +1,6 @@
 import { ShieldAlert } from 'lucide-react'
 import { getServerSession } from 'next-auth'
+import { unstable_cache } from 'next/cache'
 
 import { format } from 'date-fns'
 
@@ -11,6 +12,7 @@ import { IndicatorLineChart } from '@/components/indicadores/line-chart'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { authOptions } from '@/lib/auth'
+import { asegurarPermiso, PermisoDenegadoError, SesionInvalidaError } from '@/lib/permisos/guards'
 import {
   getAvgTimePerJob,
   getCoverage,
@@ -23,7 +25,7 @@ import {
   getTechnicianUtilization
 } from '@/lib/indicadores/mantenimientos'
 import { prisma } from '@/lib/prisma'
-import { asegurarPermiso, PermisoDenegadoError, SesionInvalidaError } from '@/lib/permisos/guards'
+
 import type { CsatKpi, OnTimeCloseKpi, TechnicianUtilizationItem } from '@/types/indicadores'
 const parseDateParam = (value: string | string[] | undefined, fallback: Date): Date => {
   if (!value) return fallback
@@ -100,6 +102,49 @@ const formatDateLabel = (value: string | null) => {
 
 const formatDecimal = (value: number) => (Number.isInteger(value) ? value.toString() : value.toFixed(1))
 
+const getIndicadoresSnapshot = unstable_cache(
+  async (fromISO: string, toISO: string, windowDays: number) => {
+    const from = new Date(fromISO)
+    const to = new Date(toISO)
+
+    const [
+      coverage,
+      onSchedule,
+      technicianUtilization,
+      onTimeClose,
+      reschedule,
+      avgTime,
+      stockCritical,
+      reworkRate,
+      csat
+    ] = await Promise.all([
+      getCoverage(from, to),
+      getOnSchedule(from, to, windowDays),
+      getTechnicianUtilization(from, to),
+      getOnTimeClose(from, to),
+      getRescheduleRate(from, to),
+      getAvgTimePerJob(from, to, { limit: 6 }),
+      getStockCritical(from, to, { limit: 6 }),
+      getReworkRate(from, to, { limit: 6 }),
+      getCsat(from, to)
+    ])
+
+    return {
+      coverage,
+      onSchedule,
+      technicianUtilization,
+      onTimeClose,
+      reschedule,
+      avgTime,
+      stockCritical,
+      reworkRate,
+      csat
+    }
+  },
+  ['dashboard-indicadores'],
+  { revalidate: 90, tags: ['indicadores-dashboard'] }
+)
+
 const IndicadoresPage = async ({
   searchParams
 }: {
@@ -154,43 +199,26 @@ const IndicadoresPage = async ({
   const fromInputValue = format(from, 'yyyy-MM-dd')
   const toInputValue = format(to, 'yyyy-MM-dd')
 
-  let coverage = null
-  let onSchedule = null
-  let technicianUtilization = null
-  let onTimeClose = null
-  let reschedule = null
-  let avgTime = null
-  let stockCritical = null
-  let reworkRate = null
-  let csat = null
+  let snapshot: Awaited<ReturnType<typeof getIndicadoresSnapshot>> | null = null
 
   try {
-    ;[
-      coverage,
-      onSchedule,
-      technicianUtilization,
-      onTimeClose,
-      reschedule,
-      avgTime,
-      stockCritical,
-      reworkRate,
-      csat
-    ] = await Promise.all([
-      getCoverage(from, to),
-      getOnSchedule(from, to, windowDays),
-      getTechnicianUtilization(from, to),
-      getOnTimeClose(from, to),
-      getRescheduleRate(from, to),
-      getAvgTimePerJob(from, to, { limit: 6 }),
-      getStockCritical(from, to, { limit: 6 }),
-      getReworkRate(from, to, { limit: 6 }),
-      getCsat(from, to)
-    ])
+    snapshot = await getIndicadoresSnapshot(from.toISOString(), to.toISOString(), windowDays)
   } catch (error) {
     console.error('Error cargando indicadores', error)
   }
 
-  if (!coverage || !onSchedule || !technicianUtilization || !onTimeClose || !reschedule || !avgTime || !stockCritical || !reworkRate || !csat) {
+  if (
+    !snapshot ||
+    !snapshot.coverage ||
+    !snapshot.onSchedule ||
+    !snapshot.technicianUtilization ||
+    !snapshot.onTimeClose ||
+    !snapshot.reschedule ||
+    !snapshot.avgTime ||
+    !snapshot.stockCritical ||
+    !snapshot.reworkRate ||
+    !snapshot.csat
+  ) {
     return (
       <Alert className="mt-6">
         <ShieldAlert className="h-5 w-5 text-orange-500" />
@@ -199,6 +227,8 @@ const IndicadoresPage = async ({
       </Alert>
     )
   }
+
+  const { coverage, onSchedule, technicianUtilization, onTimeClose, reschedule, avgTime, stockCritical, reworkRate, csat } = snapshot
 
   const kpis = [
     {

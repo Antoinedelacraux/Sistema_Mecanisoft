@@ -1,8 +1,7 @@
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
-import { NextAuthProvider } from "@/components/providers/session-provider"
-import { Toaster } from "@/components/ui/sonner"
+import { AppProviders } from "@/components/providers/app-providers"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -17,12 +16,9 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="es">
-      <body className={inter.className}>
-        <NextAuthProvider>
-          {children}
-          <Toaster />
-        </NextAuthProvider>
+    <html lang="es" suppressHydrationWarning data-qb-installed="true">
+      <body className={inter.className} suppressHydrationWarning>
+        <AppProviders>{children}</AppProviders>
       </body>
     </html>
   )

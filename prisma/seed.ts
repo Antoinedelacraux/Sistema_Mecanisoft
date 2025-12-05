@@ -95,6 +95,10 @@ async function main() {
       nombre: 'Reportes',
       descripcion: 'Reportes analíticos y descargas'
     },
+    ventas: {
+      nombre: 'Ventas',
+      descripcion: 'Conciliación de pagos y control de cobranzas'
+    },
     roles: {
       nombre: 'Roles',
       descripcion: 'Plantillas de permisos y asignaciones'
@@ -276,10 +280,17 @@ async function main() {
       descripcion: 'Autoriza descargar archivos generados y solicitar exportaciones',
       modulo: 'reportes',
       agrupador: 'analitica'
+    },
+    {
+      codigo: 'ventas.conciliar',
+      nombre: 'Conciliar ventas',
+      descripcion: 'Registrar, actualizar o eliminar pagos asociados a comprobantes emitidos',
+      modulo: 'ventas',
+      agrupador: 'gestion_ventas'
     }
-  ]
+  ];
 
-  const modulosUnicos = Array.from(new Set(permisosBase.map((permiso) => permiso.modulo)))
+  const modulosUnicos = Array.from(new Set(permisosBase.map((permiso) => permiso.modulo)));
 
   for (const clave of modulosUnicos) {
     const metadata = moduloMetadata[clave] ?? {
@@ -315,8 +326,14 @@ async function main() {
     }
   })
 
+  const todosLosPermisos = await prisma.permiso.findMany({
+    select: {
+      id_permiso: true
+    }
+  })
+
   await prisma.rolPermiso.createMany({
-    data: permisosRegistrados.map((permisoItem: { id_permiso: number }) => ({
+    data: todosLosPermisos.map((permisoItem: { id_permiso: number }) => ({
       id_rol: rolAdmin.id_rol,
       id_permiso: permisoItem.id_permiso
     })),
@@ -370,6 +387,25 @@ async function main() {
     }
   })
   
+  const ensureUserHasAllPermisos = async (username: string) => {
+    if (!todosLosPermisos.length) return
+    const usuario = await prisma.usuario.findUnique({ where: { nombre_usuario: username } })
+    if (!usuario) return
+
+    await prisma.usuarioPermiso.createMany({
+      data: todosLosPermisos.map((permiso) => ({
+        id_usuario: usuario.id_usuario,
+        id_permiso: permiso.id_permiso,
+        concedido: true,
+        origen: 'EXTRA'
+      })),
+      skipDuplicates: true
+    })
+  }
+
+  await ensureUserHasAllPermisos('admin')
+  await ensureUserHasAllPermisos('admin.pruebas')
+
   console.log('✅ Usuario administrador creado')
   
   // Crear categorías básicas (sin upsert porque nombre no es único)

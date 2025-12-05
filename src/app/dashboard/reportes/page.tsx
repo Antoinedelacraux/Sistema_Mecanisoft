@@ -1,9 +1,11 @@
 import Link from "next/link"
 import { redirect } from "next/navigation"
 import { getServerSession } from "next-auth"
+import { unstable_cache } from "next/cache"
 import {
   ArrowUpRight,
   CalendarCheck,
+  Download,
   FileSpreadsheet,
   Layers,
 } from "lucide-react"
@@ -52,6 +54,38 @@ const formatBytes = (bytes: number | null | undefined) => {
 
 export const dynamic = "force-dynamic"
 
+const getReportDashboardData = unstable_cache(
+  async () => {
+    const [templates, schedules, recentFiles, aggregateFiles, totalTemplates, totalSchedules, activeSchedules] = await Promise.all([
+      prisma.reportTemplate.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        include: { schedules: { select: { id: true, active: true } } },
+      }),
+      prisma.reportSchedule.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        include: { template: { select: { id: true, name: true, key: true } } },
+      }),
+      prisma.reportFile.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 5,
+      }),
+      prisma.reportFile.aggregate({
+        _sum: { size: true },
+        _count: { _all: true },
+      }),
+      prisma.reportTemplate.count(),
+      prisma.reportSchedule.count(),
+      prisma.reportSchedule.count({ where: { active: true } }),
+    ])
+
+    return { templates, schedules, recentFiles, aggregateFiles, totalTemplates, totalSchedules, activeSchedules }
+  },
+  ["dashboard-reportes"],
+  { revalidate: 120, tags: ["reportes-dashboard"] }
+)
+
 export default async function ReportesDashboardPage() {
   const session = await getServerSession(authOptions)
 
@@ -67,30 +101,8 @@ export default async function ReportesDashboardPage() {
     throw error
   }
 
-  const [templates, schedules, recentFiles, aggregateFiles] = await Promise.all([
-    prisma.reportTemplate.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 5,
-      include: { schedules: { select: { id: true, active: true } } },
-    }),
-    prisma.reportSchedule.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 5,
-      include: { template: { select: { id: true, name: true, key: true } } },
-    }),
-    prisma.reportFile.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 5,
-    }),
-    prisma.reportFile.aggregate({
-      _sum: { size: true },
-      _count: { _all: true },
-    }),
-  ])
-
-  const totalTemplates = await prisma.reportTemplate.count()
-  const totalSchedules = await prisma.reportSchedule.count()
-  const activeSchedules = await prisma.reportSchedule.count({ where: { active: true } })
+  const { templates, schedules, recentFiles, aggregateFiles, totalTemplates, totalSchedules, activeSchedules } =
+    await getReportDashboardData()
 
   const lastExport = recentFiles.at(0)
 
@@ -117,7 +129,7 @@ export default async function ReportesDashboardPage() {
           <CardContent>
             <p className="text-3xl font-semibold text-slate-900">{totalTemplates}</p>
             <div className="mt-2 text-xs text-slate-500">
-              Última creación: {templates.length > 0 ? dateFormatter.format(templates[0].createdAt) : "Sin registros"}
+              Última creación: {templates.length > 0 ? dateFormatter.format(new Date(templates[0].createdAt)) : "Sin registros"}
             </div>
           </CardContent>
         </Card>
@@ -151,11 +163,11 @@ export default async function ReportesDashboardPage() {
               {lastExport ? lastExport.filename : "Sin exportaciones"}
             </p>
             <div className="text-xs text-slate-500">
-              {lastExport ? dateTimeFormatter.format(lastExport.createdAt) : "Cuando se genere un reporte aparecerá aquí."}
+              {lastExport ? dateTimeFormatter.format(new Date(lastExport.createdAt)) : "Cuando se genere un reporte aparecerá aquí."}
             </div>
             {lastExport ? (
               <Button asChild variant="outline" size="sm" className="mt-2">
-                <Link href={`/api/reportes/files/${lastExport.id}/download`}>
+                <Link href={`/api/reportes/files/${lastExport.id}/download`} prefetch={false}>
                   Descargar
                 </Link>
               </Button>
@@ -216,7 +228,7 @@ export default async function ReportesDashboardPage() {
                         <Badge variant="outline">{template.key}</Badge>
                       </TableCell>
                       <TableCell className="hidden md:table-cell text-xs text-slate-500">
-                        {dateTimeFormatter.format(template.createdAt)}
+                        {dateTimeFormatter.format(new Date(template.createdAt))}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -257,7 +269,7 @@ export default async function ReportesDashboardPage() {
                       </TableCell>
                       <TableCell className="hidden lg:table-cell text-xs text-slate-500">
                         {schedule.nextRunAt
-                          ? dateTimeFormatter.format(schedule.nextRunAt)
+                          ? dateTimeFormatter.format(new Date(schedule.nextRunAt))
                           : "Sin programar"}
                       </TableCell>
                     </TableRow>
@@ -289,6 +301,7 @@ export default async function ReportesDashboardPage() {
                   <TableHead>Archivo</TableHead>
                   <TableHead className="hidden md:table-cell">Tamaño</TableHead>
                   <TableHead>Generado</TableHead>
+                  <TableHead className="w-[140px] text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -306,7 +319,19 @@ export default async function ReportesDashboardPage() {
                       {formatBytes(file.size)}
                     </TableCell>
                     <TableCell className="text-xs text-slate-500">
-                      {dateTimeFormatter.format(file.createdAt)}
+                      {dateTimeFormatter.format(new Date(file.createdAt))}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button asChild variant="ghost" size="sm">
+                        <Link
+                          href={`/api/reportes/files/${file.id}/download`}
+                          prefetch={false}
+                          className="inline-flex items-center gap-1"
+                        >
+                          <Download className="h-4 w-4" />
+                          Descargar
+                        </Link>
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}

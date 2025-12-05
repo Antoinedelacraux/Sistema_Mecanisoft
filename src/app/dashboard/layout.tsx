@@ -1,5 +1,6 @@
 import { Headbar } from "@/components/layout/headbar"
 import { Sidebar } from "@/components/layout/sidebar"
+import { DashboardPrefetcher } from "@/components/layout/prefetch-routes"
 
 export default function DashboardLayout({
   children,
@@ -26,6 +27,7 @@ export default function DashboardLayout({
             />
             <div className="relative z-10 space-y-8">
               <Headbar />
+              <DashboardPrefetcher />
               {children}
             </div>
           </div>

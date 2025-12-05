@@ -63,6 +63,10 @@ export default function ProfileConfig() {
   const [willOpenCropperOnFile, setWillOpenCropperOnFile] = useState(false)
   const [versionsOpen, setVersionsOpen] = useState(false)
   const [versions, setVersions] = useState<any[]>([])
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [changingPassword, setChangingPassword] = useState(false)
   // when the fetched `name` / `email` states change, update the form fields so
   // the controlled inputs show the registered values (react-hook-form defaultValue
   // only applies at mount).
@@ -90,6 +94,25 @@ export default function ProfileConfig() {
   // upload with progress using XHR to show progress bar
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [previousAvatar, setPreviousAvatar] = useState<string | null>(null)
+
+  async function fetchAvatarVersions() {
+    const response = await fetch('/api/usuarios/me/avatar/versions')
+    if (!response.ok) {
+      throw new Error('No se pudieron obtener las versiones anteriores')
+    }
+    const data = await response.json()
+    setVersions(Array.isArray(data.versions) ? data.versions : [])
+  }
+
+  async function openVersions() {
+    try {
+      await fetchAvatarVersions()
+      setVersionsOpen(true)
+    } catch (error) {
+      console.error('Error cargando versiones de avatar', error)
+      toast({ title: 'Error', description: 'No se pudieron cargar las versiones del avatar.', variant: 'destructive' })
+    }
+  }
 
   // helper to upload a file via XHR (used for immediate uploads and for cropped file uploads)
   function uploadFileWithProgress(file: File) {
@@ -196,6 +219,51 @@ export default function ProfileConfig() {
     await uploadFileWithProgress(file)
   }
 
+  async function revertAvatarRequest(payload?: Record<string, string | undefined>) {
+    const response = await fetch('/api/usuarios/me/avatar/revert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload ?? {})
+    })
+    const data = await response.json()
+    if (!response.ok || !data.success) {
+      throw new Error(data.error || 'No se pudo restaurar el avatar')
+    }
+    setAvatarPreview(data.imageUrl)
+    setPreviousAvatar(null)
+    try { window.dispatchEvent(new CustomEvent('user-profile-updated', { detail: { imagen_usuario: data.imageUrl } })) } catch (_) {}
+    await load()
+    return data
+  }
+
+  async function handleRevertAvatar() {
+    try {
+      await revertAvatarRequest()
+      toast({ title: 'Avatar restaurado', variant: 'success' })
+    } catch (error) {
+      console.error('Error revirtiendo avatar', error)
+      toast({ title: 'Error', description: 'No se pudo revertir el avatar.', variant: 'destructive' })
+    }
+  }
+
+  async function handleRevertFromList(index: number) {
+    const version = versions[index]
+    if (!version) return
+    const versionId = typeof version === 'string' ? undefined : (version.id ?? version.uuid ?? version.guid)
+    if (!versionId) {
+      toast({ title: 'Versión no disponible', description: 'No se pudo identificar la versión seleccionada.', variant: 'destructive' })
+      return
+    }
+    try {
+      await revertAvatarRequest({ versionId })
+      await fetchAvatarVersions()
+      toast({ title: 'Avatar restaurado', description: 'La versión seleccionada se aplicó correctamente.', variant: 'success' })
+    } catch (error) {
+      console.error('Error revirtiendo avatar desde lista', error)
+      toast({ title: 'Error', description: 'No se pudo aplicar la versión seleccionada.', variant: 'destructive' })
+    }
+  }
+
   // username change
   const [username, setUsername] = useState('')
   const [changingUsername, setChangingUsername] = useState(false)
@@ -224,6 +292,44 @@ export default function ProfileConfig() {
       toast({ title: 'Error', description: 'Error actualizando nombre de usuario', variant: 'destructive' })
     } finally {
       setChangingUsername(false)
+    }
+  }
+
+  async function handleChangePassword(e: React.FormEvent) {
+    e.preventDefault()
+    if (!newPassword || !confirmPassword) {
+      toast({ title: 'Campos requeridos', description: 'Ingresa la nueva contraseña y su confirmación.', variant: 'destructive' })
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      toast({ title: 'Contraseñas distintas', description: 'La confirmación debe coincidir con la nueva contraseña.', variant: 'destructive' })
+      return
+    }
+    setChangingPassword(true)
+    try {
+      const response = await fetch('/api/usuarios/me/password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          password_actual: currentPassword || undefined,
+          password: newPassword,
+          confirmar_password: confirmPassword
+        })
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        toast({ title: 'Error', description: data.error || 'No se pudo actualizar la contraseña.', variant: 'destructive' })
+        return
+      }
+      toast({ title: 'Contraseña actualizada', variant: 'success' })
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+    } catch (error) {
+      console.error('Error cambiando contraseña', error)
+      toast({ title: 'Error', description: 'No se pudo actualizar la contraseña.', variant: 'destructive' })
+    } finally {
+      setChangingPassword(false)
     }
   }
 

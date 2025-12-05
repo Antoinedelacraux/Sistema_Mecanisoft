@@ -12,9 +12,10 @@ interface OrdenesTableRowProps {
   onFacturar: (orden: OrdenCompleta) => void
   onDelete: (orden: OrdenCompleta) => void
   facturacionLoadingId?: number | null
+  facturacionDisponible?: boolean | null
 }
 
-export function OrdenesTableRow({ orden, onView, onEdit, onKanban, onFacturar, onDelete, facturacionLoadingId }: OrdenesTableRowProps) {
+export function OrdenesTableRow({ orden, onView, onEdit, onKanban, onFacturar, onDelete, facturacionLoadingId, facturacionDisponible }: OrdenesTableRowProps) {
   const vehiculo = orden.transaccion_vehiculos[0]?.vehiculo
   const detallesCount = orden._count?.detalles_transaccion ?? orden.detalles_transaccion.length
   const progreso = orden.progreso?.porcentaje ?? 0
@@ -122,7 +123,11 @@ export function OrdenesTableRow({ orden, onView, onEdit, onKanban, onFacturar, o
             onClick={() => onFacturar(orden)}
             className="text-purple-600 hover:text-purple-700"
             title="Enviar a facturación"
-            disabled={orden.estado_orden !== 'completado' || facturacionLoadingId === orden.id_transaccion}
+            disabled={
+              orden.estado_orden !== 'completado' ||
+              facturacionLoadingId === orden.id_transaccion ||
+              facturacionDisponible === false
+            }
           >
             <FileText className="w-4 h-4" />
           </Button>

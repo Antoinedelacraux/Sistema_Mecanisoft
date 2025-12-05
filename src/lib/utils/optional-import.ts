@@ -10,8 +10,9 @@ function isModuleNotFoundError(error: unknown, moduleName: string) {
 
 export async function optionalCjsImport<T = any>(moduleName: string): Promise<T | undefined> {
   try {
-    const { createRequire } = await import('module')
-    const requireFn = createRequire(import.meta.url)
+    const [{ createRequire }, path] = await Promise.all([import('module'), import('path')])
+    const fallbackBase = path.join(process.cwd(), 'package.json')
+    const requireFn = createRequire(fallbackBase)
     return requireFn(moduleName) as T
   } catch (error) {
     if (isModuleNotFoundError(error, moduleName)) {

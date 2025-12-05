@@ -94,9 +94,15 @@ export async function POST(request: NextRequest) {
       const shouldFallback = process.env.REDIS_USE_MOCK === 'true' || process.env.REDIS_FALLBACK_DIRECT === 'true'
 
       if (shouldFallback) {
-        const result = await processReportJob(queuePayload)
-        try { incMetric('fallbackRuns') } catch {}
-        return NextResponse.json({ success: true, result, queued: false })
+        setImmediate(async () => {
+          try {
+            await processReportJob(queuePayload)
+            try { incMetric('fallbackRuns') } catch {}
+          } catch (err) {
+            console.error('[reportes/generate] fallback processing failed', err)
+          }
+        })
+        return NextResponse.json({ success: true, queued: true, fallback: true })
       }
 
       let connection: any | undefined
@@ -104,9 +110,15 @@ export async function POST(request: NextRequest) {
         connection = await createRedisConnection(redisUrl)
       } catch (err) {
         console.warn('[reportes/generate] Redis connection failed, falling back to direct processing', err)
-        const result = await processReportJob(queuePayload)
-        try { incMetric('fallbackRuns') } catch {}
-        return NextResponse.json({ success: true, result, queued: false })
+        setImmediate(async () => {
+          try {
+            await processReportJob(queuePayload)
+            try { incMetric('fallbackRuns') } catch {}
+          } catch (err2) {
+            console.error('[reportes/generate] redis-fallback processing failed', err2)
+          }
+        })
+        return NextResponse.json({ success: true, queued: true, fallback: true })
       }
 
       const queue = new Queue('reportes', { connection })

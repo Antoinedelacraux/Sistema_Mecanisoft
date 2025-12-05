@@ -97,6 +97,9 @@ export type PermisoResuelto = {
   comentarioPersonalizacion?: string | null
 }
 
+const SUPERUSER_ROLES = new Set(['Administrador'])
+const SUPERUSER_USERNAMES = new Set(['admin', 'admin.pruebas'])
+
 type SetPermisosRolInput = {
   idRol: number
   codigosPermisos: string[]
@@ -300,6 +303,12 @@ export async function obtenerPermisosResueltosDeUsuario(
     select: {
       id_usuario: true,
       id_rol: true,
+      nombre_usuario: true,
+      rol: {
+        select: {
+          nombre_rol: true
+        }
+      },
       permisos: {
         include: { permiso: true }
       }
@@ -308,6 +317,22 @@ export async function obtenerPermisosResueltosDeUsuario(
 
   if (!usuario) {
     return []
+  }
+
+  const esSuperUsuario =
+    (usuario.rol?.nombre_rol && SUPERUSER_ROLES.has(usuario.rol.nombre_rol)) ||
+    (usuario.nombre_usuario && SUPERUSER_USERNAMES.has(usuario.nombre_usuario))
+
+  if (esSuperUsuario) {
+    const todosLosPermisos = await client.permiso.findMany({ where: { activo: true } })
+    return todosLosPermisos
+      .map<PermisoResuelto>((permiso) => ({
+        codigo: permiso.codigo,
+        concedido: true,
+        fuente: 'ROL',
+        permiso
+      }))
+      .sort((a, b) => a.codigo.localeCompare(b.codigo))
   }
 
   const permisosRol = await client.rolPermiso.findMany({

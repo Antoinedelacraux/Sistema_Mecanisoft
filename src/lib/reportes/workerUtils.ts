@@ -7,9 +7,10 @@ import { logger } from '@/lib/logger'
 
 const EXPORT_PATH = process.env.EXPORT_PATH || path.join(process.cwd(), 'public', 'exports')
 
-export async function renderPdf(rows: any[], filename: string) {
-  const outPath = path.join(EXPORT_PATH, filename)
-  if (!fs.existsSync(EXPORT_PATH)) fs.mkdirSync(EXPORT_PATH, { recursive: true })
+export async function renderPdf(rows: any[], filename: string, options?: { outPath?: string }) {
+  const outPath = options?.outPath ?? path.join(EXPORT_PATH, filename)
+  const targetDir = path.dirname(outPath)
+  if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true })
 
   // Try to use Puppeteer (preferred for HTML->PDF). If not available, fallback to pdfkit.
   try {

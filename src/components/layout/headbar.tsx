@@ -5,6 +5,8 @@ import Link from "next/link"
 import {
   AlertCircle,
   Bell,
+  ChevronDown,
+  ChevronUp,
   ClipboardList,
   Loader2,
   PackageMinus,
@@ -63,6 +65,7 @@ export function Headbar() {
     refreshing: false,
     error: null
   })
+  const [collapsed, setCollapsed] = useState(false)
 
   const fetchSummary = useCallback(async (showSpinner = false) => {
     setState((prev) => ({ ...prev, error: null, loading: prev.summary ? prev.loading : true, refreshing: showSpinner }))
@@ -199,123 +202,148 @@ export function Headbar() {
             {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             Actualizar
           </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setCollapsed((prev) => !prev)}
+            className="gap-2 rounded-full border-white/40 bg-white/70 text-[var(--primary)] shadow-[0_8px_20px_rgba(15,23,42,0.05)] hover:bg-white/90 dark:border-white/15 dark:bg-white/15 dark:text-[var(--primary-foreground)]"
+            aria-expanded={!collapsed}
+            aria-controls="centro-rapido-panel"
+          >
+            {collapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+            {collapsed ? "Expandir" : "Minimizar"}
+          </Button>
         </div>
       </div>
 
-      {error && (
-  <div className="mt-4 flex items-center gap-3 rounded-xl border border-rose-200/60 bg-rose-50 px-4 py-3 text-sm text-rose-700 shadow-sm dark:border-rose-300/40 dark:bg-rose-500/20 dark:text-rose-50">
-          <AlertCircle className="h-4 w-4" />
-          <span>{error}</span>
-        </div>
-      )}
-
-      <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <div className={cardBase}>
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-start gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-amber-400/40 bg-amber-200/40 text-amber-700 dark:border-amber-300/30 dark:bg-amber-500/25 dark:text-amber-50">
-                <PackageMinus className="h-5 w-5" />
-              </span>
-              <div>
-                <p className="text-sm font-semibold text-[var(--foreground)]">Productos con stock bajo</p>
-                <p className="text-xs text-[var(--muted-foreground)]">{lowStockTotal > 0 ? `Hay ${lowStockTotal} productos críticos` : "Inventario saludable"}</p>
-              </div>
+      {!collapsed && (
+        <>
+          {error && (
+            <div className="mt-4 flex items-center gap-3 rounded-xl border border-rose-200/60 bg-rose-50 px-4 py-3 text-sm text-rose-700 shadow-sm dark:border-rose-300/40 dark:bg-rose-500/20 dark:text-rose-50">
+              <AlertCircle className="h-4 w-4" />
+              <span>{error}</span>
             </div>
-            <Badge variant="secondary" className="border-amber-400/50 bg-amber-100/80 text-amber-700 shadow-sm dark:border-amber-300/40 dark:bg-amber-500/30 dark:text-amber-50">
-              {numberFormatter.format(lowStockTotal)}
-            </Badge>
-          </div>
-          <ul className="mt-3 space-y-2">
-            {loading && !summary && (
-              <li className="animate-pulse rounded-xl border border-white/30 bg-white/40 px-3 py-3" />
-            )}
-            {!loading && lowStockItems.length === 0 && (
-              <li className="rounded-xl border border-white/30 bg-white/50 px-3 py-3 text-xs text-[var(--muted-foreground)]">
-                No hay alertas de stock por ahora.
-              </li>
-            )}
-            {lowStockItems.map((item) => (
-              <li
-                key={item.inventarioId}
-                className="rounded-xl border border-white/30 bg-white/50 px-3 py-2 shadow-sm dark:border-white/15 dark:bg-white/10"
-              >
-                <div className="flex items-center justify-between text-sm text-[var(--foreground)]">
-                  <span className="truncate font-medium">{item.nombreProducto}</span>
-                  <span className="text-xs text-[var(--muted-foreground)]">
-                    {item.stockDisponible} / {item.stockMinimo}
+          )}
+
+          <div id="centro-rapido-panel" className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className={cardBase}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-amber-400/40 bg-amber-200/40 text-amber-700 dark:border-amber-300/30 dark:bg-amber-500/25 dark:text-amber-50">
+                    <PackageMinus className="h-5 w-5" />
                   </span>
+                  <div>
+                    <p className="text-sm font-semibold text-[var(--foreground)]">Productos con stock bajo</p>
+                    <p className="text-xs text-[var(--muted-foreground)]">{lowStockTotal > 0 ? `Hay ${lowStockTotal} productos críticos` : "Inventario saludable"}</p>
+                  </div>
                 </div>
-                <p className="mt-1 text-xs text-[var(--muted-foreground)]">{item.almacen}</p>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className={cardBase}>
-          <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/40 bg-white/55 text-[var(--primary)] shadow-inner dark:border-white/15 dark:bg-white/10 dark:text-[var(--primary-foreground)]">
-              <ClipboardList className="h-5 w-5" />
-            </span>
-            <div>
-              <p className="text-sm font-semibold text-[var(--foreground)]">Resumen operativo</p>
-              <p className="text-xs text-[var(--muted-foreground)]">Seguimiento de pendientes clave del negocio.</p>
-            </div>
-          </div>
-          <div className="mt-3 space-y-3">
-            {metrics.length === 0 && (
-              <div className="rounded-xl border border-white/30 bg-white/50 px-3 py-3 text-xs text-[var(--muted-foreground)]">
-                Los indicadores se mostrarán cuando se cargue el resumen.
-              </div>
-            )}
-            {metrics.map((metric) => (
-              <Link
-                key={metric.label}
-                href={metric.href}
-                className="flex items-center justify-between rounded-xl border border-white/30 bg-white/50 px-3 py-2 text-sm text-[var(--foreground)] transition hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/60 dark:border-white/15 dark:bg-white/10 dark:text-[var(--primary-foreground)]"
-              >
-                <span>{metric.label}</span>
-                <Badge variant="outline" className="border-white/40 bg-white/60 text-[var(--primary)] shadow-sm dark:border-white/20 dark:bg-white/10 dark:text-[var(--primary-foreground)]">
-                  {numberFormatter.format(metric.value)}
+                <Badge variant="secondary" className="border-amber-400/50 bg-amber-100/80 text-amber-700 shadow-sm dark:border-amber-300/40 dark:bg-amber-500/30 dark:text-amber-50">
+                  {numberFormatter.format(lowStockTotal)}
                 </Badge>
-              </Link>
-            ))}
-          </div>
-        </div>
+              </div>
+              <ul className="mt-3 space-y-2">
+                {loading && !summary && (
+                  <li className="animate-pulse rounded-xl border border-white/30 bg-white/40 px-3 py-3" />
+                )}
+                {!loading && lowStockItems.length === 0 && (
+                  <li className="rounded-xl border border-white/30 bg-white/50 px-3 py-3 text-xs text-[var(--muted-foreground)]">
+                    No hay alertas de stock por ahora.
+                  </li>
+                )}
+                {lowStockItems.map((item) => (
+                  <li
+                    key={item.inventarioId}
+                    className="rounded-xl border border-white/30 bg-white/50 px-3 py-2 shadow-sm dark:border-white/15 dark:bg-white/10"
+                  >
+                    <div className="flex items-center justify-between text-sm text-[var(--foreground)]">
+                      <span className="truncate font-medium">{item.nombreProducto}</span>
+                      <span className="text-xs text-[var(--muted-foreground)]">
+                        {item.stockDisponible} / {item.stockMinimo}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-[var(--muted-foreground)]">{item.almacen}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
 
-        <div className={cardBase}>
-          <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/40 bg-white/55 text-[var(--primary)] shadow-inner dark:border-white/15 dark:bg-white/10 dark:text-[var(--primary-foreground)]">
-              <AlertCircle className="h-5 w-5" />
-            </span>
-            <div>
-              <p className="text-sm font-semibold text-[var(--foreground)]">Alertas adicionales</p>
-              <p className="text-xs text-[var(--muted-foreground)]">Prioriza acciones según estado y vencimientos.</p>
+            <div className={cardBase}>
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/40 bg-white/55 text-[var(--primary)] shadow-inner dark:border-white/15 dark:bg-white/10 dark:text-[var(--primary-foreground)]">
+                  <ClipboardList className="h-5 w-5" />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-[var(--foreground)]">Resumen operativo</p>
+                  <p className="text-xs text-[var(--muted-foreground)]">Seguimiento de pendientes clave del negocio.</p>
+                </div>
+              </div>
+              <div className="mt-3 space-y-3">
+                {metrics.length === 0 && (
+                  <div className="rounded-xl border border-white/30 bg-white/50 px-3 py-3 text-xs text-[var(--muted-foreground)]">
+                    Los indicadores se mostrarán cuando se cargue el resumen.
+                  </div>
+                )}
+                {metrics.map((metric) => (
+                  <Link
+                    key={metric.label}
+                    href={metric.href}
+                    className="flex items-center justify-between rounded-xl border border-white/30 bg-white/50 px-3 py-2 text-sm text-[var(--foreground)] transition hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/60 dark:border-white/15 dark:bg-white/10 dark:text-[var(--primary-foreground)]"
+                  >
+                    <span>{metric.label}</span>
+                    <Badge variant="outline" className="border-white/40 bg-white/60 text-[var(--primary)] shadow-sm dark:border-white/20 dark:bg-white/10 dark:text-[var(--primary-foreground)]">
+                      {numberFormatter.format(metric.value)}
+                    </Badge>
+                  </Link>
+                ))}
+              </div>
+            </div>
+
+            <div className={cardBase}>
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/40 bg-white/55 text-[var(--primary)] shadow-inner dark:border-white/15 dark:bg-white/10 dark:text-[var(--primary-foreground)]">
+                  <AlertCircle className="h-5 w-5" />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-[var(--foreground)]">Alertas adicionales</p>
+                  <p className="text-xs text-[var(--muted-foreground)]">Prioriza acciones según estado y vencimientos.</p>
+                </div>
+              </div>
+              <div className="mt-3 space-y-3">
+                {loading && !summary && (
+                  <div className="h-24 animate-pulse rounded-xl border border-white/30 bg-white/40" />
+                )}
+                {!loading && additionalAlerts.length === 0 && (
+                  <div className="rounded-xl border border-white/30 bg-white/50 px-3 py-3 text-xs text-[var(--muted-foreground)]">
+                    No hay alertas pendientes en este momento.
+                  </div>
+                )}
+                {additionalAlerts.slice(0, 2).map((alert, index) => (
+                  <div
+                    key={`${alert.type}-${index}`}
+                    className={cn(
+                      "rounded-2xl border px-3 py-3 text-sm shadow-sm",
+                      severityStyles[alert.severity]
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="font-semibold">{alert.title}</p>
+                        <p className="text-xs opacity-80">{alert.description}</p>
+                      </div>
+                      {alert.href && (
+                        <Link href={alert.href} className="text-xs underline">
+                          Revisar
+                        </Link>
+                      )}
+                    </div>
+                    {renderAlertItems(alert)}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
-          <div className="mt-3 space-y-3">
-            {loading && !summary && (
-              <div className="h-24 animate-pulse rounded-xl border border-white/30 bg-white/40" />
-            )}
-            {!loading && additionalAlerts.length === 0 && (
-              <div className="rounded-xl border border-white/30 bg-white/50 px-3 py-3 text-xs text-[var(--muted-foreground)]">
-                No hay alertas pendientes en este momento.
-              </div>
-            )}
-            {additionalAlerts.slice(0, 2).map((alert) => (
-              <div
-                key={alert.title}
-                className={cn(
-                  "rounded-2xl border px-3 py-3 shadow-sm",
-                  severityStyles[alert.severity]
-                )}
-              >
-                <p className="text-sm font-semibold">{alert.title}</p>
-                {renderAlertItems(alert)}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+        </>
+      )}
     </div>
   )
 }

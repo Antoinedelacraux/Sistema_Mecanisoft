@@ -1,4 +1,6 @@
 import { Prisma, PrismaClient } from '@prisma/client'
+import { renderPdf } from '@/lib/reportes/workerUtils'
+import { resolveReportFilePath } from '@/lib/reportes/storagePaths'
 
 const prisma = new PrismaClient()
 const prismaAny = prisma as any
@@ -397,13 +399,22 @@ async function seedReportArtifacts(adminId: number, templatesMap: Record<string,
     const templateKey = templateKeys[monthOffset % templateKeys.length]
     const filename = `${templateKey}-${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}.pdf`
 
-  const existingFile = await prismaAny.reportFile.findFirst({ where: { filename } })
+    const existingFile = await prismaAny.reportFile.findFirst({ where: { filename } })
     if (existingFile) continue
 
-  await prismaAny.reportFile.create({
+    const storedPath = `/exports/${filename}`
+    const absolutePath = resolveReportFilePath(storedPath)
+    const sampleRows = [
+      { Indicador: 'Total registros', Valor: randomBetween(12, 58), Periodo: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}` },
+      { Indicador: 'Monto total (S/)', Valor: randomBetween(15000, 42000) }
+    ]
+
+    await renderPdf(sampleRows, filename, { outPath: absolutePath })
+
+    await prismaAny.reportFile.create({
       data: {
         templateKey,
-        path: `/exports/${filename}`,
+        path: storedPath,
         filename,
         mime: 'application/pdf',
         size: randomBetween(150_000, 380_000),
@@ -413,7 +424,7 @@ async function seedReportArtifacts(adminId: number, templatesMap: Record<string,
     })
     filesCreated += 1
 
-  await prismaAny.reportAudit.create({
+    await prismaAny.reportAudit.create({
       data: {
         usuarioId: adminId,
         action: 'GENERATED',

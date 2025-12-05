@@ -1,0 +1,55 @@
+[
+  {
+    "id": "257217e0-246c-4e0a-8478-763dabe05c46",
+    "image": "/uploads/avatars/avatar_5_1764294202654_256.webp",
+    "variants": [
+      "/uploads/avatars/avatar_5_1764294202654_64.webp",
+      "/uploads/avatars/avatar_5_1764294202654_128.webp",
+      "/uploads/avatars/avatar_5_1764294202654_256.webp"
+    ],
+    "original": "avatar_5_1764294202654.jpeg",
+    "created_at": "2025-11-28T01:43:22.893Z"
+  },
+  {
+    "id": "46f49a7e-32f3-472c-8958-87887c2acd6d",
+    "image": "/uploads/avatars/avatar_5_1764294190871_256.webp",
+    "variants": [
+      "/uploads/avatars/avatar_5_1764294190871_64.webp",
+      "/uploads/avatars/avatar_5_1764294190871_128.webp",
+      "/uploads/avatars/avatar_5_1764294190871_256.webp"
+    ],
+    "created_at": "2025-11-28T01:43:22.834Z"
+  },
+  {
+    "id": "5f2a3bc7-893d-4e60-a07f-7c663556f9aa",
+    "image": "/uploads/avatars/avatar_5_1764294190871_256.webp",
+    "variants": [
+      "/uploads/avatars/avatar_5_1764294190871_64.webp",
+      "/uploads/avatars/avatar_5_1764294190871_128.webp",
+      "/uploads/avatars/avatar_5_1764294190871_256.webp"
+    ],
+    "original": "avatar_5_1764294190871.png",
+    "created_at": "2025-11-28T01:43:11.011Z"
+  },
+  {
+    "id": "a78005a6-606c-4da7-8f74-de4f69c8a43c",
+    "image": "/uploads/avatars/avatar_5_1764294148459_256.webp",
+    "variants": [
+      "/uploads/avatars/avatar_5_1764294148459_64.webp",
+      "/uploads/avatars/avatar_5_1764294148459_128.webp",
+      "/uploads/avatars/avatar_5_1764294148459_256.webp"
+    ],
+    "created_at": "2025-11-28T01:43:10.990Z"
+  },
+  {
+    "id": "66ff47f0-06d7-473b-9beb-16cffa622934",
+    "image": "/uploads/avatars/avatar_5_1764294148459_256.webp",
+    "variants": [
+      "/uploads/avatars/avatar_5_1764294148459_64.webp",
+      "/uploads/avatars/avatar_5_1764294148459_128.webp",
+      "/uploads/avatars/avatar_5_1764294148459_256.webp"
+    ],
+    "original": "avatar_5_1764294148459.png",
+    "created_at": "2025-11-28T01:42:28.661Z"
+  }
+]

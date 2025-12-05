@@ -109,7 +109,7 @@ export function ServicioForm({ servicio, onSuccess, onCancel }: ServicioFormProp
     const fetchModelos = async () => {
       if (!marcaId) { setModelos([]); setValue('id_modelo', null); return }
       try {
-        const res = await fetch(`/api/modelos?id_marca=${marcaId}`)
+        const res = await fetch(`/api/modelos?marca_id=${marcaId}`)
         const data = await res.json()
         setModelos(data.modelos || [])
       } catch (e) { console.error('Error modelos', e) }

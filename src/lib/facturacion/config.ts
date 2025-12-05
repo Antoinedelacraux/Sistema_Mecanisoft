@@ -102,16 +102,44 @@ export function clearFacturacionConfigCache() {
 
 const FACTURACION_REQUIRED_ENVS = ['FACTURACION_API_URL', 'FACTURACION_API_TOKEN', 'FACTURACION_EMISOR_RUC'] as const
 
+type FacturacionFlagState = {
+  enabled: boolean
+  explicit: boolean
+}
+
+function getFacturacionFlagState(): FacturacionFlagState {
+  const raw = process.env.FACTURACION_HABILITADA
+  if (!raw) {
+    return {
+      enabled: process.env.NODE_ENV !== 'production',
+      explicit: false
+    }
+  }
+
+  const normalized = raw.trim().toLowerCase()
+  const enabled = normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on'
+
+  return {
+    enabled,
+    explicit: true
+  }
+}
+
 export function isFacturacionHabilitada(): boolean {
-  const flag = process.env.FACTURACION_HABILITADA
-  if (!flag) return false
-  const normalized = flag.trim().toLowerCase()
-  return normalized === '1' || normalized === 'true' || normalized === 'yes'
+  return getFacturacionFlagState().enabled
 }
 
 export function assertFacturacionDisponible(): void {
-  if (!isFacturacionHabilitada()) {
+  const flagState = getFacturacionFlagState()
+
+  if (!flagState.enabled) {
     throw new FacturacionError('La facturación electrónica está deshabilitada. Habilítala estableciendo FACTURACION_HABILITADA=true.', 409)
+  }
+
+  if (!flagState.explicit) {
+    // Implicit dev-mode enablement: skip credential enforcement so la app puede operar sin
+    // servicios externos durante desarrollo local.
+    return
   }
 
   const missing = FACTURACION_REQUIRED_ENVS.filter((key) => {

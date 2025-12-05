@@ -30,6 +30,7 @@ import type {
 const MAX_RANGE_DAYS = 365
 const DEFAULT_PAGOS_PENDIENTES_DIAS = 7
 const DEFAULT_COTIZACIONES_ALERTA_DIAS = 3
+const FALLBACK_ALMACEN_LABEL = 'Inventario general'
 const DECIMAL_ZERO = new Prisma.Decimal(0)
 
 const ORDENES_ESTADOS_PENDIENTES = ['pendiente', 'por_hacer', 'en_proceso'] as const
@@ -231,7 +232,60 @@ export async function getDashboardSummary(input: DashboardFilters): Promise<Dash
     `)
   ])
 
-  const lowStockTotal = lowStockCount[0] ? Number(lowStockCount[0].total) : 0
+  let lowStockItems: DashboardLowStockItem[] = lowStockRows.map((row) => ({
+    inventarioId: row.id_inventario_producto,
+    productoId: row.id_producto,
+    nombreProducto: row.producto_nombre,
+    almacen: row.almacen_nombre,
+    stockDisponible: decimalToNumber(row.stock_disponible),
+    stockMinimo: decimalToNumber(row.stock_minimo)
+  }))
+
+  let lowStockTotal = lowStockCount[0] ? Number(lowStockCount[0].total) : 0
+
+  if (lowStockTotal === 0 && !filters.almacenId) {
+    type ProductoLowStockRow = {
+      id_producto: number
+      nombre: string
+      stock: number
+      stock_minimo: number
+    }
+
+    const productoLowStockWhere = Prisma.sql`
+      WHERE p.estatus = true
+        AND p.stock_minimo > 0
+        AND p.stock <= p.stock_minimo
+    `
+
+    const [productoLowStockRows, productoLowStockCount] = await Promise.all([
+      prisma.$queryRaw<ProductoLowStockRow[]>(Prisma.sql`
+        SELECT
+          p.id_producto,
+          p.nombre,
+          p.stock,
+          p.stock_minimo
+        FROM producto p
+        ${productoLowStockWhere}
+        ORDER BY (p.stock_minimo - p.stock) DESC
+        LIMIT 10
+      `),
+      prisma.$queryRaw<{ total: bigint }[]>(Prisma.sql`
+        SELECT COUNT(*)::bigint AS total
+        FROM producto p
+        ${productoLowStockWhere}
+      `)
+    ])
+
+    lowStockTotal = productoLowStockCount[0] ? Number(productoLowStockCount[0].total) : 0
+    lowStockItems = productoLowStockRows.map((producto) => ({
+      inventarioId: producto.id_producto,
+      productoId: producto.id_producto,
+      nombreProducto: producto.nombre,
+      almacen: FALLBACK_ALMACEN_LABEL,
+      stockDisponible: producto.stock,
+      stockMinimo: producto.stock_minimo
+    }))
+  }
 
   const alertCotizacionesDias = filters.alertThresholds?.cotizacionesPorVencerDias ?? DEFAULT_COTIZACIONES_ALERTA_DIAS
   const cotizacionVencidaLimite = subDays(now, alertCotizacionesDias)
@@ -326,15 +380,6 @@ export async function getDashboardSummary(input: DashboardFilters): Promise<Dash
     prioridad: orden.prioridad,
     fecha: orden.fecha ? formatISO(orden.fecha) : '',
     fechaEstimada: orden.fecha_fin_estimada ? formatISO(orden.fecha_fin_estimada) : null
-  }))
-
-  const lowStockItems: DashboardLowStockItem[] = lowStockRows.map((row) => ({
-    inventarioId: row.id_inventario_producto,
-    productoId: row.id_producto,
-    nombreProducto: row.producto_nombre,
-    almacen: row.almacen_nombre,
-    stockDisponible: decimalToNumber(row.stock_disponible),
-    stockMinimo: decimalToNumber(row.stock_minimo)
   }))
 
   const cotizacionesResumen: DashboardCotizacionResumen[] = cotizacionesVencidas.map((cotizacion) => ({
