@@ -1,4 +1,6 @@
-# Manual de Instalación Rápida
+# MecaniSoft - Manual de Instalación Rápida
+
+**Autor:** CHUMBES ESPINOZA MARCO ANTONIO
 
 Este documento acompaña el ZIP que se comparte. Siga los pasos en orden para levantar **MecaniSoft** desde cero. Todo lo que no se mencione es opcional.
 

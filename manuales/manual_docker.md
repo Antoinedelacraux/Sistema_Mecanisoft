@@ -1,5 +1,7 @@
 # Manual de Uso con Docker
 
+**Autor:** CHUMBES ESPINOZA MARCO ANTONIO
+
 Este documento explica cómo levantar y administrar el sistema **MecaniSoft** utilizando contenedores Docker. Está pensado para personas sin experiencia previa; se asume que ya tienes el código fuente del proyecto.
 
 ## 1. Requisitos
